@@ -1,12 +1,24 @@
 from pydualsense import pydualsense
+import requests
+
+ESP32_ADDRESS = "<ESP32_ADDRESS>"
+
+COMMAND_START = "1"
+COMMAND_END = "2"
+
 
 def cross_pressed(state):
-    print(state)
+    command = COMMAND_START if state else COMMAND_END
+    r = requests.get(ESP32_ADDRESS, params={"command": command})
+    r.raise_for_status()
 
-ds = pydualsense() # open controller
-ds.init() # initialize controller
+
+ds = pydualsense()
+ds.init()
 
 ds.cross_pressed += cross_pressed
-ds.light.setColorI(255,0,0) # set touchpad color to red
 
-ds.close() # closing the controller
+while not ds.state.ps:
+    ...
+
+ds.close()
