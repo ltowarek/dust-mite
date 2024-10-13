@@ -1,2 +1,2 @@
 # dust-mite
-self-driving RC car
+Self-driving RC car
