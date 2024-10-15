@@ -9,6 +9,8 @@ jobs:
   build:
 
     runs-on: ubuntu-24.04
+    defaults:
+      run:
 
     steps:
     - uses: actions/checkout@v4
@@ -20,20 +22,28 @@ jobs:
       run: pip install tox
     - name: Create venv
       run: |
-        ./controller/scripts/create_venv.sh
+        ./scripts/create_venv.sh
         source ./venv/bin/activate
         echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
         echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
+      working-directory: ./controller/
+
     - name: Run linters
-      run: ./controller/scripts/run_linters.sh --output-format=github
+      run: ./scripts/run_linters.sh --output-format=github
+      working-directory: ./controller/
     - name: Run formatter
-      run: ./controller/scripts/run_formatter.sh --diff
+      run: ./scripts/run_formatter.sh --diff
+      working-directory: ./controller/
     - name: Run type checks
-      run: ./controller/scripts/run_type_checks.sh
+      run: ./scripts/run_type_checks.sh
+      working-directory: ./controller/
     - name: Run requirements checks
-      run: ./controller/scripts/run_requirements_checks.sh
+      run: ./scripts/run_requirements_checks.sh
+      working-directory: ./controller/
+
     - name: Run tests
-      run: ./controller/scripts/run_tests.sh -- --junitxml=./controller/junit/python-controller.xml
+      run: ./scripts/run_tests.sh -- --junitxml=./junit/python-controller.xml
+      working-directory: ./controller/
     - name: Upload pytest test results
       uses: actions/upload-artifact@v4
       with:
