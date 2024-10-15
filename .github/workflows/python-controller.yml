@@ -37,3 +37,9 @@ jobs:
       run: ./scripts/run_requirements_checks.sh
     - name: Run tests
       run: ./scripts/run_tests.sh -- --junitxml=junit/python-controller.xml
+    - name: Upload pytest test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-controller
+        path: junit/python-controller.xml
+      if: ${{ always() }}
