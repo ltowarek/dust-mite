@@ -1,0 +1,8 @@
+-r base.in
+
+pip-compile-multi
+tox
+pytest
+ruff
+mypy
+types-requests

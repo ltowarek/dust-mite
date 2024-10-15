@@ -1,2 +1,0 @@
-pydualsense==0.7.1
-requests==2.32.2

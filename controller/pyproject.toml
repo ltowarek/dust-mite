@@ -1,0 +1,29 @@
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    env_list =
+        py312
+
+    [testenv]
+    deps = -r requirements/dev.txt
+    commands = pytest tests/
+"""
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+    "src/**/*.py",
+    "tests/**/*.py"
+]
+strict = true
+
+[[tool.mypy.overrides]]
+module = "pydualsense"
+ignore_missing_imports = true
+
+[tool.ruff]
+include = [
+    "pyproject.toml",
+    "src/**/*.py",
+    "tests/**/*.py"
+]
