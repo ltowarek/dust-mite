@@ -22,6 +22,7 @@ module = "pydualsense"
 ignore_missing_imports = true
 
 [tool.ruff]
+target-version = "py312"
 include = [
     "pyproject.toml",
     "src/**/*.py",

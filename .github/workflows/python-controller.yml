@@ -1,0 +1,40 @@
+name: Python controller
+
+on: [push]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ./controller/
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.12"
+        cache: "pip"
+    - name: Install tox
+      run: pip install tox
+    - name: Create venv
+      run: |
+        ./scripts/create_venv.sh
+        source ./venv/bin/activate
+        echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
+        echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
+    - name: Run linters
+      run: ./scripts/run_linters.sh --output-format=github
+    - name: Run formatter
+      run: ./scripts/run_formatter.sh --diff
+    - name: Run type checks
+      run: ./scripts/run_type_checks.sh
+    - name: Run requirements checks
+      run: ./scripts/run_requirements_checks.sh
+    - name: Run tests
+      run: ./scripts/run_tests.sh --junitxml=junit/python-controller.xml
