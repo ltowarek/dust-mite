@@ -6,7 +6,7 @@ legacy_tox_ini = """
 
     [testenv]
     deps = -r requirements/dev.txt
-    commands = pytest tests/
+    commands = pytest tests/ {posargs}
 """
 
 [tool.mypy]

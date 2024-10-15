@@ -36,4 +36,4 @@ jobs:
     - name: Run requirements checks
       run: ./scripts/run_requirements_checks.sh
     - name: Run tests
-      run: ./scripts/run_tests.sh --junitxml=junit/python-controller.xml
+      run: ./scripts/run_tests.sh -- --junitxml=junit/python-controller.xml
