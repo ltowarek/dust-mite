@@ -1,8 +1,17 @@
-from pydualsense import pydualsense
-import requests
+"""controller module."""
+
+import logging
 from typing import Any
 
+import requests
+from pydualsense import pydualsense
+
+logging.basicConfig(level=logging.DEBUG)
+
+logger = logging.getLogger(__name__)
+
 ESP32_ADDRESS = "<ESP32_ADDRESS>"
+
 
 COMMAND_START = "1"
 COMMAND_END = "2"
@@ -12,12 +21,20 @@ COMMAND_ACCELERATE = "5"
 
 
 def send_command(payload: dict[str, Any]) -> None:
-    r = requests.get(ESP32_ADDRESS, params=payload)
+    """Send command to the car.
+
+    :param payload: payload sent through query parameters
+    """
+    r = requests.get(ESP32_ADDRESS, params=payload, timeout=5)
     r.raise_for_status()
 
 
-def cross_pressed(state: bool) -> None:
-    print(f"CROSS - {state}")
+def cross_pressed(state: bool) -> None:  # noqa: FBT001
+    """Handle cross event.
+
+    :param state: True if pressed else False
+    """
+    logger.debug("CROSS - %s", state)
     command = {
         "command": COMMAND_START if state else COMMAND_END,
     }
@@ -25,7 +42,12 @@ def cross_pressed(state: bool) -> None:
 
 
 def left_joystick_changed(x: int, y: int) -> None:
-    print(f"L - {x} - {y}")
+    """Handle L event.
+
+    :param x: value between -128(left) and 127(right)
+    :param y: value between -128(down) and 127(up)
+    """
+    logger.debug("L - %d - %d", x, y)
     command = {
         "command": COMMAND_TURN,
         "value": x,
@@ -34,7 +56,11 @@ def left_joystick_changed(x: int, y: int) -> None:
 
 
 def l2_changed(value: int) -> None:
-    print(f"L2 - {value}")
+    """Handle L2 event.
+
+    :param value: value between 0 and 255
+    """
+    logger.debug("L2 - %d", value)
     command = {
         "command": COMMAND_BRAKE,
         "value": value,
@@ -43,7 +69,11 @@ def l2_changed(value: int) -> None:
 
 
 def r2_changed(value: int) -> None:
-    print(f"R2 - {value}")
+    """Handle R2 event.
+
+    :param value: value between 0 and 255
+    """
+    logger.debug("R2 - %d", value)
     command = {
         "command": COMMAND_ACCELERATE,
         "value": value,
