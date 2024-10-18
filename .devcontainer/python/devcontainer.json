@@ -1,0 +1,24 @@
+{
+    "name": "Python",
+    "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
+    "features": {
+        "ghcr.io/devcontainers-extra/features/tox": {}
+    },
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+    "workspaceFolder": "/workspace/controller",
+    "runArgs": ["--env-file", ".env"],
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "git.openRepositoryInParentFolders": "always",
+                "python.defaultInterpreterPath": "${workspaceFolder}/venv"
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.debugpy",
+                "streetsidesoftware.code-spell-checker"
+            ]
+        }
+    },
+    "postCreateCommand": "bash scripts/create_venv.sh"
+}
