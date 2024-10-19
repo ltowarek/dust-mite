@@ -6,7 +6,16 @@
     },
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "workspaceFolder": "/workspace/controller",
-    "runArgs": ["--env-file", ".env"],
+    "runArgs": [
+        // Mount ESP32
+        // "--device",
+        // "/dev/ttyUSB0",
+        // Mount PS5 controller
+        // "--device",
+        // "/dev/hidraw3"
+        "--env-file",
+        ".env"
+    ],
     "customizations": {
         "vscode": {
             "settings": {
@@ -19,7 +28,8 @@
                 "cSpell.words": [
                     "pydualsense",
                     "pytest",
-                    "venv"
+                    "venv",
+                    "hidraw"
                 ]
             },
             "extensions": [
