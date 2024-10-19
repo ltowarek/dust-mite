@@ -2,8 +2,6 @@
 
 set -e
 
-apt install libhidapi-dev
-
 echo '
 # USB
 KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ce6", MODE="0666"

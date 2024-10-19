@@ -1,6 +1,9 @@
 {
     "name": "Python",
-    "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
+    "build": {
+        "dockerfile": "./Dockerfile",
+        "context": "../../"
+    },
     "features": {
         "ghcr.io/devcontainers-extra/features/tox": {}
     },
@@ -12,7 +15,7 @@
         // "/dev/ttyUSB0",
         // Mount PS5 controller
         // "--device",
-        // "/dev/hidraw3"
+        // "/dev/hidraw3",
         "--env-file",
         ".env"
     ],
@@ -29,7 +32,9 @@
                     "pydualsense",
                     "pytest",
                     "venv",
-                    "hidraw"
+                    "hidraw",
+                    "hidapi",
+                    "devcontainer"
                 ]
             },
             "extensions": [
