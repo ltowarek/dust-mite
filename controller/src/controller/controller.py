@@ -1,6 +1,7 @@
 """controller module."""
 
 import logging
+import os
 from typing import Any
 
 import requests
@@ -82,6 +83,8 @@ def r2_changed(value: int) -> None:
 
 
 if __name__ == "__main__":
+    ESP32_ADDRESS = os.environ["ESP32_ADDRESS"]
+
     ds = pydualsense()
     ds.init()
 
