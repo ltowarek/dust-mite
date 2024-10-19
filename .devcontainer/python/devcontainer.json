@@ -56,7 +56,8 @@
                 "ms-python.debugpy",
                 "streetsidesoftware.code-spell-checker",
                 "charliermarsh.ruff",
-                "ms-python.mypy-type-checker"
+                "ms-python.mypy-type-checker",
+                "GitHub.vscode-github-actions"
             ]
         }
     },
