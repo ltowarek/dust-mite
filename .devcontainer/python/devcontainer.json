@@ -37,6 +37,8 @@
                     "editor.defaultFormatter": "charliermarsh.ruff"
                 },
                 "ruff.importStrategy": "fromEnvironment",
+                "mypy-type-checker.importStrategy": "fromEnvironment",
+                "mypy-type-checker.reportingScope": "workspace",
                 "cSpell.words": [
                     "pydualsense",
                     "pytest",
@@ -53,7 +55,8 @@
                 "ms-python.python",
                 "ms-python.debugpy",
                 "streetsidesoftware.code-spell-checker",
-                "charliermarsh.ruff"
+                "charliermarsh.ruff",
+                "ms-python.mypy-type-checker"
             ]
         }
     },
