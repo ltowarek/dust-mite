@@ -1,7 +1,10 @@
 #!/bin/bash
 
 pushd ./controller/ > /dev/null
-source ./venv/bin/activate
+# https://github.com/microsoft/vscode-python/issues/10165
+if [[ -z "${VIRTUAL_ENV}" ]]; then
+    source /opt/venv/bin/activate
+fi
 
 OUTPUT=$(./scripts/run_checks.sh 2>&1)
 STATUS=$?

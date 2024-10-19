@@ -4,9 +4,6 @@
         "dockerfile": "./Dockerfile",
         "context": "../../"
     },
-    "features": {
-        "ghcr.io/devcontainers-extra/features/tox": {}
-    },
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "workspaceFolder": "/workspace/controller",
     "runArgs": [
@@ -16,6 +13,7 @@
         // Mount PS5 controller
         // "--device",
         // "/dev/hidraw3",
+        // Set environment variables
         "--env-file",
         ".env"
     ],
@@ -23,7 +21,7 @@
         "vscode": {
             "settings": {
                 "git.openRepositoryInParentFolders": "always",
-                "python.defaultInterpreterPath": "${workspaceFolder}/venv",
+                "python.defaultInterpreterPath": "/opt/venv",
                 "python.testing.pytestEnabled": true,
                 "python.testing.pytestArgs": [
                     "tests"
@@ -60,6 +58,5 @@
                 "GitHub.vscode-github-actions"
             ]
         }
-    },
-    "postCreateCommand": "bash scripts/create_venv.sh"
+    }
 }
