@@ -28,6 +28,15 @@
                 "python.testing.pytestArgs": [
                     "tests"
                 ],
+                "[python]": {
+                    "editor.formatOnSave": true,
+                    "editor.codeActionsOnSave": {
+                        "source.fixAll": "explicit",
+                        "source.organizeImports": "explicit"
+                    },
+                    "editor.defaultFormatter": "charliermarsh.ruff"
+                },
+                "ruff.importStrategy": "fromEnvironment",
                 "cSpell.words": [
                     "pydualsense",
                     "pytest",
@@ -38,9 +47,13 @@
                 ]
             },
             "extensions": [
+                "-ms-python.autopep8",
+                "-dbaeumer.vscode-eslint",
+                "-ms-python.vscode-pylance",
                 "ms-python.python",
                 "ms-python.debugpy",
-                "streetsidesoftware.code-spell-checker"
+                "streetsidesoftware.code-spell-checker",
+                "charliermarsh.ruff"
             ]
         }
     },
