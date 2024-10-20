@@ -7,9 +7,6 @@
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "workspaceFolder": "/workspace/controller",
     "runArgs": [
-        // Mount ESP32
-        // "--device",
-        // "/dev/ttyUSB0",
         // Mount PS5 controller
         // "--device",
         // "/dev/hidraw3",
