@@ -28,7 +28,7 @@ jobs:
     - name: Build and push
       uses: docker/build-push-action@v6
       with:
-        tags: ghcr.io/ltowarek/dust-mite-devcontainer
+        tags: ghcr.io/ltowarek/dust-mite-python-devcontainer
         file: ./.devcontainer/python/Dockerfile
         push: true
 
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ltowarek/dust-mite-devcontainer
+      image: ghcr.io/ltowarek/dust-mite-python-devcontainer
       credentials:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
