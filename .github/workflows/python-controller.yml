@@ -6,10 +6,6 @@ on:
     branches: 
       - main
 
-
-env:
-  IMAGE_NAME: ghcr.io/ltowarek/dust-mite-devcontainer
-
 jobs:
   build-docker:
     permissions:
@@ -32,7 +28,7 @@ jobs:
     - name: Build and push
       uses: docker/build-push-action@v6
       with:
-        tags: ${{ env.IMAGE_NAME }}
+        tags: ghcr.io/ltowarek/dust-mite-devcontainer
         file: ./.devcontainer/python/Dockerfile
         push: true
 
@@ -44,7 +40,6 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      # Can't use env.IMAGE_NAME - https://github.com/actions/runner/issues/2394
       image: ghcr.io/ltowarek/dust-mite-devcontainer
       credentials:
         username: ${{ github.repository_owner }}
