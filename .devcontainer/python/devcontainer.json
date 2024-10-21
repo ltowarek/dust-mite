@@ -55,5 +55,6 @@
                 "GitHub.vscode-github-actions"
             ]
         }
-    }
+    },
+    "remoteUser": "vscode"
 }
