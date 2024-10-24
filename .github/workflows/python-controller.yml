@@ -48,6 +48,7 @@ jobs:
 
     defaults:
       run:
+        shell: bash
         working-directory: ./controller
 
     steps:
