@@ -11,8 +11,8 @@
         // "--device",
         // "/dev/ttyUSB0",
         // Set environment variables
-        "--env-file",
-        ".env"
+        // "--env-file",
+        // ".env"
     ],
     "customizations": {
         "vscode": {
