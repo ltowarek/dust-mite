@@ -1,4 +1,6 @@
-FROM espressif/idf:release-v5.3
+FROM espressif/idf:release-v5.1
+
+ENV LANG C.UTF-8
 
 ARG USERNAME=vscode
 ARG USER_UID=1050

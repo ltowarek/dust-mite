@@ -49,6 +49,7 @@ CMakeUserPresets.json
 build/
 sdkconfig
 sdkconfig.old
+managed_components/
 
 env/
 .env
