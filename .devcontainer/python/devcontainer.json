@@ -14,6 +14,11 @@
         // "--env-file",
         // ".env"
     ],
+    // Need to "activate" venv in VSCode because of https://github.com/microsoft/vscode-python/issues/10165
+    "remoteEnv": {
+        "PATH": "/opt/venv/bin:${containerEnv:PATH}",
+        "VIRTUAL_ENV": "/opt/venv"
+    },
     "customizations": {
         "vscode": {
             "settings": {
