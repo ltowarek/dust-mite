@@ -9,7 +9,7 @@
     "runArgs": [
         // Mount ESP32
         // "--device",
-        // "/dev/ttyUSB0",
+        // "/dev/ttyACM0",
         // Set environment variables
         // "--env-file",
         // ".env"
