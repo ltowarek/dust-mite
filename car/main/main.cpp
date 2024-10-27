@@ -8,7 +8,9 @@
 #include "esp_wifi.h"
 #include "esp_http_server.h"
 #include "driver/gpio.h"
+#include "driver/i2c.h"
 #include "nvs_flash.h"
+#include "DFRobot_AXP313A.h"
 
 #define WIFI_SSID "<SSID>"
 #define WIFI_PASSWORD "<PASSWORD>"
@@ -202,10 +204,17 @@ void nvs_setup() {
 }
 
 
+void camera_setup() {
+  begin(I2C_NUM_0, 0x36);
+  enableCameraPower(OV2640);
+}
+
+
 void setup()
 { 
   nvs_setup();
   wifi_setup();
+  camera_setup();
   if (server == NULL) {
       ESP_LOGI(TAG, "Starting webserver");
       server = start_webserver();

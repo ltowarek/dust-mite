@@ -1,0 +1,3 @@
+[submodule "car/components/DFRobot_AXP313A/DFRobot_AXP313A"]
+	path = car/components/DFRobot_AXP313A/DFRobot_AXP313A
+	url = https://github.com/ltowarek/DFRobot_AXP313A.git
