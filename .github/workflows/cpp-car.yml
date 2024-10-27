@@ -55,5 +55,8 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Activate esp-idf
+      run: source $IDF_PATH/export.sh
+
     - name: Build
       run: idf.py build
