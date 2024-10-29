@@ -84,6 +84,11 @@ static int s_retry_num = 0;
 
 static httpd_handle_t server = NULL;
 
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
+static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %d.%06d\r\n\r\n";
+
 
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
@@ -128,6 +133,57 @@ static const httpd_uri_t root = {
 };
 
 
+static esp_err_t stream_get_handler(httpd_req_t *req)
+{
+  esp_err_t res = ESP_OK;
+
+  res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
+  if (res) {
+    return res;
+  }
+  res = httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  if (res) {
+    return res;
+  }
+  res = httpd_resp_set_hdr(req, "X-Framerate", "60");
+  if (res) {
+    return res;
+  }
+
+  while (true) {
+    camera_fb_t *frame = esp_camera_fb_get();
+
+    res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
+    if (res) {
+      break;
+    }
+
+    char *part_buf[128];
+    size_t hlen = snprintf((char *)part_buf, 128, _STREAM_PART, frame->len, frame->timestamp.tv_sec, frame->timestamp.tv_usec);
+    res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
+    if (res) {
+      break;
+    }
+
+    res = httpd_resp_send_chunk(req, (const char *)frame->buf, frame->len);
+    if (res) {
+      break;
+    }
+
+    esp_camera_fb_return(frame);
+  }
+
+  return res;
+}
+
+
+static const httpd_uri_t stream = {
+    .uri       = "/stream",
+    .method    = HTTP_GET,
+    .handler   = stream_get_handler,
+};
+
+
 static httpd_handle_t start_webserver()
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -137,6 +193,7 @@ static httpd_handle_t start_webserver()
     if (httpd_start(&server, &config) == ESP_OK) {
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &root);
+        httpd_register_uri_handler(server, &stream);
         return server;
     }
 
@@ -318,13 +375,7 @@ void loop()
     value = 0;
   }
 
-  ESP_LOGI(TAG, "Taking picture...");
-  camera_fb_t *pic = esp_camera_fb_get();
-
-  ESP_LOGI(TAG, "Picture taken! Its size was: %zu bytes", pic->len);
-  esp_camera_fb_return(pic);
-
-  vTaskDelay(5000/portTICK_PERIOD_MS);
+  vTaskDelay(10/portTICK_PERIOD_MS);
 }
 
 
