@@ -12,6 +12,9 @@
 #include "driver/i2c.h"
 #include "nvs_flash.h"
 #include "DFRobot_AXP313A.h"
+#include "driver/mcpwm.h"
+#include "soc/mcpwm_struct.h" 
+#include "soc/mcpwm_reg.h"
 
 #define WIFI_SSID "<SSID>"
 #define WIFI_PASSWORD "<PASSWORD>"
@@ -89,6 +92,14 @@ static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" 
 static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
 static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %d.%06d\r\n\r\n";
 
+#define M1_IN1 12
+#define M1_IN2 13
+#define M2_IN1 14
+#define M2_IN2 21
+#define M3_IN1 9
+#define M3_IN2 10
+#define M4_IN1 47
+#define M4_IN2 11
 
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
@@ -337,6 +348,67 @@ void camera_setup() {
 }
 
 
+void motor_setup() {
+  mcpwm_config_t pwm_config;
+  pwm_config.frequency = 1000;
+  pwm_config.cmpr_a = 0;
+  pwm_config.cmpr_b = 0;
+  pwm_config.counter_mode = MCPWM_UP_COUNTER;
+  pwm_config.duty_mode = MCPWM_DUTY_MODE_0;
+
+  mcpwm_gpio_init(MCPWM_UNIT_0,MCPWM0A,M1_IN1);
+  mcpwm_gpio_init(MCPWM_UNIT_0,MCPWM0B,M1_IN2);
+  mcpwm_init(MCPWM_UNIT_0,MCPWM_TIMER_0,&pwm_config);
+
+  mcpwm_gpio_init(MCPWM_UNIT_0,MCPWM1A,M2_IN1);
+  mcpwm_gpio_init(MCPWM_UNIT_0,MCPWM1B,M2_IN2);
+  mcpwm_init(MCPWM_UNIT_0,MCPWM_TIMER_1,&pwm_config);
+
+  mcpwm_gpio_init(MCPWM_UNIT_1,MCPWM0A,M3_IN1);
+  mcpwm_gpio_init(MCPWM_UNIT_1,MCPWM0B,M3_IN2);
+  mcpwm_init(MCPWM_UNIT_1,MCPWM_TIMER_0,&pwm_config);
+
+  mcpwm_gpio_init(MCPWM_UNIT_1,MCPWM1A,M4_IN1);
+  mcpwm_gpio_init(MCPWM_UNIT_1,MCPWM1B,M4_IN2);
+  mcpwm_init(MCPWM_UNIT_1,MCPWM_TIMER_1,&pwm_config);
+}
+
+
+void accelerate(uint8_t speed)
+{
+  mcpwm_set_duty_type(MCPWM_UNIT_0,MCPWM_TIMER_0,MCPWM_GEN_A,MCPWM_DUTY_MODE_0);
+  mcpwm_set_signal_low(MCPWM_UNIT_0,MCPWM_TIMER_0,MCPWM_GEN_B);
+  mcpwm_set_duty(MCPWM_UNIT_0,MCPWM_TIMER_0,MCPWM_GEN_A,speed);
+
+  mcpwm_set_duty_type(MCPWM_UNIT_0,MCPWM_TIMER_1,MCPWM_GEN_A,MCPWM_DUTY_MODE_0);
+  mcpwm_set_signal_low(MCPWM_UNIT_0,MCPWM_TIMER_1,MCPWM_GEN_B);
+  mcpwm_set_duty(MCPWM_UNIT_0,MCPWM_TIMER_1,MCPWM_GEN_A,speed);
+
+  mcpwm_set_duty_type(MCPWM_UNIT_1,MCPWM_TIMER_0,MCPWM_GEN_A,MCPWM_DUTY_MODE_0);
+  mcpwm_set_signal_low(MCPWM_UNIT_1,MCPWM_TIMER_0,MCPWM_GEN_B);
+  mcpwm_set_duty(MCPWM_UNIT_1,MCPWM_TIMER_0,MCPWM_GEN_A,speed);
+
+  mcpwm_set_duty_type(MCPWM_UNIT_1,MCPWM_TIMER_1,MCPWM_GEN_A,MCPWM_DUTY_MODE_0);
+  mcpwm_set_signal_low(MCPWM_UNIT_1,MCPWM_TIMER_1,MCPWM_GEN_B);
+  mcpwm_set_duty(MCPWM_UNIT_1,MCPWM_TIMER_1,MCPWM_GEN_A,speed);
+}
+
+void brake()
+{
+  mcpwm_set_signal_high(MCPWM_UNIT_0,MCPWM_TIMER_0,MCPWM_GEN_A);
+  mcpwm_set_signal_high(MCPWM_UNIT_0,MCPWM_TIMER_0,MCPWM_GEN_B);
+
+  mcpwm_set_signal_high(MCPWM_UNIT_0,MCPWM_TIMER_1,MCPWM_GEN_A);
+  mcpwm_set_signal_high(MCPWM_UNIT_0,MCPWM_TIMER_1,MCPWM_GEN_B);
+
+  mcpwm_set_signal_high(MCPWM_UNIT_1,MCPWM_TIMER_0,MCPWM_GEN_A);
+  mcpwm_set_signal_high(MCPWM_UNIT_1,MCPWM_TIMER_0,MCPWM_GEN_B);
+
+  mcpwm_set_signal_high(MCPWM_UNIT_1,MCPWM_TIMER_1,MCPWM_GEN_A);
+  mcpwm_set_signal_high(MCPWM_UNIT_1,MCPWM_TIMER_1,MCPWM_GEN_B);
+}
+
+
 void setup()
 { 
   nvs_setup();
@@ -346,6 +418,7 @@ void setup()
       ESP_LOGI(TAG, "Starting webserver");
       server = start_webserver();
   }
+  motor_setup();
 }
 
 
@@ -364,9 +437,12 @@ void loop()
         break;
       case COMMAND_BRAKE:
         ESP_LOGI(TAG, "COMMAND_BRAKE: %d", value);
+        brake();
         break;
       case COMMAND_ACCELERATE:
         ESP_LOGI(TAG, "COMMAND_ACCELERATE: %d", value);
+        // TODO: map value to proper range after motor/pwm calibration
+        accelerate(60);
         break;
       default:
         ESP_LOGI(TAG, "Unknown command");
