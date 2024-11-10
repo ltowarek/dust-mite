@@ -8,11 +8,11 @@
     "workspaceFolder": "/workspace/controller",
     "runArgs": [
         // Mount PS5 controller
-        // "--device",
-        // "/dev/hidraw3",
+        "--device",
+        "${localEnv:CONTROLLER_DEVICE:/dev/null}",
         // Set environment variables
-        // "--env-file",
-        // ".env"
+        "--env-file",
+        ".env"
     ],
     // Need to "activate" venv in VSCode because of https://github.com/microsoft/vscode-python/issues/10165
     "remoteEnv": {
@@ -61,5 +61,6 @@
             ]
         }
     },
-    "remoteUser": "vscode"
+    "remoteUser": "vscode",
+    "initializeCommand": "touch .env"
 }

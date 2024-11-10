@@ -8,11 +8,11 @@
     "workspaceFolder": "/workspace/car",
     "runArgs": [
         // Mount ESP32
-        // "--device",
-        // "/dev/ttyACM0",
+        "--device",
+        "${localEnv:ESP32_DEVICE:/dev/null}",
         // Set environment variables
-        // "--env-file",
-        // ".env"
+        "--env-file",
+        ".env"
     ],
     "customizations": {
         "vscode": {
@@ -30,7 +30,9 @@
                     "devcontainer",
                     "UART",
                     "cpptools",
-                    "espressif"
+                    "espressif",
+                    "mcpwm",
+                    "gpio"
                 ]
             },
             "extensions": [
@@ -42,5 +44,6 @@
             ]
         }
     },
-    "remoteUser": "vscode"
+    "remoteUser": "vscode",
+    "initializeCommand": "touch .env"
 }
