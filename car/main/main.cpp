@@ -16,8 +16,13 @@
 #include "soc/mcpwm_struct.h" 
 #include "soc/mcpwm_reg.h"
 
+#ifndef WIFI_SSID
 #define WIFI_SSID "<SSID>"
+#endif
+#ifndef WIFI_PASSWORD
 #define WIFI_PASSWORD "<PASSWORD>"
+#endif
+
 #define WIFI_MAXIMUM_RETRY 2
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
