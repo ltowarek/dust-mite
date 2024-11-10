@@ -415,7 +415,7 @@ void brake()
 
 
 void setup()
-{ 
+{
   nvs_setup();
   wifi_setup();
   camera_setup();

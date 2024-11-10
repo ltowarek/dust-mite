@@ -19,6 +19,9 @@
         "PATH": "/opt/venv/bin:${containerEnv:PATH}",
         "VIRTUAL_ENV": "/opt/venv"
     },
+    "containerEnv": {
+        "PRE_COMMIT_SCRIPT": "/workspace/controller/scripts/pre-commit.sh"
+    },
     "customizations": {
         "vscode": {
             "settings": {
