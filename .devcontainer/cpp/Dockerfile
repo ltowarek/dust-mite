@@ -1,6 +1,11 @@
 FROM espressif/idf:release-v5.3
 
-ENV LANG=C.UTF-8
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install --no-install-recommends \
+    locales
+
+# WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
+RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen
 
 ARG USERNAME=vscode
 ARG USER_UID=1050
