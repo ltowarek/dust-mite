@@ -3,18 +3,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
-#include "esp_camera.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_http_server.h"
 #include "driver/gpio.h"
-#include "driver/i2c.h"
 #include "nvs_flash.h"
-#include "DFRobot_AXP313A.h"
 #include "driver/mcpwm.h"
 #include "soc/mcpwm_struct.h" 
 #include "soc/mcpwm_reg.h"
+#include "camera.h"
 
 #ifndef WIFI_SSID
 #define WIFI_SSID "<SSID>"
@@ -32,56 +30,6 @@
 #define COMMAND_TURN '3'
 #define COMMAND_BRAKE '4'
 #define COMMAND_ACCELERATE '5'
-
-#define CAM_PIN_PWDN  -1
-#define CAM_PIN_RESET -1
-#define CAM_PIN_XCLK  45
-#define CAM_PIN_SIOD  1
-#define CAM_PIN_SIOC  2
-
-#define CAM_PIN_D7    48
-#define CAM_PIN_D6    46
-#define CAM_PIN_D5    8
-#define CAM_PIN_D4    7
-#define CAM_PIN_D3    4
-#define CAM_PIN_D2    41
-#define CAM_PIN_D1    40
-#define CAM_PIN_D0    39
-#define CAM_PIN_VSYNC 6
-#define CAM_PIN_HREF  42
-#define CAM_PIN_PCLK  5
-
-static camera_config_t camera_config = {
-  .pin_pwdn = CAM_PIN_PWDN,
-  .pin_reset = CAM_PIN_RESET,
-  .pin_xclk = CAM_PIN_XCLK,
-  .pin_sccb_sda = CAM_PIN_SIOD,
-  .pin_sccb_scl = CAM_PIN_SIOC,
-
-  .pin_d7 = CAM_PIN_D7,
-  .pin_d6 = CAM_PIN_D6,
-  .pin_d5 = CAM_PIN_D5,
-  .pin_d4 = CAM_PIN_D4,
-  .pin_d3 = CAM_PIN_D3,
-  .pin_d2 = CAM_PIN_D2,
-  .pin_d1 = CAM_PIN_D1,
-  .pin_d0 = CAM_PIN_D0,
-  .pin_vsync = CAM_PIN_VSYNC,
-  .pin_href = CAM_PIN_HREF,
-  .pin_pclk = CAM_PIN_PCLK,
-
-  .xclk_freq_hz = 20000000,
-  .ledc_timer = LEDC_TIMER_0,
-  .ledc_channel = LEDC_CHANNEL_0,
-
-  .pixel_format = PIXFORMAT_JPEG,
-  .frame_size = FRAMESIZE_UXGA,
-
-  .jpeg_quality = 10,
-  .fb_count = 2,
-  .fb_location = CAMERA_FB_IN_PSRAM,
-  .grab_mode = CAMERA_GRAB_LATEST,
-};
 
 static char command = 0;
 static int value = 0;
@@ -167,7 +115,7 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
   }
 
   while (true) {
-    camera_fb_t *frame = esp_camera_fb_get();
+    camera_fb_t *frame = camera_fb_get();
 
     res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
     if (res) {
@@ -186,7 +134,7 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
       break;
     }
 
-    esp_camera_fb_return(frame);
+    camera_fb_return(frame);
   }
 
   return res;
@@ -262,8 +210,20 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 }
 
 
+void nvs_setup(void) {
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ret = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(ret);
+}
+
+
 void wifi_setup()
 {
+  nvs_setup();
+
   s_wifi_event_group = xEventGroupCreate();
   ESP_ERROR_CHECK(esp_netif_init());
 
@@ -314,41 +274,6 @@ void wifi_setup()
                 wifi_config.sta.ssid, wifi_config.sta.password);
   } else {
       ESP_LOGE(TAG, "UNEXPECTED EVENT");
-  }
-}
-
-
-void nvs_setup() {
-  esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    ESP_ERROR_CHECK(nvs_flash_erase());
-    ret = nvs_flash_init();
-  }
-  ESP_ERROR_CHECK(ret);
-}
-
-
-void camera_setup() {
-  i2c_port_t i2c_master_port = I2C_NUM_0;
-
-  i2c_config_t conf = {
-      .mode = I2C_MODE_MASTER,
-      .sda_io_num = 1,
-      .scl_io_num = 2,
-      .sda_pullup_en = GPIO_PULLUP_ENABLE,
-      .scl_pullup_en = GPIO_PULLUP_ENABLE,
-  };
-  conf.master.clk_speed = 400000;
-  i2c_param_config(i2c_master_port, &conf);
-  i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
-
-  begin(I2C_NUM_0, 0x36);
-  enableCameraPower(OV2640);
-
-  esp_err_t err = esp_camera_init(&camera_config);
-  if (err != ESP_OK) {
-    ESP_LOGI(TAG, "Camera init failed with error 0x%x", err);
-    return;
   }
 }
 
@@ -416,7 +341,6 @@ void brake()
 
 void setup()
 {
-  nvs_setup();
   wifi_setup();
   camera_setup();
   if (server == NULL) {
