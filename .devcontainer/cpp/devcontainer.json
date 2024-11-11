@@ -8,8 +8,8 @@
     "workspaceFolder": "/workspace/car",
     "runArgs": [
         // Mount ESP32
-        "--device",
-        "${localEnv:ESP32_DEVICE:/dev/null}",
+        // "--device",
+        // "/dev/ttyACM0",
         // Set environment variables
         "--env-file",
         ".env"

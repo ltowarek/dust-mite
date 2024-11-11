@@ -8,8 +8,8 @@
     "workspaceFolder": "/workspace/controller",
     "runArgs": [
         // Mount PS5 controller
-        "--device",
-        "${localEnv:CONTROLLER_DEVICE:/dev/null}",
+        // "--device",
+        // "/dev/hidraw3",
         // Set environment variables
         "--env-file",
         ".env"
