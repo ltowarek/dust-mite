@@ -8,7 +8,7 @@ TEST_CASE("performance", "[camera]")
 {
     camera_setup();
 
-    const int MEASUREMENTS = 100;
+    const unsigned MEASUREMENTS = 100;
 
     uint64_t start = esp_timer_get_time();
     for (int i = 0; i < MEASUREMENTS; i++) {
