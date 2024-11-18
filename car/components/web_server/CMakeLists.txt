@@ -4,6 +4,7 @@ idf_component_register(SRCS "web_server.c"
                     esp_wifi
                     esp_http_server
                     nvs_flash
+                    json
                     )
 
 target_compile_definitions(

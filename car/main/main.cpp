@@ -14,17 +14,17 @@
 
 static const char* TAG = "car";
 
-#define COMMAND_START '1'
-#define COMMAND_END '2'
-#define COMMAND_TURN '3'
-#define COMMAND_BRAKE '4'
-#define COMMAND_ACCELERATE '5'
+#define COMMAND_START 1
+#define COMMAND_END 2
+#define COMMAND_TURN 3
+#define COMMAND_BRAKE 4
+#define COMMAND_ACCELERATE 5
 
 static char g_command = 0;
 static int g_value = 0;
 
 void command_handler(char command, int *value) {
-  if (command >= '1' && command <= '5') {
+  if (command >= 1 && command <= 5) {
     g_command = command;
   } else {
     ESP_LOGW(TAG, "Unknown command: %d", command);

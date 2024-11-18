@@ -5,6 +5,7 @@
 #include "esp_http_server.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
+#include <cJSON.h>
 
 static const char* TAG = "web_server";
 
@@ -45,52 +46,66 @@ void register_frame_return_handler(void (*handler)(frame_t*)) {
   g_frame_return_handler = handler;
 }
 
-static esp_err_t root_get_handler(httpd_req_t *req)
-{
-  char*  buf;
-  size_t buf_len;
+static esp_err_t root_get_handler(httpd_req_t *req) {
+  esp_err_t ret = ESP_OK;
 
-  char command = 0;
-  int value = -1;
-
-  buf_len = httpd_req_get_url_query_len(req) + 1;
-  if (buf_len > 1) {
-      buf = (char*)malloc(buf_len);
-      ESP_RETURN_ON_FALSE(buf, ESP_ERR_NO_MEM, TAG, "buffer alloc failed");
-      if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
-          ESP_LOGI(TAG, "Found URL query => %s", buf);
-
-          char command_param[2] = {0};
-          if (httpd_query_key_value(buf, "command", command_param, sizeof(command_param)) == ESP_OK) {
-              ESP_LOGI(TAG, "Found URL query parameter => command=%s", command_param);
-              command = command_param[0];
-              ESP_LOGI(TAG, "command=%c", command);
-          }
-
-          char value_param[5] = {0};
-          if (httpd_query_key_value(buf, "value", value_param, sizeof(value_param)) == ESP_OK) {
-              ESP_LOGI(TAG, "Found URL query parameter => value=%s", value_param);
-              value = strtol(value_param, NULL, 0);
-              ESP_LOGI(TAG, "value=%d", value);
-          }
-      }
-      free(buf);
-
-      int* value_ptr = (value == -1) ? NULL : &value;
-      g_command_handler(command, value_ptr);
+  if (req->method == HTTP_GET) {
+    ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+    return ESP_OK;
   }
 
-  httpd_resp_set_status(req, HTTPD_200);
-  httpd_resp_send(req, NULL, 0);
+  httpd_ws_frame_t ws_pkt = {0};
 
-  return ESP_OK;
+  ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
+    return ret;
+  }
+  ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
+
+  if (ws_pkt.type != HTTPD_WS_TYPE_TEXT) {
+    ESP_LOGE(TAG, "Invalid packet type: %d", ws_pkt.type);
+    return ESP_FAIL;
+  }
+
+  unsigned char *buf = NULL;
+  if (ws_pkt.len > 0) {
+    buf = malloc(ws_pkt.len + 1);
+    buf[ws_pkt.len] = '\0';
+  }
+
+  ws_pkt.payload = buf;
+  ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
+    free(buf);
+    return ret;
+  }
+
+  cJSON *root = cJSON_Parse((const char*)ws_pkt.payload);
+  if (root) {
+      cJSON *command_obj = cJSON_GetObjectItem(root, "command");
+      cJSON *value_obj = cJSON_GetObjectItem(root, "value");
+      char command = (char)cJSON_GetNumberValue(command_obj);
+      int value = (int)cJSON_GetNumberValue(value_obj);
+      ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", command, value);
+      cJSON_Delete(root);
+
+      int* value_ptr = (value == 2147483647) ? NULL : &value;
+      g_command_handler(command, value_ptr);
+  } else {
+    ESP_LOGW(TAG, "Failed to parse JSON: %s", ws_pkt.payload);
+  }
+
+  free(buf);
+  return ret;
 }
-
 
 static const httpd_uri_t root = {
     .uri       = "/",
     .method    = HTTP_GET,
     .handler   = root_get_handler,
+    .is_websocket = true
 };
 
 

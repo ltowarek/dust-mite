@@ -1,10 +1,11 @@
 """controller module."""
 
+import json
 import logging
 import os
 from typing import Any
 
-import requests
+import websockets.sync.client
 from pydualsense import pydualsense
 
 logging.basicConfig(level=logging.DEBUG)
@@ -14,11 +15,14 @@ logger = logging.getLogger(__name__)
 ESP32_ADDRESS = "<ESP32_ADDRESS>"
 
 
-COMMAND_START = "1"
-COMMAND_END = "2"
-COMMAND_TURN = "3"
-COMMAND_BRAKE = "4"
-COMMAND_ACCELERATE = "5"
+COMMAND_START = 1
+COMMAND_END = 2
+COMMAND_TURN = 3
+COMMAND_BRAKE = 4
+COMMAND_ACCELERATE = 5
+
+
+ws_conn: websockets.sync.client.ClientConnection | None = None
 
 
 def send_command(payload: dict[str, Any]) -> None:
@@ -26,8 +30,8 @@ def send_command(payload: dict[str, Any]) -> None:
 
     :param payload: payload sent through query parameters
     """
-    r = requests.get(ESP32_ADDRESS, params=payload, timeout=5)
-    r.raise_for_status()
+    assert ws_conn is not None
+    ws_conn.send(json.dumps(payload))
 
 
 def cross_pressed(state: bool) -> None:  # noqa: FBT001
@@ -38,6 +42,7 @@ def cross_pressed(state: bool) -> None:  # noqa: FBT001
     logger.debug("CROSS - %s", state)
     command = {
         "command": COMMAND_START if state else COMMAND_END,
+        "value": None,
     }
     send_command(command)
 
@@ -84,6 +89,7 @@ def r2_changed(value: int) -> None:
 
 if __name__ == "__main__":
     ESP32_ADDRESS = os.environ["ESP32_ADDRESS"]
+    ws_conn = websockets.sync.client.connect(ESP32_ADDRESS)
 
     ds = pydualsense()
     ds.init()
@@ -97,3 +103,4 @@ if __name__ == "__main__":
         ...
 
     ds.close()
+    ws_conn.close()

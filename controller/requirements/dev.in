@@ -5,4 +5,3 @@ tox
 pytest
 ruff
 mypy
-types-requests
