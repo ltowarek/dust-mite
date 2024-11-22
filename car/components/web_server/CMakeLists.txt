@@ -1,4 +1,4 @@
-idf_component_register(SRCS "web_server.c"
+idf_component_register(SRCS "web_server.cpp"
                     INCLUDE_DIRS "include"
                     REQUIRES
                     esp_wifi

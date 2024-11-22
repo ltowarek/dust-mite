@@ -1,4 +1,4 @@
-#include "camera.h"
+#include "camera.hpp"
 #include "esp_camera.h"
 #include "driver/i2c.h"
 #include "esp_log.h"

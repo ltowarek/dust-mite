@@ -1,7 +1,7 @@
+#include "web_server.hpp"
 #include <stdio.h>
 #include "esp_check.h"
 #include "esp_log.h"
-#include "web_server.h"
 #include "esp_http_server.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
@@ -70,7 +70,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 
   unsigned char *buf = NULL;
   if (ws_pkt.len > 0) {
-    buf = malloc(ws_pkt.len + 1);
+    buf = (unsigned char *)malloc(ws_pkt.len + 1);
     buf[ws_pkt.len] = '\0';
   }
 

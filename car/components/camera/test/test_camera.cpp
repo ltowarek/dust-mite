@@ -1,5 +1,5 @@
 #include "stdio.h"
-#include "camera.h"
+#include "camera.hpp"
 #include "unity.h"
 #include "esp_timer.h"
 

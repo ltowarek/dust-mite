@@ -2,9 +2,9 @@
 
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
-#include "camera.h"
-#include "web_server.h"
-#include "motor.h"
+#include "camera.hpp"
+#include "web_server.hpp"
+#include "motor.hpp"
 
 static const char* TAG = "car";
 

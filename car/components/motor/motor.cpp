@@ -1,4 +1,4 @@
-#include "motor.h"
+#include "motor.hpp"
 #include "driver/gpio.h"
 #include "driver/mcpwm.h"
 #include "soc/mcpwm_struct.h" 
