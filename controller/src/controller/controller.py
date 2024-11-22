@@ -15,16 +15,17 @@ logger = logging.getLogger(__name__)
 ESP32_ADDRESS = "<ESP32_ADDRESS>"
 
 
-COMMAND_START = 1
-COMMAND_END = 2
-COMMAND_TURN = 3
-COMMAND_BRAKE = 4
-COMMAND_ACCELERATE = 5
+COMMAND_ADVANCE = 1
+COMMAND_RETREAT = 2
+COMMAND_BRAKE = 3
+COMMAND_TURN_LEFT = 4
+COMMAND_TURN_RIGHT = 5
 
 
 ws_conn: websockets.sync.client.ClientConnection | None = None
 
 
+# TODO: There are race conditions e.g. BRAKE is sent before ADVANCE
 def send_command(payload: dict[str, Any]) -> None:
     """Send command to the car.
 
@@ -34,55 +35,54 @@ def send_command(payload: dict[str, Any]) -> None:
     ws_conn.send(json.dumps(payload))
 
 
-def cross_pressed(state: bool) -> None:  # noqa: FBT001
-    """Handle cross event.
+def dpad_up_pressed(state: bool) -> None:  # noqa: FBT001
+    """Handle dpad up event.
 
     :param state: True if pressed else False
     """
-    logger.debug("CROSS - %s", state)
+    logger.debug("DPAD UP - %s", state)
     command = {
-        "command": COMMAND_START if state else COMMAND_END,
+        "command": COMMAND_ADVANCE if state else COMMAND_BRAKE,
         "value": None,
     }
     send_command(command)
 
 
-def left_joystick_changed(x: int, y: int) -> None:
-    """Handle L event.
+def dpad_right_pressed(state: bool) -> None:  # noqa: FBT001
+    """Handle dpad right event.
 
-    :param x: value between -128(left) and 127(right)
-    :param y: value between -128(down) and 127(up)
+    :param state: True if pressed else False
     """
-    logger.debug("L - %d - %d", x, y)
+    logger.debug("DPAD RIGHT - %s", state)
     command = {
-        "command": COMMAND_TURN,
-        "value": x,
+        "command": COMMAND_TURN_RIGHT if state else COMMAND_BRAKE,
+        "value": None,
     }
     send_command(command)
 
 
-def l2_changed(value: int) -> None:
-    """Handle L2 event.
+def dpad_down_pressed(state: bool) -> None:  # noqa: FBT001
+    """Handle dpad down event.
 
-    :param value: value between 0 and 255
+    :param state: True if pressed else False
     """
-    logger.debug("L2 - %d", value)
+    logger.debug("DPAD DOWN - %s", state)
     command = {
-        "command": COMMAND_BRAKE,
-        "value": value,
+        "command": COMMAND_RETREAT if state else COMMAND_BRAKE,
+        "value": None,
     }
     send_command(command)
 
 
-def r2_changed(value: int) -> None:
-    """Handle R2 event.
+def dpad_left_pressed(state: bool) -> None:  # noqa: FBT001
+    """Handle dpad left event.
 
-    :param value: value between 0 and 255
+    :param state: True if pressed else False
     """
-    logger.debug("R2 - %d", value)
+    logger.debug("DPAD LEFT - %s", state)
     command = {
-        "command": COMMAND_ACCELERATE,
-        "value": value,
+        "command": COMMAND_TURN_LEFT if state else COMMAND_BRAKE,
+        "value": None,
     }
     send_command(command)
 
@@ -94,10 +94,10 @@ if __name__ == "__main__":
     ds = pydualsense()
     ds.init()
 
-    ds.cross_pressed += cross_pressed
-    ds.left_joystick_changed += left_joystick_changed
-    ds.l2_changed += l2_changed
-    ds.r2_changed += r2_changed
+    ds.dpad_up += dpad_up_pressed
+    ds.dpad_right += dpad_right_pressed
+    ds.dpad_down += dpad_down_pressed
+    ds.dpad_left += dpad_left_pressed
 
     while not ds.state.ps:
         ...
