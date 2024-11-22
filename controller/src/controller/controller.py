@@ -25,7 +25,7 @@ COMMAND_TURN_RIGHT = 5
 ws_conn: websockets.sync.client.ClientConnection | None = None
 
 
-# TODO: There are race conditions e.g. BRAKE is sent before ADVANCE
+# There are race conditions e.g. BRAKE is sent before ADVANCE
 def send_command(payload: dict[str, Any]) -> None:
     """Send command to the car.
 
