@@ -6,8 +6,6 @@ extern "C" {
 
 #include "stdint.h"
 
-#define MOTOR_SPEED 60
-
 void motor_setup();
 
 void car_advance(uint8_t speed);

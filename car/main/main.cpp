@@ -64,11 +64,11 @@ void loop()
     switch (g_command) {
       case COMMAND_ADVANCE:
         ESP_LOGI(TAG, "COMMAND_ADVANCE");
-        car_advance(MOTOR_SPEED);
+        car_advance(g_value);
         break;
       case COMMAND_RETREAT:
         ESP_LOGI(TAG, "COMMAND_RETREAT");
-        car_retreat(MOTOR_SPEED);
+        car_retreat(g_value);
         break;
       case COMMAND_BRAKE:
         ESP_LOGI(TAG, "COMMAND_BRAKE");
@@ -76,11 +76,11 @@ void loop()
         break;
       case COMMAND_TURN_LEFT:
         ESP_LOGI(TAG, "COMMAND_TURN_LEFT");
-        car_turn_left(MOTOR_SPEED);
+        car_turn_left(g_value);
         break;
       case COMMAND_TURN_RIGHT:
         ESP_LOGI(TAG, "COMMAND_TURN_RIGHT");
-        car_turn_right(MOTOR_SPEED);
+        car_turn_right(g_value);
         break;
       default:
         ESP_LOGI(TAG, "Unknown command");

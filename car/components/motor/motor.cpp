@@ -4,6 +4,8 @@
 #include "soc/mcpwm_struct.h" 
 #include "soc/mcpwm_reg.h"
 
+#define MOTOR_DEAD_ZONE 40
+
 typedef struct {
   int gpio_in1;
   int gpio_in2;
@@ -55,6 +57,10 @@ const motor_pins_t m4 = {
 
 const motor_pins_t motors[4] = {m1, m2, m3, m4};
 
+float interpolate(float value, float in_min, float in_max, float out_min, float out_max) {
+  return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 void motor_setup() {
   mcpwm_config_t pwm_config;
   pwm_config.frequency = 1000;
@@ -73,6 +79,7 @@ void motor_setup() {
 
 void motor_advance(const motor_pins_t &motor, uint8_t speed)
 {
+  speed = (uint8_t)interpolate(speed, 0, 100, MOTOR_DEAD_ZONE, 100);
   mcpwm_set_duty_type(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_A,MCPWM_DUTY_MODE_0);
   mcpwm_set_signal_low(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_B);
   mcpwm_set_duty(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_A,speed);
@@ -80,6 +87,7 @@ void motor_advance(const motor_pins_t &motor, uint8_t speed)
 
 void motor_retreat(const motor_pins_t &motor, uint8_t speed)
 {
+  speed = (uint8_t)interpolate(speed, 0, 100, MOTOR_DEAD_ZONE, 100);
   mcpwm_set_duty_type(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_B,MCPWM_DUTY_MODE_0);
   mcpwm_set_signal_low(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_A);
   mcpwm_set_duty(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_B,speed);
