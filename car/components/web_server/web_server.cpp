@@ -25,11 +25,6 @@ static int s_retry_num = 0;
 
 static httpd_handle_t server = NULL;
 
-#define PART_BOUNDARY "123456789000000000000987654321"
-static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
-static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
-
 void (*g_command_handler)(char, int*) = NULL;
 frame_t* (*g_frame_get_handler)() = NULL;
 void (*g_frame_return_handler)(frame_t*) = NULL;
@@ -108,32 +103,34 @@ static const httpd_uri_t root = {
     .is_websocket = true
 };
 
-
 static esp_err_t stream_get_handler(httpd_req_t *req)
 {
   esp_err_t ret = ESP_OK;
 
   if (req->method == HTTP_GET) {
     ESP_LOGI(TAG, "Handshake done, the new connection was opened");
-    // return ESP_OK;
   }
 
-  const char message[] = "2024-11-24T20:01:35.732490Z";
+  while (true) {
+    frame_t* frame = g_frame_get_handler();
 
-  httpd_ws_frame_t ws_pkt = {0};
-  ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-  ws_pkt.payload = (uint8_t*)message;
-  ws_pkt.len = sizeof(message);
+    httpd_ws_frame_t ws_pkt = {0};
+    ws_pkt.type = HTTPD_WS_TYPE_BINARY;
+    ws_pkt.payload = frame->buf;
+    ws_pkt.len = frame->len;
 
-  ret = httpd_ws_send_frame(req, &ws_pkt);
-  if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-    return ret;
+    ret = httpd_ws_send_frame(req, &ws_pkt);
+    if (ret != ESP_OK) {
+      ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+      g_frame_return_handler(frame);
+      return ret;
+    }
+
+    g_frame_return_handler(frame);
   }
 
   return ret;
 }
-
 
 static const httpd_uri_t stream = {
     .uri       = "/stream",
@@ -141,7 +138,6 @@ static const httpd_uri_t stream = {
     .handler   = stream_get_handler,
     .is_websocket = true
 };
-
 
 static httpd_handle_t start_web_server()
 {
