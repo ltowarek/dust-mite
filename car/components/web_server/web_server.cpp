@@ -111,45 +111,27 @@ static const httpd_uri_t root = {
 
 static esp_err_t stream_get_handler(httpd_req_t *req)
 {
-  esp_err_t res = ESP_OK;
+  esp_err_t ret = ESP_OK;
 
-  res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
-  if (res) {
-    return res;
-  }
-  res = httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  if (res) {
-    return res;
-  }
-  res = httpd_resp_set_hdr(req, "X-Framerate", "60");
-  if (res) {
-    return res;
+  if (req->method == HTTP_GET) {
+    ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+    // return ESP_OK;
   }
 
-  while (true) {
-    frame_t *frame = g_frame_get_handler();
+  const char message[] = "2024-11-24T20:01:35.732490Z";
 
-    res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
-    if (res) {
-      break;
-    }
+  httpd_ws_frame_t ws_pkt = {0};
+  ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+  ws_pkt.payload = (uint8_t*)message;
+  ws_pkt.len = sizeof(message);
 
-    char *part_buf[128];
-    size_t hlen = snprintf((char *)part_buf, 128, _STREAM_PART, frame->len);
-    res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
-    if (res) {
-      break;
-    }
-
-    res = httpd_resp_send_chunk(req, (const char *)frame->buf, frame->len);
-    if (res) {
-      break;
-    }
-
-    g_frame_return_handler(frame);
+  ret = httpd_ws_send_frame(req, &ws_pkt);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+    return ret;
   }
 
-  return res;
+  return ret;
 }
 
 
@@ -157,6 +139,7 @@ static const httpd_uri_t stream = {
     .uri       = "/stream",
     .method    = HTTP_GET,
     .handler   = stream_get_handler,
+    .is_websocket = true
 };
 
 
