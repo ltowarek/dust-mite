@@ -1,9 +1,14 @@
 #include "web_server.hpp"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
 #include <stdio.h>
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_camera.h"
 #include "esp_http_server.h"
 #include "esp_wifi.h"
+#include "esp_camera.h"
 #include "nvs_flash.h"
 #include <cJSON.h>
 
@@ -25,20 +30,16 @@ static int s_retry_num = 0;
 
 static httpd_handle_t server = NULL;
 
+static QueueHandle_t g_frame_queue = NULL;
+
 void (*g_command_handler)(char, int*) = NULL;
-frame_t* (*g_frame_get_handler)() = NULL;
-void (*g_frame_return_handler)(frame_t*) = NULL;
 
 void register_command_handler(void (*handler)(char, int*)) {
   g_command_handler = handler;
 }
 
-void register_frame_get_handler(frame_t* (*handler)()) {
-  g_frame_get_handler = handler;
-}
-
-void register_frame_return_handler(void (*handler)(frame_t*)) {
-  g_frame_return_handler = handler;
+void web_server_setup(QueueHandle_t frame_queue) {
+  g_frame_queue = frame_queue;
 }
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
@@ -111,8 +112,12 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
     ESP_LOGI(TAG, "Handshake done, the new connection was opened");
   }
 
+  camera_fb_t* frame = NULL;
   while (true) {
-    frame_t* frame = g_frame_get_handler();
+    if (xQueueReceive(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
+      ESP_LOGE(TAG, "xQueueReceive failed");
+      return ESP_FAIL;
+    }
 
     httpd_ws_frame_t ws_pkt = {0};
     ws_pkt.type = HTTPD_WS_TYPE_BINARY;
@@ -122,11 +127,11 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
     ret = httpd_ws_send_frame(req, &ws_pkt);
     if (ret != ESP_OK) {
       ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-      g_frame_return_handler(frame);
+      esp_camera_fb_return(frame);
       return ret;
     }
 
-    g_frame_return_handler(frame);
+    esp_camera_fb_return(frame);
   }
 
   return ret;

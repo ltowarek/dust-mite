@@ -1,4 +1,6 @@
 #include "camera.hpp"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "esp_camera.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
@@ -56,8 +58,11 @@ static camera_config_t camera_config = {
   .grab_mode = CAMERA_GRAB_LATEST,
 };
 
+static QueueHandle_t g_frame_queue = NULL;
 
-void camera_setup(void) {
+void camera_setup(QueueHandle_t frame_queue) {
+  g_frame_queue = frame_queue;
+
   i2c_port_t i2c_master_port = I2C_NUM_0;
 
   i2c_config_t conf = {
@@ -81,12 +86,18 @@ void camera_setup(void) {
   }
 }
 
-
-camera_fb_t* camera_fb_get() {
-  return esp_camera_fb_get();
-}
-
-
-void camera_fb_return(camera_fb_t *fb) {
-  esp_camera_fb_return(fb);
+void camera_task(void* p) {
+  camera_fb_t* frame = NULL;
+  while (true) {
+    // If queue is not processed then we get below warning:
+    // cam_hal: Failed to get the frame on time!
+    // camera_task should be resumed/suspended when web client connects/disconnects
+    frame = esp_camera_fb_get();
+    if (frame) {
+      if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
+        ESP_LOGE(TAG, "xQueueSendToBack failed");
+        return;
+      }
+    }
+  }
 }

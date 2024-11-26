@@ -3,11 +3,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "esp_camera.h"
 
-void camera_setup(void);
-camera_fb_t* camera_fb_get(void);
-void camera_fb_return(camera_fb_t *fb);
+void camera_setup(QueueHandle_t frame_queue);
+void camera_task(void *p);
 
 #ifdef __cplusplus
 }

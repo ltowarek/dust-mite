@@ -1,6 +1,7 @@
 // http://<IP>/?command=3&value=127
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "camera.hpp"
 #include "web_server.hpp"
@@ -17,6 +18,9 @@ static const char* TAG = "car";
 static char g_command = 0;
 static int g_value = 0;
 
+static QueueHandle_t g_frame_queue = NULL;
+static TaskHandle_t g_camera_task_handle = NULL;
+
 void command_handler(char command, int *value) {
   if (command >= 1 && command <= 5) {
     g_command = command;
@@ -29,33 +33,24 @@ void command_handler(char command, int *value) {
   }
 }
 
-camera_fb_t* camera_frame = NULL;
-frame_t* server_frame = NULL;
-
-frame_t* frame_get_handler() {
-  camera_frame = camera_fb_get();
-  server_frame = (frame_t*)malloc(sizeof(frame_t));
-  server_frame->buf = camera_frame->buf;
-  server_frame->len = camera_frame->len;
-  return server_frame;
-}
-
-void frame_return_handler(frame_t *frame) {
-  camera_fb_return(camera_frame);
-  camera_frame = NULL;
-
-  free(server_frame);
-  server_frame = NULL;
+void start_tasks() {
+  if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 5, &g_camera_task_handle) != pdPASS) {
+    ESP_LOGE(TAG, "xTaskCreate failed");
+    return;
+  }
 }
 
 void setup()
 {
-  camera_setup();
+  g_frame_queue = xQueueCreate(2, sizeof(camera_fb_t*));
+
+  camera_setup(g_frame_queue);
   motor_setup();
   wifi_setup();
+  web_server_setup(g_frame_queue);
   register_command_handler(command_handler);
-  register_frame_get_handler(frame_get_handler);
-  register_frame_return_handler(frame_return_handler);
+
+  start_tasks();
 }
 
 void loop()
