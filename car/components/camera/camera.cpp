@@ -59,6 +59,23 @@ static camera_config_t camera_config = {
 };
 
 static QueueHandle_t g_frame_queue = NULL;
+static TaskHandle_t g_camera_task_handle = NULL;
+
+void camera_task(void* p) {
+  camera_fb_t* frame = NULL;
+  while (true) {
+    // If queue is not processed then we get below warning:
+    // cam_hal: Failed to get the frame on time!
+    // camera_task should be resumed/suspended when web client connects/disconnects
+    frame = esp_camera_fb_get();
+    if (frame) {
+      if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
+        ESP_LOGE(TAG, "xQueueSendToBack failed");
+        return;
+      }
+    }
+  }
+}
 
 void camera_setup(QueueHandle_t frame_queue) {
   g_frame_queue = frame_queue;
@@ -84,20 +101,9 @@ void camera_setup(QueueHandle_t frame_queue) {
     ESP_LOGI(TAG, "Camera init failed with error 0x%x", err);
     return;
   }
-}
 
-void camera_task(void* p) {
-  camera_fb_t* frame = NULL;
-  while (true) {
-    // If queue is not processed then we get below warning:
-    // cam_hal: Failed to get the frame on time!
-    // camera_task should be resumed/suspended when web client connects/disconnects
-    frame = esp_camera_fb_get();
-    if (frame) {
-      if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
-        ESP_LOGE(TAG, "xQueueSendToBack failed");
-        return;
-      }
-    }
+  if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 1, &g_camera_task_handle) != pdPASS) {
+    ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");
+    return;
   }
 }

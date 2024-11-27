@@ -9,32 +9,13 @@
 
 static const char* TAG = "car";
 
-static QueueHandle_t g_command_queue = NULL;
-static TaskHandle_t g_command_task_handle = NULL;
-
-static QueueHandle_t g_frame_queue = NULL;
-static TaskHandle_t g_camera_task_handle = NULL;
-
-void start_tasks() {
-  if (xTaskCreate(command_task, "command_task", 4096, (void *)0, 1, &g_command_task_handle) != pdPASS) {
-    ESP_LOGE(TAG, "xTaskCreate(command_task) failed");
-    return;
-  }
-  if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 1, &g_camera_task_handle) != pdPASS) {
-    ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");
-    return;
-  }
-}
-
 extern "C" void app_main()
 {
-  g_command_queue = xQueueCreate(2, sizeof(command_packet_t));
-  g_frame_queue = xQueueCreate(2, sizeof(camera_fb_t*));
+  QueueHandle_t command_queue = xQueueCreate(2, sizeof(command_packet_t));
+  QueueHandle_t frame_queue = xQueueCreate(2, sizeof(camera_fb_t*));
 
-  motor_setup(g_command_queue);
-  camera_setup(g_frame_queue);
+  motor_setup(command_queue);
+  camera_setup(frame_queue);
   wifi_setup();
-  web_server_setup(g_frame_queue, g_command_queue);
-
-  start_tasks();
+  web_server_setup(frame_queue, command_queue);
 }
