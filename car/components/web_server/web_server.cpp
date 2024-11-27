@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include <stdio.h>
 #include "esp_check.h"
 #include "esp_log.h"
@@ -26,6 +27,8 @@ static const char* TAG = "web_server";
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
+#define MAX_ASYNC_REQUESTS 1
+
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 
@@ -34,9 +37,105 @@ static httpd_handle_t server = NULL;
 static QueueHandle_t g_frame_queue = NULL;
 static QueueHandle_t g_command_queue = NULL;
 
+static QueueHandle_t g_async_req_queue = NULL;
+static SemaphoreHandle_t g_worker_ready_count = NULL;
+static TaskHandle_t g_worker_handles[MAX_ASYNC_REQUESTS];
+
+typedef esp_err_t (*httpd_req_handler_t)(httpd_req_t *req);
+
+typedef struct {
+  httpd_req_t* req;
+  httpd_req_handler_t handler;
+} httpd_async_req_t;
+
+static bool is_on_async_worker_thread(void)
+{
+    TaskHandle_t handle = xTaskGetCurrentTaskHandle();
+    for (int i = 0; i < MAX_ASYNC_REQUESTS; i++) {
+        if (g_worker_handles[i] == handle) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static esp_err_t submit_async_req(httpd_req_t *req, httpd_req_handler_t handler)
+{
+  esp_err_t ret = ESP_OK;
+
+  httpd_req_t* copy = NULL;
+  ret = httpd_req_async_handler_begin(req, &copy);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "httpd_req_async_handler_begin failed: %d", ret);
+    return ret;
+  }
+
+  httpd_async_req_t async_req = {
+    .req = copy,
+    .handler = handler,
+  };
+
+  if (xSemaphoreTake(g_worker_ready_count, 0) == false) {
+    ESP_LOGE(TAG, "No workers are available");
+    httpd_req_async_handler_complete(copy);
+    return ESP_FAIL;
+  }
+
+  if (xQueueSendToBack(g_async_req_queue, &async_req, pdMS_TO_TICKS(100)) != pdPASS) {
+    ESP_LOGE(TAG, "worker queue is full");
+    httpd_req_async_handler_complete(copy);
+    return ESP_FAIL;
+  }
+
+  return ESP_OK;
+}
+
+static void async_req_worker_task(void *p)
+{
+  ESP_LOGI(TAG, "starting async req task worker");
+  while (true) {
+    xSemaphoreGive(g_worker_ready_count);
+
+    httpd_async_req_t async_req;
+    if (xQueueReceive(g_async_req_queue, &async_req, portMAX_DELAY)) {
+      ESP_LOGI(TAG, "invoking %s", async_req.req->uri);
+      async_req.handler(async_req.req);
+      if (httpd_req_async_handler_complete(async_req.req) != ESP_OK) {
+        ESP_LOGE(TAG, "failed to complete async req");
+      }
+    }
+  }
+  ESP_LOGW(TAG, "worker stopped");
+  vTaskDelete(NULL);
+}
+
+static void start_async_req_workers(void)
+{
+  g_worker_ready_count = xSemaphoreCreateCounting(MAX_ASYNC_REQUESTS, 0);
+  if (g_worker_ready_count == NULL) {
+    ESP_LOGE(TAG, "Failed to create workers counting Semaphore");
+    return;
+  }
+
+  g_async_req_queue = xQueueCreate(1, sizeof(httpd_async_req_t));
+  if (g_async_req_queue == NULL){
+    ESP_LOGE(TAG, "Failed to create g_async_req_queue");
+    vSemaphoreDelete(g_worker_ready_count);
+    return;
+  }
+
+  for (int i = 0; i < MAX_ASYNC_REQUESTS; i++) {
+    if (xTaskCreate(async_req_worker_task, "async_req_worker", 4096, (void*)0, 1, &g_worker_handles[i]) != pdPASS) {
+      ESP_LOGE(TAG, "Failed to start async_req_worker_task");
+      continue;
+    }
+  }
+}
+
 void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue) {
   g_frame_queue = frame_queue;
   g_command_queue = command_queue;
+  start_async_req_workers();
 }
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
@@ -111,6 +210,16 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
 {
   esp_err_t ret = ESP_OK;
 
+  if (is_on_async_worker_thread() == false) {
+    if (submit_async_req(req, stream_get_handler) == ESP_OK) {
+        return ret;
+    } else {
+        httpd_resp_set_status(req, "503 Busy");
+        httpd_resp_sendstr(req, "<div> no workers available. server busy.</div>");
+        return ret;
+    }
+  }
+
   if (req->method == HTTP_GET) {
     ESP_LOGI(TAG, "Handshake done, the new connection was opened");
   }
@@ -151,6 +260,7 @@ static httpd_handle_t start_web_server()
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
+    config.max_open_sockets = MAX_ASYNC_REQUESTS + 1;
 
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
@@ -219,9 +329,11 @@ void nvs_setup(void) {
 }
 
 
-void wifi_setup()
+void wifi_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue)
 {
   nvs_setup();
+
+  web_server_setup(frame_queue, command_queue);
 
   s_wifi_event_group = xEventGroupCreate();
   ESP_ERROR_CHECK(esp_netif_init());

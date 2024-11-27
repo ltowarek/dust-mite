@@ -16,6 +16,5 @@ extern "C" void app_main()
 
   motor_setup(command_queue);
   camera_setup(frame_queue);
-  wifi_setup();
-  web_server_setup(frame_queue, command_queue);
+  wifi_setup(frame_queue, command_queue);
 }
