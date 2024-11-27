@@ -1,8 +1,13 @@
 #include "motor.hpp"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "esp_log.h"
 #include "driver/gpio.h"
 #include "driver/mcpwm.h"
 #include "soc/mcpwm_struct.h" 
 #include "soc/mcpwm_reg.h"
+
+static const char* TAG = "motor";
 
 #define MOTOR_DEAD_ZONE 40
 
@@ -57,11 +62,15 @@ const motor_pins_t m4 = {
 
 const motor_pins_t motors[4] = {m1, m2, m3, m4};
 
+static QueueHandle_t g_command_queue = NULL;
+
 float interpolate(float value, float in_min, float in_max, float out_min, float out_max) {
   return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-void motor_setup() {
+void motor_setup(QueueHandle_t command_queue) {
+  g_command_queue = command_queue;
+
   mcpwm_config_t pwm_config;
   pwm_config.frequency = 1000;
   pwm_config.cmpr_a = 0;
@@ -136,5 +145,42 @@ void car_brake()
   for (int i=0; i < 4; i++) {
     const motor_pins_t &m = motors[i];
     motor_brake(m);
+  }
+}
+
+void command_task(void *p) {
+  command_packet_t packet = {0, 0};
+  while (true) {
+    if (xQueueReceive(g_command_queue, &packet, portMAX_DELAY) != pdPASS) {
+      ESP_LOGE(TAG, "xQueueReceive failed");
+      return;
+    }
+    if (packet.command != 0) {
+      switch (packet.command) {
+        case COMMAND_ADVANCE:
+          ESP_LOGI(TAG, "COMMAND_ADVANCE: %d", packet.value);
+          car_advance(packet.value);
+          break;
+        case COMMAND_RETREAT:
+          ESP_LOGI(TAG, "COMMAND_RETREAT");
+          car_retreat(packet.value);
+          break;
+        case COMMAND_BRAKE:
+          ESP_LOGI(TAG, "COMMAND_BRAKE");
+          car_brake();
+          break;
+        case COMMAND_TURN_LEFT:
+          ESP_LOGI(TAG, "COMMAND_TURN_LEFT: %d", packet.value);
+          car_turn_left(packet.value);
+          break;
+        case COMMAND_TURN_RIGHT:
+          ESP_LOGI(TAG, "COMMAND_TURN_RIGHT: %d", packet.value);
+          car_turn_right(packet.value);
+          break;
+        default:
+          ESP_LOGI(TAG, "Unknown command: %d", packet.command);
+      }
+      packet = {0, 0};
+    }
   }
 }

@@ -10,6 +10,7 @@
 #include "esp_wifi.h"
 #include "esp_camera.h"
 #include "nvs_flash.h"
+#include "motor.hpp"
 #include <cJSON.h>
 
 static const char* TAG = "web_server";
@@ -31,15 +32,11 @@ static int s_retry_num = 0;
 static httpd_handle_t server = NULL;
 
 static QueueHandle_t g_frame_queue = NULL;
+static QueueHandle_t g_command_queue = NULL;
 
-void (*g_command_handler)(char, int*) = NULL;
-
-void register_command_handler(void (*handler)(char, int*)) {
-  g_command_handler = handler;
-}
-
-void web_server_setup(QueueHandle_t frame_queue) {
+void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue) {
   g_frame_queue = frame_queue;
+  g_command_queue = command_queue;
 }
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
@@ -87,8 +84,14 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
       ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", command, value);
       cJSON_Delete(root);
 
-      int* value_ptr = (value == 2147483647) ? NULL : &value;
-      g_command_handler(command, value_ptr);
+      command_packet_t packet = {
+        .command = command,
+        .value = value,
+      };
+      if (xQueueSendToBack(g_command_queue, &packet, portMAX_DELAY) != pdPASS) {
+        ESP_LOGE(TAG, "xQueueSendToBack failed");
+        return ESP_FAIL;
+      }
   } else {
     ESP_LOGW(TAG, "Failed to parse JSON: %s", ws_pkt.payload);
   }

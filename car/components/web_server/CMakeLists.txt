@@ -6,6 +6,7 @@ idf_component_register(SRCS "web_server.cpp"
                     nvs_flash
                     json
                     camera
+                    motor
                     )
 
 target_compile_definitions(

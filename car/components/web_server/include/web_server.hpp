@@ -8,9 +8,7 @@ extern "C" {
 #include "freertos/queue.h"
 
 void wifi_setup();
-void web_server_setup(QueueHandle_t frame_queue);
-
-void register_command_handler(void (*handler)(char, int*));
+void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue);
 
 #ifdef __cplusplus
 }
