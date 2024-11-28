@@ -9,7 +9,7 @@ int is_initialized = 0;
 void setUp(void)
 {
     if (is_initialized == 0) {
-        camera_setup();
+        camera_init();
         is_initialized = 1;
     }
 }

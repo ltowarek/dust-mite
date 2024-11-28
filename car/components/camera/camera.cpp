@@ -58,6 +58,30 @@ static camera_config_t camera_config = {
   .grab_mode = CAMERA_GRAB_LATEST,
 };
 
+void camera_init() {
+  i2c_port_t i2c_master_port = I2C_NUM_0;
+
+  i2c_config_t conf = {
+      .mode = I2C_MODE_MASTER,
+      .sda_io_num = 1,
+      .scl_io_num = 2,
+      .sda_pullup_en = GPIO_PULLUP_ENABLE,
+      .scl_pullup_en = GPIO_PULLUP_ENABLE,
+  };
+  conf.master.clk_speed = 400000;
+  i2c_param_config(i2c_master_port, &conf);
+  i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
+
+  begin(I2C_NUM_0, 0x36);
+  enableCameraPower(OV2640);
+
+  esp_err_t err = esp_camera_init(&camera_config);
+  if (err != ESP_OK) {
+    ESP_LOGI(TAG, "Camera init failed with error 0x%x", err);
+    return;
+  }
+}
+
 static QueueHandle_t g_frame_queue = NULL;
 static TaskHandle_t g_camera_task_handle = NULL;
 
@@ -80,27 +104,7 @@ void camera_task(void* p) {
 void camera_setup(QueueHandle_t frame_queue) {
   g_frame_queue = frame_queue;
 
-  i2c_port_t i2c_master_port = I2C_NUM_0;
-
-  i2c_config_t conf = {
-      .mode = I2C_MODE_MASTER,
-      .sda_io_num = 1,
-      .scl_io_num = 2,
-      .sda_pullup_en = GPIO_PULLUP_ENABLE,
-      .scl_pullup_en = GPIO_PULLUP_ENABLE,
-  };
-  conf.master.clk_speed = 400000;
-  i2c_param_config(i2c_master_port, &conf);
-  i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
-
-  begin(I2C_NUM_0, 0x36);
-  enableCameraPower(OV2640);
-
-  esp_err_t err = esp_camera_init(&camera_config);
-  if (err != ESP_OK) {
-    ESP_LOGI(TAG, "Camera init failed with error 0x%x", err);
-    return;
-  }
+  camera_init();
 
   if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 5, &g_camera_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");
