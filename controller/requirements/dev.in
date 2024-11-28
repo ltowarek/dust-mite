@@ -3,5 +3,6 @@
 pip-compile-multi
 tox
 pytest
+pytest-asyncio
 ruff
 mypy
