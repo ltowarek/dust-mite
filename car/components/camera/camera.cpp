@@ -102,7 +102,7 @@ void camera_setup(QueueHandle_t frame_queue) {
     return;
   }
 
-  if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 1, &g_camera_task_handle) != pdPASS) {
+  if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 5, &g_camera_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");
     return;
   }
