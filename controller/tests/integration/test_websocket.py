@@ -5,7 +5,7 @@ import time
 import pytest
 from websockets.asyncio.client import connect
 
-STREAM_ADDRESS = os.environ["ESP32_ADDRESS"] + "/stream"
+STREAM_ADDRESS = os.getenv("ESP32_ADDRESS", "ws://localhost") + "/stream"
 
 skip_dut_test = pytest.mark.skip(reason="DUT test")
 
