@@ -46,6 +46,7 @@ static camera_config_t camera_config = {
   .pin_pclk = CAM_PIN_PCLK,
 
   .xclk_freq_hz = 20000000,
+
   .ledc_timer = LEDC_TIMER_0,
   .ledc_channel = LEDC_CHANNEL_0,
 
@@ -56,6 +57,8 @@ static camera_config_t camera_config = {
   .fb_count = 2,
   .fb_location = CAMERA_FB_IN_PSRAM,
   .grab_mode = CAMERA_GRAB_LATEST,
+
+  .sccb_i2c_port = 0,
 };
 
 void camera_init() {
@@ -67,6 +70,10 @@ void camera_init() {
       .scl_io_num = 2,
       .sda_pullup_en = GPIO_PULLUP_ENABLE,
       .scl_pullup_en = GPIO_PULLUP_ENABLE,
+      .master = {
+        .clk_speed = 0,
+      },
+      .clk_flags = 0,
   };
   conf.master.clk_speed = 400000;
   i2c_param_config(i2c_master_port, &conf);

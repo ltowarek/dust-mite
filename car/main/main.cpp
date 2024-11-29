@@ -7,8 +7,6 @@
 #include "web_server.hpp"
 #include "motor.hpp"
 
-static const char* TAG = "car";
-
 extern "C" void app_main()
 {
   QueueHandle_t command_queue = xQueueCreate(2, sizeof(command_packet_t));
@@ -16,5 +14,6 @@ extern "C" void app_main()
 
   motor_setup(command_queue);
   camera_setup(frame_queue);
-  wifi_setup(frame_queue, command_queue);
+  wifi_setup();
+  web_server_setup(frame_queue, command_queue);
 }
