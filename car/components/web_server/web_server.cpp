@@ -35,6 +35,9 @@ static QueueHandle_t g_async_req_queue = NULL;
 static SemaphoreHandle_t g_worker_ready_count = NULL;
 static TaskHandle_t g_worker_handles[MAX_ASYNC_REQUESTS];
 
+static SemaphoreHandle_t g_stream_client_disconnected = NULL;
+static SemaphoreHandle_t g_stream_worker_stopped = NULL;
+
 typedef esp_err_t (*httpd_req_handler_t)(httpd_req_t *req);
 
 typedef struct {
@@ -149,42 +152,90 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
   esp_err_t ret = ESP_OK;
 
   if (is_on_async_worker_thread() == false) {
-    if (submit_async_req(req, stream_get_handler) == ESP_OK) {
-        return ret;
+    // Handle request on sync worker
+    if (req->method == HTTP_GET) {
+      // Handle handshake
+      ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+
+      if (submit_async_req(req, stream_get_handler) == ESP_OK) {
+          return ret;
+      } else {
+          httpd_resp_set_status(req, "503 Busy");
+          httpd_resp_sendstr(req, "<div> no workers available. server busy.</div>");
+          return ret;
+      }
     } else {
-        httpd_resp_set_status(req, "503 Busy");
-        httpd_resp_sendstr(req, "<div> no workers available. server busy.</div>");
+      // Handle websocket frame
+      httpd_ws_frame_t ws_pkt = {};
+      ESP_ERROR_CHECK(httpd_ws_recv_frame(req, &ws_pkt, 0));
+
+      unsigned char *buf = NULL;
+      if (ws_pkt.len > 0) {
+        buf = (unsigned char *)malloc(ws_pkt.len);
+      }
+
+      ws_pkt.payload = buf;
+      ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
+      if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
+        free(buf);
         return ret;
-    }
-  }
+      }
 
-  if (req->method == HTTP_GET) {
-    ESP_LOGI(TAG, "Handshake done, the new connection was opened");
-  }
+      if (ws_pkt.type == HTTPD_WS_TYPE_PING) {
+        ESP_LOGI(TAG, "Got a WS PING frame, Replying PONG");
+        ws_pkt.type = HTTPD_WS_TYPE_PONG;
+      } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
+        ESP_LOGI(TAG, "Got a WS CLOSE frame, Replying CLOSE");
+        ws_pkt.len = 0;
+        ws_pkt.payload = NULL;
+        xSemaphoreGive(g_stream_client_disconnected);
+        xSemaphoreTake(g_stream_worker_stopped, portMAX_DELAY);
+      } else {
+        ESP_LOGW(TAG, "Unknown WS TYPE: %d", ws_pkt.type);
+      }
 
-  camera_fb_t* frame = NULL;
-  while (true) {
-    if (xQueueReceive(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
-      ESP_LOGE(TAG, "xQueueReceive failed");
-      return ESP_FAIL;
-    }
+      ret = httpd_ws_send_frame(req, &ws_pkt);
+      if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+        free(buf);
+        return ret;
+      }
 
-    httpd_ws_frame_t ws_pkt = {};
-    ws_pkt.type = HTTPD_WS_TYPE_BINARY;
-    ws_pkt.payload = frame->buf;
-    ws_pkt.len = frame->len;
-
-    ret = httpd_ws_send_frame(req, &ws_pkt);
-    if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-      esp_camera_fb_return(frame);
+      free(buf);
       return ret;
     }
+  } else {
+    // Long-running job on async worker
+    camera_fb_t* frame = NULL;
+    while (true) {
+      if (xQueueReceive(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
+        ESP_LOGE(TAG, "xQueueReceive failed");
+        return ESP_FAIL;
+      }
 
-    esp_camera_fb_return(frame);
+      if (xSemaphoreTake(g_stream_client_disconnected, 0) == pdPASS) {
+        ESP_LOGI(TAG, "Stopping async stream handler");
+        esp_camera_fb_return(frame);
+        xSemaphoreGive(g_stream_worker_stopped);
+        return ESP_OK;
+      }
+
+      httpd_ws_frame_t ws_pkt = {};
+      ws_pkt.type = HTTPD_WS_TYPE_BINARY;
+      ws_pkt.payload = frame->buf;
+      ws_pkt.len = frame->len;
+
+      ret = httpd_ws_send_frame(req, &ws_pkt);
+      if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+        esp_camera_fb_return(frame);
+        return ret;
+      }
+
+      esp_camera_fb_return(frame);
+    }
   }
-
-  return ret;
 }
 
 static const httpd_uri_t stream = {
@@ -193,7 +244,7 @@ static const httpd_uri_t stream = {
     .handler   = stream_get_handler,
     .user_ctx  = NULL,
     .is_websocket = true,
-    .handle_ws_control_frames = false,
+    .handle_ws_control_frames = true,
     .supported_subprotocol = NULL
 };
 
@@ -289,6 +340,9 @@ static void web_server_handler_on_wifi_disconnect(void* arg, esp_event_base_t ev
 void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue) {
   g_frame_queue = frame_queue;
   g_command_queue = command_queue;
+
+  g_stream_client_disconnected = xSemaphoreCreateBinary();
+  g_stream_worker_stopped = xSemaphoreCreateBinary();
 
   start_async_req_workers();
 
