@@ -27,14 +27,13 @@ static const char* TAG = "web_server";
 #define MAX_ASYNC_REQUESTS 1
 
 static httpd_handle_t server = NULL;
+static TaskHandle_t g_server_task_handle = NULL;
 
 static QueueHandle_t g_frame_queue = NULL;
 static QueueHandle_t g_command_queue = NULL;
 
 static QueueHandle_t g_stream_req_queue = NULL;
 static TaskHandle_t g_stream_task_handle = NULL;
-static SemaphoreHandle_t g_stream_client_disconnected = NULL;
-static SemaphoreHandle_t g_stream_worker_stopped = NULL;
 
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
@@ -107,6 +106,10 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
 {
   esp_err_t ret = ESP_OK;
 
+  if (g_server_task_handle == NULL) {
+    g_server_task_handle = xTaskGetCurrentTaskHandle();
+  }
+
   // Handle handshake
   if (req->method == HTTP_GET) {
     ESP_LOGI(TAG, "Handshake done, the new connection was opened");
@@ -144,8 +147,8 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
       ESP_LOGI(TAG, "Got a WS CLOSE frame, Replying CLOSE");
       ws_pkt.len = 0;
       ws_pkt.payload = NULL;
-      xSemaphoreGive(g_stream_client_disconnected);
-      xSemaphoreTake(g_stream_worker_stopped, portMAX_DELAY);
+      xTaskNotifyGive(g_stream_task_handle);
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
 
     ESP_LOGI(TAG, "Sending control frame from stream handler");
@@ -180,14 +183,14 @@ void stream_task(void* p) {
       break;
     }
 
-    if (xSemaphoreTake(g_stream_client_disconnected, 0) == pdPASS) {
+    if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
       ESP_LOGI(TAG, "Completing async stream req");
       esp_camera_fb_return(frame);
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
         ESP_LOGE(TAG, "failed to complete async stream req");
       }
       req = NULL;
-      xSemaphoreGive(g_stream_worker_stopped);
+      xTaskNotifyGive(g_server_task_handle);
       continue;
     }
 
@@ -239,6 +242,7 @@ static httpd_handle_t start_web_server()
 
 static esp_err_t stop_web_server(httpd_handle_t server)
 {
+    g_server_task_handle = NULL;
     return httpd_stop(server);
 }
 
@@ -270,8 +274,6 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue) {
   g_frame_queue = frame_queue;
   g_command_queue = command_queue;
 
-  g_stream_client_disconnected = xSemaphoreCreateBinary();
-  g_stream_worker_stopped = xSemaphoreCreateBinary();
   g_stream_req_queue = xQueueCreate(1, sizeof(httpd_req_t*));
 
   if (xTaskCreate(stream_task, "stream_task", 4096, (void *)0, 1, &g_stream_task_handle) != pdPASS) {
