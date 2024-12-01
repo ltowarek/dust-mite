@@ -13,6 +13,7 @@
 #include "esp_camera.h"
 #include "nvs_flash.h"
 #include "motor.hpp"
+#include "camera.hpp"
 #include <cJSON.h>
 
 static const char* TAG = "web_server";
@@ -102,27 +103,20 @@ static const httpd_uri_t root = {
     .supported_subprotocol = NULL
 };
 
-static esp_err_t stream_get_handler(httpd_req_t *req)
-{
+static esp_err_t stream_handle_handshake(httpd_req_t *req) {
+  ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+  httpd_req_t* copy = NULL;
+  ESP_ERROR_CHECK(httpd_req_async_handler_begin(req, &copy));
+  if (xQueueSendToBack(g_stream_req_queue, &copy, portMAX_DELAY) != pdPASS) {
+    ESP_LOGE(TAG, "xQueueSendToBack(g_stream_req_queue) failed");
+    return ESP_FAIL;
+  }
+  return ESP_OK;
+}
+
+static esp_err_t stream_handle_websocket_frame(httpd_req_t *req) {
   esp_err_t ret = ESP_OK;
 
-  if (g_server_task_handle == NULL) {
-    g_server_task_handle = xTaskGetCurrentTaskHandle();
-  }
-
-  // Handle handshake
-  if (req->method == HTTP_GET) {
-    ESP_LOGI(TAG, "Handshake done, the new connection was opened");
-    httpd_req_t* copy = NULL;
-    ESP_ERROR_CHECK(httpd_req_async_handler_begin(req, &copy));
-    if (xQueueSendToBack(g_stream_req_queue, &copy, portMAX_DELAY) != pdPASS) {
-      ESP_LOGE(TAG, "xQueueSendToBack(g_stream_req_queue) failed");
-      return ESP_FAIL;
-    }
-    return ESP_OK;
-  }
-
-  // Handle websocket frame
   httpd_ws_frame_t ws_pkt = {};
   ESP_ERROR_CHECK(httpd_ws_recv_frame(req, &ws_pkt, 0));
 
@@ -164,18 +158,35 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
   return ret;
 }
 
+static esp_err_t stream_get_handler(httpd_req_t *req)
+{
+  if (g_server_task_handle == NULL) {
+    g_server_task_handle = xTaskGetCurrentTaskHandle();
+  }
+
+  if (req->method == HTTP_GET) {
+    ESP_ERROR_CHECK(stream_handle_handshake(req));
+  } else {
+    ESP_ERROR_CHECK(stream_handle_websocket_frame(req));
+  }
+
+  return ESP_OK;
+}
+
 void stream_task(void* p) {
-  ESP_LOGI(TAG, "Starting stream worker");
+  ESP_LOGI(TAG, "Starting stream task");
   esp_err_t ret = ESP_OK;
   httpd_req_t* req = NULL;
   camera_fb_t* frame = NULL;
   while (true) {
     if (req == NULL) {
-      ESP_LOGI(TAG, "Waiting for req");
+      ESP_LOGI(TAG, "Waiting for notification to start the stream");
       if (xQueueReceive(g_stream_req_queue, &req, portMAX_DELAY) != pdPASS) {
         ESP_LOGE(TAG, "xQueueReceive(g_stream_req_queue) failed");
         break;
       }
+      camera_start();
+      ESP_LOGI(TAG, "Stream started");
     }
 
     if (xQueueReceive(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
@@ -184,12 +195,13 @@ void stream_task(void* p) {
     }
 
     if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
-      ESP_LOGI(TAG, "Completing async stream req");
       esp_camera_fb_return(frame);
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
         ESP_LOGE(TAG, "failed to complete async stream req");
       }
       req = NULL;
+      camera_stop();
+      ESP_LOGI(TAG, "Stream stopped");
       xTaskNotifyGive(g_server_task_handle);
       continue;
     }
@@ -208,7 +220,7 @@ void stream_task(void* p) {
 
     esp_camera_fb_return(frame);
   }
-  ESP_LOGW(TAG, "stream worker stopped");
+  ESP_LOGW(TAG, "Stream task stopped");
   vTaskDelete(NULL);
 }
 

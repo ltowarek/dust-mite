@@ -89,23 +89,40 @@ void camera_init() {
   }
 }
 
+#define CAMERA_START_NOTIFICATION_INDEX 0
+#define CAMERA_STOP_NOTIFICATION_INDEX 1
+
 static QueueHandle_t g_frame_queue = NULL;
 static TaskHandle_t g_camera_task_handle = NULL;
 
 void camera_task(void* p) {
+  ESP_LOGI(TAG, "Starting camera task");
   camera_fb_t* frame = NULL;
+  bool started = false;
   while (true) {
-    // If queue is not processed then we get below warning:
-    // cam_hal: Failed to get the frame on time!
-    // camera_task should be resumed/suspended when web client connects/disconnects
+    if (!started) {
+      ESP_LOGI(TAG, "Waiting for notification to start the camera");
+      ulTaskNotifyTakeIndexed(CAMERA_START_NOTIFICATION_INDEX, pdTRUE, portMAX_DELAY);
+      started = true;
+      ESP_LOGI(TAG, "Camera started");
+    }
+
+    if (ulTaskNotifyTakeIndexed(CAMERA_STOP_NOTIFICATION_INDEX, pdTRUE, 0) == 1) {
+      started = false;
+      ESP_LOGI(TAG, "Camera stopped");
+      continue;
+    }
+
     frame = esp_camera_fb_get();
     if (frame) {
       if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
         ESP_LOGE(TAG, "xQueueSendToBack failed");
-        return;
+        break;
       }
     }
   }
+  ESP_LOGW(TAG, "Camera task stopped");
+  vTaskDelete(NULL);
 }
 
 void camera_setup(QueueHandle_t frame_queue) {
@@ -117,4 +134,12 @@ void camera_setup(QueueHandle_t frame_queue) {
     ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");
     return;
   }
+}
+
+void camera_start() {
+  xTaskNotifyGiveIndexed(g_camera_task_handle, CAMERA_START_NOTIFICATION_INDEX);
+}
+
+void camera_stop() {
+  xTaskNotifyGiveIndexed(g_camera_task_handle, CAMERA_STOP_NOTIFICATION_INDEX);
 }
