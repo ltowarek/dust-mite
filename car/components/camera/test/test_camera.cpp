@@ -25,8 +25,8 @@ TEST_CASE("performance", "[camera]")
 
     uint64_t start = esp_timer_get_time();
     for (int i = 0; i < MEASUREMENTS; i++) {
-        camera_fb_t * frame = camera_fb_get();
-        camera_fb_return(frame);
+        camera_fb_t * frame = esp_camera_fb_get();
+        esp_camera_fb_return(frame);
     }
     uint64_t end = esp_timer_get_time();
 
@@ -48,9 +48,9 @@ TEST_CASE("throughput", "[camera]")
 
     uint64_t start = esp_timer_get_time();
     for (int i = 0; i < MEASUREMENTS; i++) {
-        camera_fb_t * frame = camera_fb_get();
+        camera_fb_t * frame = esp_camera_fb_get();
         frame_sizes += frame->len;
-        camera_fb_return(frame);
+        esp_camera_fb_return(frame);
     }
     uint64_t end = esp_timer_get_time();
 
