@@ -6,7 +6,6 @@ extern "C" {
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
-#include "esp_camera.h"
 
 void camera_init();
 void camera_setup(QueueHandle_t frame_queue);

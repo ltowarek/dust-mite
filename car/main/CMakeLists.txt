@@ -4,4 +4,5 @@ idf_component_register(SRCS "main.cpp"
                     camera
                     web_server
                     motor
+                    telemetry
                     )
