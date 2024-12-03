@@ -9,7 +9,7 @@ extern "C" {
 #include <cJSON.h>
 
 typedef struct {
-  char timestamp[17+1];
+  char timestamp[20+1];
 } telemetry_packet_t;
 
 void telemetry_init();

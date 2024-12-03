@@ -7,6 +7,7 @@ idf_component_register(SRCS "web_server.cpp"
                     json
                     camera
                     motor
+                    telemetry
                     )
 
 target_compile_definitions(

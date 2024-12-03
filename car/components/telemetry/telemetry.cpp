@@ -34,8 +34,8 @@ void get_timestamp(char *buf) {
   tm timeinfo = {};
   gmtime_r(&now, &timeinfo);
 
-  strftime(buf, (17+1) * sizeof(char), "%Y-%m-%dT%H:%MZ", &timeinfo);
-  buf[17] = '\0';
+  strftime(buf, (20+1) * sizeof(char), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+  buf[20] = '\0';
 }
 
 void get_telemetry_packet(telemetry_packet_t *p) {

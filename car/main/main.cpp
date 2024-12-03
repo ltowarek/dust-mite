@@ -19,5 +19,5 @@ extern "C" void app_main()
   camera_setup(frame_queue);
   wifi_setup();
   telemetry_setup(telemetry_queue);
-  web_server_setup(frame_queue, command_queue);
+  web_server_setup(frame_queue, command_queue, telemetry_queue);
 }
