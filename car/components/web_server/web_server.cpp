@@ -52,7 +52,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 
   httpd_ws_frame_t ws_pkt = {};
   ESP_ERROR_CHECK(httpd_ws_recv_frame(req, &ws_pkt, 0));
-  ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
+  ESP_LOGI(TAG, "Frame len is %d", ws_pkt.len);
 
   if (ws_pkt.type != HTTPD_WS_TYPE_TEXT) {
     ESP_LOGE(TAG, "Invalid packet type: %d", ws_pkt.type);
@@ -360,7 +360,7 @@ void ws_telemetry_task(void* p) {
     cJSON_free(packet_json_str);
     cJSON_Delete(packet_json);
   }
-  ESP_LOGW(TAG, "telemetry task stopped");
+  ESP_LOGW(TAG, "Telemetry task stopped");
   vTaskDelete(NULL);
 }
 
