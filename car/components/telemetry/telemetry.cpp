@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
+#include <cJSON.h>
 #include <time.h>
 
 static const char* TAG = "telemetry";
@@ -39,6 +40,12 @@ void get_timestamp(char *buf) {
 
 void get_telemetry_packet(telemetry_packet_t *p) {
   get_timestamp(p->timestamp);
+}
+
+cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p) {
+  cJSON* root=cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "timestamp", p.timestamp);
+  return root;
 }
 
 void telemetry_init() {
@@ -83,9 +90,6 @@ void telemetry_setup(QueueHandle_t telemetry_queue) {
     ESP_LOGE(TAG, "xTaskCreate(telemetry_task) failed");
     return;
   }
-
-  char x[17+1];
-  get_timestamp(x);
 }
 
 void telemetry_start() {
