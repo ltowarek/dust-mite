@@ -202,7 +202,7 @@ void ws_stream_task(void* p) {
     if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
       esp_camera_fb_return(frame);
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
-        ESP_LOGE(TAG, "failed to complete async stream req");
+        ESP_LOGE(TAG, "Failed to complete async stream req");
       }
       req = NULL;
       camera_stop();
@@ -321,7 +321,7 @@ void ws_telemetry_task(void* p) {
         break;
       }
       telemetry_start();
-      ESP_LOGI(TAG, "telemetry started");
+      ESP_LOGI(TAG, "Telemetry started");
     }
 
     telemetry_packet_t packet = {};
@@ -332,11 +332,11 @@ void ws_telemetry_task(void* p) {
 
     if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
-        ESP_LOGE(TAG, "failed to complete async telemetry req");
+        ESP_LOGE(TAG, "Failed to complete async telemetry req");
       }
       req = NULL;
       telemetry_stop();
-      ESP_LOGI(TAG, "telemetry stopped");
+      ESP_LOGI(TAG, "Telemetry stopped");
       xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
