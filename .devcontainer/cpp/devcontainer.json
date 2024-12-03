@@ -41,7 +41,8 @@
                     "LOGD",
                     "LOGI",
                     "LOGW",
-                    "LOGE"
+                    "LOGE",
+                    "SNTP"
                 ]
             },
             "extensions": [

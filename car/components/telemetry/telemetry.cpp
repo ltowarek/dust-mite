@@ -2,6 +2,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_sntp.h"
+#include "esp_netif_sntp.h"
 #include <time.h>
 
 static const char* TAG = "telemetry";
@@ -13,8 +15,16 @@ static QueueHandle_t g_telemetry_queue = NULL;
 static TaskHandle_t g_telemetry_task_handle = NULL;
 
 void sync_time() {
-  // Get data from sntp
-  // Move it to wifi_setup?
+  ESP_LOGI(TAG, "Initializing SNTP");
+  esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+  esp_netif_sntp_init(&config);
+
+  time_t now = 0;
+  while (esp_netif_sntp_sync_wait(2000 / portTICK_PERIOD_MS) == ESP_ERR_TIMEOUT) {
+    ESP_LOGI(TAG, "Waiting for system time to be set...");
+  }
+  ESP_LOGI(TAG, "Set system time");
+  time(&now);
 }
 
 void get_timestamp(char *buf) {
@@ -76,7 +86,6 @@ void telemetry_setup(QueueHandle_t telemetry_queue) {
 
   char x[17+1];
   get_timestamp(x);
-  ESP_LOGI(TAG, "FOO: %s", x);
 }
 
 void telemetry_start() {
