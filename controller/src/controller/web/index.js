@@ -12,7 +12,6 @@ window.addEventListener("DOMContentLoaded", () => {
   const telemetry_socket = new WebSocket("ws://<ESP32_ADDRESS>/telemetry");
 
   telemetry_socket.onmessage = (event) => {
-    console.log(event.data);
     const data = JSON.parse(event.data);
     timestamp.innerText = data.timestamp;
   };
