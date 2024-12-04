@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
+#include "esp_wifi.h"
 #include <cJSON.h>
 #include <time.h>
 
@@ -38,13 +39,21 @@ void get_timestamp(char *buf) {
   buf[20] = '\0';
 }
 
+int get_rssi() {
+  int rssi = 0;
+  ESP_ERROR_CHECK(esp_wifi_sta_get_rssi(&rssi));
+  return rssi;
+}
+
 void get_telemetry_packet(telemetry_packet_t *p) {
   get_timestamp(p->timestamp);
+  p->rssi = get_rssi();
 }
 
 cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p) {
   cJSON* root=cJSON_CreateObject();
   cJSON_AddStringToObject(root, "timestamp", p.timestamp);
+  cJSON_AddNumberToObject(root, "rssi", p.rssi);
   return root;
 }
 

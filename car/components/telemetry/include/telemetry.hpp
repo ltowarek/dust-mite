@@ -10,6 +10,7 @@ extern "C" {
 
 typedef struct {
   char timestamp[20+1];
+  int rssi;
 } telemetry_packet_t;
 
 void telemetry_init();

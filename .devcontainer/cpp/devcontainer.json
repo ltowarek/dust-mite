@@ -42,7 +42,8 @@
                     "LOGI",
                     "LOGW",
                     "LOGE",
-                    "SNTP"
+                    "SNTP",
+                    "RSSI"
                 ]
             },
             "extensions": [

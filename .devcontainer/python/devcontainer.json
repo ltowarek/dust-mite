@@ -48,7 +48,8 @@
                     "venv",
                     "hidraw",
                     "hidapi",
-                    "devcontainer"
+                    "devcontainer",
+                    "RSSI"
                 ]
             },
             "extensions": [
