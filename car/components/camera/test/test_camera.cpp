@@ -2,6 +2,7 @@
 #include "camera.hpp"
 #include "unity.h"
 #include "esp_timer.h"
+#include "esp_camera.h"
 
 
 int is_initialized = 0;
