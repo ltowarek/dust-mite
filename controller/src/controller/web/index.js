@@ -15,8 +15,10 @@ window.addEventListener("DOMContentLoaded", () => {
     const data = JSON.parse(event.data);
     timestamp.innerText = data.timestamp;
     rssi.innerText = data.rssi + " dBm";
+    speed.innerText = data.speed.toFixed(2) + " km/h";
   };
 
   const timestamp = document.getElementById("timestamp");
   const rssi = document.getElementById("rssi");
+  const speed = document.getElementById("speed");
 });
