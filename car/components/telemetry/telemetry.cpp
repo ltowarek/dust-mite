@@ -9,6 +9,7 @@
 #include <cJSON.h>
 #include <time.h>
 #include "driver/pulse_cnt.h"
+#include "driver/i2c.h"
 
 static const char* TAG = "telemetry";
 
@@ -21,6 +22,29 @@ static TaskHandle_t g_telemetry_task_handle = NULL;
 static pcnt_unit_handle_t g_pcnt_unit = NULL;
 
 static uint64_t g_previous_timestamp = 0;
+
+static i2c_port_t g_i2c_port = I2C_NUM_1;
+
+// Based on:
+// https://github.com/adafruit/Adafruit_LSM9DS0_Library/
+// https://github.com/sparkfun/LSM9DS0_Breakout/
+#define LSM9DS0_XM_ADDRESS 0x1D
+#define LSM9DS0_G_ADDRESS 0x6B
+#define LSM9DS0_XM_ID 0x49
+#define LSM9DS0_G_ID 0xD4
+#define LSM9DS0_REGISTER_WHO_AM_I_XM 0x0F
+#define LSM9DS0_REGISTER_WHO_AM_I_G 0x0F
+#define LSM9DS0_REGISTER_CTRL_REG1_XM 0x20
+#define LSM9DS0_REGISTER_CTRL_REG5_XM 0x24
+#define LSM9DS0_REGISTER_CTRL_REG6_XM 0x25
+#define LSM9DS0_REGISTER_CTRL_REG7_XM 0x26
+#define LSM9DS0_REGISTER_CTRL_REG1_G 0x20
+#define LSM9DS0_REGISTER_OUT_A 0x28
+#define LSM9DS0_REGISTER_OUT_M 0x08
+#define LSM9DS0_REGISTER_OUT_G 0x28
+#define LSM9DS0_RESOLUTION_A (0.00006103515f) // scale/ADC tick -> 2g/0x8000
+#define LSM9DS0_RESOLUTION_M (0.00006103515f) // scale/ADC tick -> 2G/0x8000
+#define LSM9DS0_RESOLUTION_G (0.00747680664f) // scale/ADC tick -> 245DPS/0x8000
 
 void sync_time() {
   ESP_LOGI(TAG, "Initializing SNTP");
@@ -55,6 +79,9 @@ void get_telemetry_packet(telemetry_packet_t *p) {
   get_timestamp(p->timestamp);
   p->rssi = get_rssi();
   p->speed = get_speed();
+  p->accelerometer = read_accelerometer();
+  p->magnetometer = read_magnetometer();
+  p->gyroscope = read_gyroscope();
 }
 
 cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p) {
@@ -62,6 +89,22 @@ cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p) {
   cJSON_AddStringToObject(root, "timestamp", p.timestamp);
   cJSON_AddNumberToObject(root, "rssi", p.rssi);
   cJSON_AddNumberToObject(root, "speed", p.speed);
+
+  cJSON* accelerometer=cJSON_AddObjectToObject(root, "accelerometer");
+  cJSON_AddNumberToObject(accelerometer, "x", p.accelerometer.x);
+  cJSON_AddNumberToObject(accelerometer, "y", p.accelerometer.y);
+  cJSON_AddNumberToObject(accelerometer, "z", p.accelerometer.z);
+
+  cJSON* magnetometer=cJSON_AddObjectToObject(root, "magnetometer");
+  cJSON_AddNumberToObject(magnetometer, "x", p.magnetometer.x);
+  cJSON_AddNumberToObject(magnetometer, "y", p.magnetometer.y);
+  cJSON_AddNumberToObject(magnetometer, "z", p.magnetometer.z);
+
+  cJSON* gyroscope=cJSON_AddObjectToObject(root, "gyroscope");
+  cJSON_AddNumberToObject(gyroscope, "x", p.gyroscope.x);
+  cJSON_AddNumberToObject(gyroscope, "y", p.gyroscope.y);
+  cJSON_AddNumberToObject(gyroscope, "z", p.gyroscope.z);
+
   return root;
 }
 
@@ -127,9 +170,98 @@ float get_speed() {
   return velocity_kph;
 }
 
+void i2c_init() {
+  i2c_config_t conf = {};
+  conf.mode = I2C_MODE_MASTER;
+  conf.sda_io_num = 1;
+  conf.scl_io_num = 2;
+  conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+  conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+  conf.master.clk_speed = 400000;
+  ESP_ERROR_CHECK(i2c_param_config(g_i2c_port, &conf));
+  ESP_ERROR_CHECK(i2c_driver_install(g_i2c_port, conf.mode, 0, 0, 0));
+}
+
+void imu_read_register(uint8_t device_address, uint8_t reg_address, uint8_t* read_buf, size_t read_size) {
+  uint8_t write_buf = reg_address | 0x80;  // Enable reading multiple bytes
+  ESP_ERROR_CHECK(i2c_master_write_read_device(g_i2c_port, device_address, &write_buf, 1, read_buf, read_size, 1000 / portTICK_PERIOD_MS));
+}
+
+void imu_write_register(uint8_t device_address, uint8_t reg_address, uint8_t data) {
+  uint8_t write_buf[2] = {reg_address, data};
+  ESP_ERROR_CHECK(i2c_master_write_to_device(g_i2c_port, device_address, write_buf, sizeof(write_buf), 1000 / portTICK_PERIOD_MS));
+}
+
+void imu_init() {
+  // I2C driver is installed by camera
+  // i2c_init();
+
+  uint8_t g_id = 0;
+  imu_read_register(LSM9DS0_G_ADDRESS, LSM9DS0_REGISTER_WHO_AM_I_G, &g_id, 1);
+  ESP_ERROR_CHECK(g_id == LSM9DS0_G_ID ? ESP_OK : ESP_FAIL);
+
+  uint8_t xm_id = 0;
+  imu_read_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_WHO_AM_I_XM, &xm_id, 1);
+  ESP_ERROR_CHECK(xm_id == LSM9DS0_XM_ID ? ESP_OK : ESP_FAIL);
+
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG1_XM, 0x67); // Accelerometer 100Hz data rate, x/y/z enabled
+
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG5_XM, 0x94); // Magnetometer 100Hz data rate, temperature enabled
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG6_XM, 0x00); // Magnetometer 2G scale
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG7_XM, 0x00); // Magnetometer continuous-conversion mode
+
+  imu_write_register(LSM9DS0_G_ADDRESS, LSM9DS0_REGISTER_CTRL_REG1_G, 0x0F); // Gyroscope normal mode, x/y/z enabled
+}
+
+vector3_t read_accelerometer() {
+  uint8_t buf[6];
+  imu_read_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_OUT_A, buf, sizeof(buf));
+
+  int16_t raw_x = (buf[1] << 8) | buf[0];
+  int16_t raw_y = (buf[3] << 8) | buf[2];
+  int16_t raw_z = (buf[5] << 8) | buf[4];
+
+  vector3_t out;
+  out.x = (float)(raw_x) * LSM9DS0_RESOLUTION_A;
+  out.y = (float)(raw_y) * LSM9DS0_RESOLUTION_A;
+  out.z = (float)(raw_z) * LSM9DS0_RESOLUTION_A * -1;  // Module is mounted upside down
+  return out;
+}
+
+vector3_t read_magnetometer() {
+  uint8_t buf[6];
+  imu_read_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_OUT_M, buf, sizeof(buf));
+
+  int16_t raw_x = (buf[1] << 8) | buf[0];
+  int16_t raw_y = (buf[3] << 8) | buf[2];
+  int16_t raw_z = (buf[5] << 8) | buf[4];
+
+  vector3_t out;
+  out.x = (float)(raw_x) * LSM9DS0_RESOLUTION_M;
+  out.y = (float)(raw_y) * LSM9DS0_RESOLUTION_M;
+  out.z = (float)(raw_z) * LSM9DS0_RESOLUTION_M;
+  return out;
+}
+
+vector3_t read_gyroscope() {
+  uint8_t buf[6];
+  imu_read_register(LSM9DS0_G_ADDRESS, LSM9DS0_REGISTER_OUT_G, buf, sizeof(buf));
+
+  int16_t raw_x = (buf[1] << 8) | buf[0];
+  int16_t raw_y = (buf[3] << 8) | buf[2];
+  int16_t raw_z = (buf[5] << 8) | buf[4];
+
+  vector3_t out;
+  out.x = (float)(raw_x) * LSM9DS0_RESOLUTION_G;
+  out.y = (float)(raw_y) * LSM9DS0_RESOLUTION_G;
+  out.z = (float)(raw_z) * LSM9DS0_RESOLUTION_G;
+  return out;
+}
+
 void telemetry_init() {
   sync_time();
   pcnt_init();
+  imu_init();
 }
 
 void telemetry_task(void* p) {

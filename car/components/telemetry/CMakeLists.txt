@@ -6,4 +6,5 @@ idf_component_register(SRCS "telemetry.cpp"
                     json
                     esp_driver_pcnt
                     esp_timer
+                    driver
                     )
