@@ -10,6 +10,10 @@
 #include <time.h>
 #include "driver/pulse_cnt.h"
 #include "driver/i2c.h"
+#include "driver/gpio.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 
 static const char* TAG = "telemetry";
 
@@ -45,6 +49,13 @@ static i2c_port_t g_i2c_port = I2C_NUM_1;
 #define LSM9DS0_RESOLUTION_A (0.00006103515f) // scale/ADC tick -> 2g/0x8000
 #define LSM9DS0_RESOLUTION_M (0.00006103515f) // scale/ADC tick -> 2G/0x8000
 #define LSM9DS0_RESOLUTION_G (0.00747680664f) // scale/ADC tick -> 245DPS/0x8000
+
+#define URM_DAC_ADC_UNIT ADC_UNIT_1
+#define URM_DAC_ADC_CHANNEL ADC_CHANNEL_2
+#define URM_TRIG_PIN GPIO_NUM_0
+
+static adc_oneshot_unit_handle_t adc_handle;
+static adc_cali_handle_t adc_cali_handle;
 
 void sync_time() {
   ESP_LOGI(TAG, "Initializing SNTP");
@@ -82,6 +93,7 @@ void get_telemetry_packet(telemetry_packet_t *p) {
   p->accelerometer = read_accelerometer();
   p->magnetometer = read_magnetometer();
   p->gyroscope = read_gyroscope();
+  p->distance_ahead = get_distance_ahead();
 }
 
 cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p) {
@@ -104,6 +116,8 @@ cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p) {
   cJSON_AddNumberToObject(gyroscope, "x", p.gyroscope.x);
   cJSON_AddNumberToObject(gyroscope, "y", p.gyroscope.y);
   cJSON_AddNumberToObject(gyroscope, "z", p.gyroscope.z);
+
+  cJSON_AddNumberToObject(root, "distance_ahead", p.distance_ahead);
 
   return root;
 }
@@ -166,7 +180,6 @@ float get_speed() {
   float wheel_diameter_m = 0.066f;  // 6,6 cm
   // S = RPM * DIAMETER_IN_METERS * PI * MINUTES_IN_HOUR/METERS_IN_KILOMETER
   float velocity_kph = revolutions_per_minute * wheel_diameter_m * 3.14f * 60/1000;
-  ESP_LOGI(TAG, "velocity: %f", velocity_kph);
   return velocity_kph;
 }
 
@@ -258,10 +271,50 @@ vector3_t read_gyroscope() {
   return out;
 }
 
+void urm_init() {
+  ESP_ERROR_CHECK(gpio_set_direction(URM_TRIG_PIN, GPIO_MODE_OUTPUT));
+  ESP_ERROR_CHECK(gpio_pulldown_en(URM_TRIG_PIN));
+  ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
+
+  adc_oneshot_unit_init_cfg_t init_conf = {};
+  init_conf.unit_id = URM_DAC_ADC_UNIT;
+  ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_conf, &adc_handle));
+
+  adc_oneshot_chan_cfg_t conf = {};
+  conf.atten = ADC_ATTEN_DB_12;
+  conf.bitwidth = ADC_BITWIDTH_DEFAULT;
+  ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, URM_DAC_ADC_CHANNEL, &conf));
+
+  adc_cali_curve_fitting_config_t cali_conf = {};
+  cali_conf.unit_id = URM_DAC_ADC_UNIT;
+  cali_conf.chan = URM_DAC_ADC_CHANNEL;
+  cali_conf.atten = ADC_ATTEN_DB_12;
+  cali_conf.bitwidth = ADC_BITWIDTH_DEFAULT;
+  ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_conf, &adc_cali_handle));
+}
+
+int get_distance_ahead() {
+  ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 0));
+  ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
+  vTaskDelay(100/portTICK_PERIOD_MS);
+
+  int raw = 0;
+  ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, URM_DAC_ADC_CHANNEL, &raw));
+
+  int voltage = 0;
+  ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_handle, raw, &voltage));
+
+  float voltage_to_distance_proportion = 4.125;
+  float distance = (float)voltage / voltage_to_distance_proportion;
+
+  return (int)distance;
+}
+
 void telemetry_init() {
   sync_time();
   pcnt_init();
   imu_init();
+  urm_init();
 }
 
 void telemetry_task(void* p) {

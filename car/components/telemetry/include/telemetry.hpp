@@ -21,6 +21,7 @@ typedef struct {
   vector3_t accelerometer;
   vector3_t magnetometer;
   vector3_t gyroscope;
+  int distance_ahead;
 } telemetry_packet_t;
 
 void telemetry_init();
@@ -34,6 +35,7 @@ vector3_t read_accelerometer();
 vector3_t read_magnetometer();
 vector3_t read_gyroscope();
 // TODO: Compute roll/pitch/yaw - https://github.com/adafruit/Adafruit_AHRS
+int get_distance_ahead();
 
 cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p);
 

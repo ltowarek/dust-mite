@@ -31,7 +31,7 @@
 // {
 //     while (true) {
 //         vector3_t data = read_accelerometer();
-//         ESP_LOGI("test", "accelerometer: (%f, %f, %f) g", data.x, data.y, data.z);
+//         ESP_LOGI("test", "accelerometer: (%f, %f, %f) [g]", data.x, data.y, data.z);
 //         vTaskDelay(pdMS_TO_TICKS(1000));
 //     }
 // }
@@ -40,7 +40,7 @@
 // {
 //     while (true) {
 //         vector3_t data = read_magnetometer();
-//         ESP_LOGI("test", "magnetometer: (%f, %f, %f) gauss", data.x, data.y, data.z);
+//         ESP_LOGI("test", "magnetometer: (%f, %f, %f) [gauss]", data.x, data.y, data.z);
 //         vTaskDelay(pdMS_TO_TICKS(1000));
 //     }
 // }
@@ -49,7 +49,15 @@
 // {
 //     while (true) {
 //         vector3_t data = read_gyroscope();
-//         ESP_LOGI("test", "gyroscope: (%f, %f, %f) degrees per second", data.x, data.y, data.z);
+//         ESP_LOGI("test", "gyroscope: (%f, %f, %f) [degrees per second]", data.x, data.y, data.z);
+//         vTaskDelay(pdMS_TO_TICKS(1000));
+//     }
+// }
+
+// TEST_CASE("distance", "[urm]")
+// {
+//     while (true) {
+//         ESP_LOGI("test", "distance: %d [cm]", get_distance_ahead());
 //         vTaskDelay(pdMS_TO_TICKS(1000));
 //     }
 // }

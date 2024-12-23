@@ -7,4 +7,6 @@ idf_component_register(SRCS "telemetry.cpp"
                     esp_driver_pcnt
                     esp_timer
                     driver
+                    esp_driver_gpio
+                    esp_adc
                     )

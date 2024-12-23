@@ -23,6 +23,8 @@ window.addEventListener("DOMContentLoaded", () => {
     accelerometer.innerText = `${a.x.toFixed(2)}, ${a.y.toFixed(2)}, ${a.z.toFixed(2)} g`;
     magnetometer.innerText = `${m.x.toFixed(2)}, ${m.y.toFixed(2)}, ${m.z.toFixed(2)} G`;
     gyroscope.innerText = `${g.x.toFixed(2)}, ${g.y.toFixed(2)}, ${g.z.toFixed(2)} degrees/s`;
+
+    distance_ahead.innerText = `${data.distance_ahead} cm`;
   };
 
   const timestamp = document.getElementById("timestamp");
@@ -31,4 +33,5 @@ window.addEventListener("DOMContentLoaded", () => {
   const accelerometer = document.getElementById("accelerometer");
   const magnetometer = document.getElementById("magnetometer");
   const gyroscope = document.getElementById("gyroscope");
+  const distance_ahead = document.getElementById("distance_ahead");
 });
