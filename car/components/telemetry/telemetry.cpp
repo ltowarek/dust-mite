@@ -50,6 +50,7 @@ static i2c_port_t g_i2c_port = I2C_NUM_1;
 #define LSM9DS0_RESOLUTION_M (0.00006103515f) // scale/ADC tick -> 2G/0x8000
 #define LSM9DS0_RESOLUTION_G (0.00747680664f) // scale/ADC tick -> 245DPS/0x8000
 
+// TODO: Replace ADC with pulseIn
 #define URM_DAC_ADC_UNIT ADC_UNIT_1
 #define URM_DAC_ADC_CHANNEL ADC_CHANNEL_2
 #define URM_TRIG_PIN GPIO_NUM_0

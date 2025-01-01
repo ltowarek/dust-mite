@@ -23,6 +23,8 @@ class Command(Enum):
     BRAKE = 3
     TURN_LEFT = 4
     TURN_RIGHT = 5
+    LOOK_HORIZONTALLY = 6
+    LOOK_VERTICALLY = 7
 
 
 ws_conn: websockets.sync.client.ClientConnection | None = None
@@ -77,6 +79,15 @@ if __name__ == "__main__":
             else:
                 command = Command.TURN_RIGHT
                 value = int(interpolate(ds.state.LX, 0, 127, 0, 100))
+        # TODO: Split car and camera commands
+        # Currently there is no way to drive a car and look around
+        # What's more, you can't look horizontally and vertically and the same time
+        elif ds.state.RX:
+            command = Command.LOOK_HORIZONTALLY
+            value = int(interpolate(ds.state.RX, -128, 127, -90, 90))
+        elif ds.state.RY:
+            command = Command.LOOK_VERTICALLY
+            value = int(interpolate(ds.state.RY, -128, 127, 90, -90))
         elif ds.state.R2 > 0:
             command = Command.ADVANCE
             value = int(interpolate(ds.state.R2, 0, 255, 0, 100))

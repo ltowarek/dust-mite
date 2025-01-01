@@ -21,6 +21,8 @@ void car_turn_right(uint8_t speed);
 #define COMMAND_BRAKE 3
 #define COMMAND_TURN_LEFT 4
 #define COMMAND_TURN_RIGHT 5
+#define COMMAND_LOOK_HORIZONTALLY 6
+#define COMMAND_LOOK_VERTICALLY 7
 
 typedef struct command_packet {
   char command;

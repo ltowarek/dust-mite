@@ -1,4 +1,6 @@
 #include "motor.hpp"
+#include "servo.hpp"
+#include "utils.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
@@ -94,6 +96,17 @@ void command_task(void *p) {
           ESP_LOGI(TAG, "COMMAND_TURN_RIGHT: %d", packet.value);
           car_turn_right(packet.value);
           break;
+        // TODO: Split car and camera commands
+        // Currently there is no way to drive a car and look around
+        // What's more, you can't look horizontally and vertically and the same time
+        case COMMAND_LOOK_HORIZONTALLY:
+          ESP_LOGI(TAG, "COMMAND_LOOK_HORIZONTALLY: %d", packet.value);
+          move_pan(packet.value);
+          break;
+        case COMMAND_LOOK_VERTICALLY:
+          ESP_LOGI(TAG, "COMMAND_LOOK_VERTICALLY: %d", packet.value);
+          move_tilt(packet.value);
+          break;
         default:
           ESP_LOGI(TAG, "Unknown command: %d", packet.command);
       }
@@ -102,9 +115,7 @@ void command_task(void *p) {
   }
 }
 
-void motor_setup(QueueHandle_t command_queue) {
-  g_command_queue = command_queue;
-
+void motor_init() {
   mcpwm_config_t pwm_config;
   pwm_config.frequency = 1000;
   pwm_config.cmpr_a = 0;
@@ -118,15 +129,18 @@ void motor_setup(QueueHandle_t command_queue) {
     mcpwm_gpio_init(m.pwm_unit,m.pwm_io_signal_in2,m.gpio_in2);
     mcpwm_init(m.pwm_unit,m.pwm_timer,&pwm_config);
   }
+}
 
+void motor_setup(QueueHandle_t command_queue) {
+  motor_init();
+  // Not enough GPIOs to run motors + servos + telemetry
+  // servo_init();
+
+  g_command_queue = command_queue;
   if (xTaskCreate(command_task, "command_task", 4096, (void *)0, 1, &g_command_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(command_task) failed");
     return;
   }
-}
-
-float interpolate(float value, float in_min, float in_max, float out_min, float out_max) {
-  return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
 void motor_advance(const motor_pins_t &motor, uint8_t speed)
