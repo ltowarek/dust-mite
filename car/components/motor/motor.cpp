@@ -133,8 +133,7 @@ void motor_init() {
 
 void motor_setup(QueueHandle_t command_queue) {
   motor_init();
-  // Not enough GPIOs to run motors + servos + telemetry
-  // servo_init();
+  servo_init();
 
   g_command_queue = command_queue;
   if (xTaskCreate(command_task, "command_task", 4096, (void *)0, 1, &g_command_task_handle) != pdPASS) {

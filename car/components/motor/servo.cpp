@@ -20,15 +20,15 @@ typedef struct {
 const servo_pins_t pan_servo = {
   .gpio_in = 3,
   .pwm_unit = MCPWM_UNIT_0,
-  .pwm_timer = MCPWM_TIMER_0,
-  .pwm_io_signal_in = MCPWM0A,
+  .pwm_timer = MCPWM_TIMER_2,
+  .pwm_io_signal_in = MCPWM2A,
 };
 
 const servo_pins_t tilt_servo = {
   .gpio_in = 38,
-  .pwm_unit = MCPWM_UNIT_0,
-  .pwm_timer = MCPWM_TIMER_1,
-  .pwm_io_signal_in = MCPWM1A,
+  .pwm_unit = MCPWM_UNIT_1,
+  .pwm_timer = MCPWM_TIMER_2,
+  .pwm_io_signal_in = MCPWM2A,
 };
 
 int map_angle_to_duty(int angle) {
