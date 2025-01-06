@@ -11,14 +11,14 @@
 #include "driver/pulse_cnt.h"
 #include "driver/i2c.h"
 #include "driver/gpio.h"
-#include "esp_adc/adc_oneshot.h"
-#include "esp_adc/adc_cali.h"
-#include "esp_adc/adc_cali_scheme.h"
+#include "driver/mcpwm.h"
+#include "esp_private/esp_clk.h"
 
 static const char* TAG = "telemetry";
 
 #define TELEMETRY_START_NOTIFICATION_INDEX 0
 #define TELEMETRY_STOP_NOTIFICATION_INDEX 1
+#define TELEMETRY_URM_ISR_INDEX 2
 
 static QueueHandle_t g_telemetry_queue = NULL;
 static TaskHandle_t g_telemetry_task_handle = NULL;
@@ -50,13 +50,8 @@ static i2c_port_t g_i2c_port = I2C_NUM_1;
 #define LSM9DS0_RESOLUTION_M (0.00006103515f) // scale/ADC tick -> 2G/0x8000
 #define LSM9DS0_RESOLUTION_G (0.00747680664f) // scale/ADC tick -> 245DPS/0x8000
 
-// TODO: Replace ADC with pulseIn
-#define URM_DAC_ADC_UNIT ADC_UNIT_1
-#define URM_DAC_ADC_CHANNEL ADC_CHANNEL_2
-#define URM_TRIG_PIN GPIO_NUM_0
-
-static adc_oneshot_unit_handle_t adc_handle;
-static adc_cali_handle_t adc_cali_handle;
+#define URM_ECHO_PIN GPIO_NUM_17
+#define URM_TRIG_PIN GPIO_NUM_16
 
 void sync_time() {
   ESP_LOGI(TAG, "Initializing SNTP");
@@ -272,43 +267,54 @@ vector3_t read_gyroscope() {
   return out;
 }
 
+static bool urm_echo_isr_handler(mcpwm_unit_t mpcwm, mcpwm_capture_channel_id_t cap_channel, const cap_event_data_t *edata, void *user_data) {
+  static uint32_t begin_of_sample = 0;
+  static uint32_t end_of_sample = 0;
+
+  BaseType_t high_task_wakeup = pdFALSE;
+  if (edata->cap_edge == MCPWM_NEG_EDGE) {
+    begin_of_sample = edata->cap_value;
+    end_of_sample = begin_of_sample;
+  } else {
+    end_of_sample = edata->cap_value;
+    uint32_t pulse_count = end_of_sample - begin_of_sample;
+    xTaskNotifyIndexedFromISR(g_telemetry_task_handle, TELEMETRY_URM_ISR_INDEX, pulse_count, eSetValueWithOverwrite, &high_task_wakeup);
+  }
+  return high_task_wakeup == pdTRUE;
+}
+
 void urm_init() {
   ESP_ERROR_CHECK(gpio_set_direction(URM_TRIG_PIN, GPIO_MODE_OUTPUT));
   ESP_ERROR_CHECK(gpio_pulldown_en(URM_TRIG_PIN));
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
 
-  adc_oneshot_unit_init_cfg_t init_conf = {};
-  init_conf.unit_id = URM_DAC_ADC_UNIT;
-  ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_conf, &adc_handle));
-
-  adc_oneshot_chan_cfg_t conf = {};
-  conf.atten = ADC_ATTEN_DB_12;
-  conf.bitwidth = ADC_BITWIDTH_DEFAULT;
-  ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, URM_DAC_ADC_CHANNEL, &conf));
-
-  adc_cali_curve_fitting_config_t cali_conf = {};
-  cali_conf.unit_id = URM_DAC_ADC_UNIT;
-  cali_conf.chan = URM_DAC_ADC_CHANNEL;
-  cali_conf.atten = ADC_ATTEN_DB_12;
-  cali_conf.bitwidth = ADC_BITWIDTH_DEFAULT;
-  ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_conf, &adc_cali_handle));
+  ESP_ERROR_CHECK(mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM_CAP_0, URM_ECHO_PIN));
+  mcpwm_capture_config_t conf = {};
+  conf.cap_edge = MCPWM_BOTH_EDGE;
+  conf.cap_prescale = 1;
+  conf.capture_cb = urm_echo_isr_handler;
+  conf.user_data = NULL;
+  ESP_ERROR_CHECK(mcpwm_capture_enable_channel(MCPWM_UNIT_0, MCPWM_SELECT_CAP0, &conf));
 }
 
 int get_distance_ahead() {
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 0));
+  esp_rom_delay_us(10);
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
-  vTaskDelay(100/portTICK_PERIOD_MS);
 
-  int raw = 0;
-  ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, URM_DAC_ADC_CHANNEL, &raw));
+  uint32_t pulse_count = 0;
+  if (xTaskNotifyWaitIndexed(TELEMETRY_URM_ISR_INDEX, 0x00, ULONG_MAX, &pulse_count, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    uint32_t pulse_width_us = pulse_count * (1000000.0 / esp_clk_apb_freq());
+    if (pulse_width_us >= 50000) {
+      ESP_LOGW(TAG, "Invalid URM pulse width");
+      return -1;
+    }
 
-  int voltage = 0;
-  ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_handle, raw, &voltage));
-
-  float voltage_to_distance_proportion = 4.125;
-  float distance = (float)voltage / voltage_to_distance_proportion;
-
-  return (int)distance;
+    float distance_cm = (float)pulse_width_us / 50;
+    return (int)distance_cm;
+  }
+  ESP_LOGW(TAG, "URM callback timeout");
+  return -1;
 }
 
 void telemetry_init() {
