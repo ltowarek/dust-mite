@@ -5,6 +5,8 @@ import logging
 import os
 import time
 
+import cv2
+import numpy as np
 import websockets.exceptions
 import websockets.sync.client
 import websockets.sync.server
@@ -49,6 +51,8 @@ def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
                     keep_client_connection = False
                     continue
 
+                frame = process_frame(frame)
+
                 try:
                     websocket.send(frame)
                 except websockets.exceptions.ConnectionClosed:
@@ -58,6 +62,16 @@ def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
                     continue
 
     logger.debug("Server handler finished")
+
+
+def process_frame(frame: bytes) -> bytes:
+    """Process camera frame."""
+    arr = np.frombuffer(frame, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    return cv2.imencode(".jpg", img)[1].tobytes()
 
 
 if __name__ == "__main__":

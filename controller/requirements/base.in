@@ -1,2 +1,4 @@
 pydualsense
 websockets
+numpy
+opencv-python-headless
