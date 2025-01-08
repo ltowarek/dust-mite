@@ -39,6 +39,7 @@ ignore = [
     "TD003",
     "FIX002"
 ]
+unfixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D"]

@@ -1,5 +1,5 @@
 window.addEventListener("DOMContentLoaded", () => {
-  const stream_socket = new WebSocket("ws://<ESP32_ADDRESS>/stream");
+  const stream_socket = new WebSocket("ws://localhost:8765");
   stream_socket.binaryType = "arraybuffer";
 
   stream_socket.onmessage = (event) => {

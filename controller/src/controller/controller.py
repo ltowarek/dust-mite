@@ -9,10 +9,11 @@ from typing import Any
 import websockets.sync.client
 from pydualsense import pydualsense
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-ESP32_ADDRESS = "<ESP32_ADDRESS>"
+ESP32_ADDRESS = os.environ.get("ESP32_ADDRESS", "<ESP32_ADDRESS>")
 
 
 class Command(Enum):
@@ -47,7 +48,6 @@ def interpolate(
 
 
 if __name__ == "__main__":
-    ESP32_ADDRESS = os.environ["ESP32_ADDRESS"]
     ws_conn = websockets.sync.client.connect(ESP32_ADDRESS)
 
     ds = pydualsense()
