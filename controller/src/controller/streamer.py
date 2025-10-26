@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 ESP32_ADDRESS = os.environ.get("ESP32_ADDRESS", "ws://192.168.50.66")
-STREAM_CLIENT_URI = ESP32_ADDRESS + "/stream"
 TELEMETRY_CLIENT_URI = ESP32_ADDRESS + "/telemetry"
 CONTROLLER_CLIENT_URI = ESP32_ADDRESS
+STREAM_CLIENT_URI = os.environ.get("RPI_ADDRESS", "ws://192.168.50.16:8765")
 
 
 class ClientConnection:
@@ -72,8 +72,13 @@ class ClientConnection:
                     if "r" in self._mode:
                         try:
                             self._recv_frame(client)
-                        except websockets.exceptions.ConnectionClosed:
+                        except websockets.exceptions.ConnectionClosedOK:
                             logger.info("%s connection closed", self._uri)
+                            keep_client_connection = False
+                        except websockets.exceptions.ConnectionClosedError as e:
+                            logger.info(
+                                "%s connection closed - error: %s", self._uri, e
+                            )
                             keep_client_connection = False
                         except TimeoutError:
                             logger.warning("%s timed out", self._uri)

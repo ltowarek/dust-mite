@@ -13,7 +13,7 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-ESP32_ADDRESS = os.environ.get("ESP32_ADDRESS", "<ESP32_ADDRESS>")
+ESP32_ADDRESS = os.environ.get("ESP32_ADDRESS", "ws://192.168.50.66")
 
 
 class Command(Enum):
