@@ -1,0 +1,45 @@
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    env_list =
+        py311
+
+    [testenv]
+    deps = -r requirements/dev.txt
+    system_site_packages = True
+    commands = pytest tests/ {posargs}
+"""
+
+[tool.mypy]
+python_version = "3.11"
+files = [
+    "src/**/*.py",
+    "tests/**/*.py"
+]
+strict = true
+
+[tool.ruff]
+target-version = "py311"
+include = [
+    "pyproject.toml",
+    "src/**/*.py",
+    "tests/**/*.py"
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812",
+    "ISC001",
+    "S101",
+    "TD002",
+    "TD003",
+    "FIX002"
+]
+unfixable = ["F401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
