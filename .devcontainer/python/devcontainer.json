@@ -8,6 +8,7 @@
     "workspaceFolder": "/workspace/controller",
     "runArgs": [
         // Mount PS5 controller
+        // Need to hard-code the device due to https://github.com/microsoft/vscode-remote-release/issues/3972
         // "--device",
         // "/dev/hidraw3",
         // Set environment variables
