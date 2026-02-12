@@ -51,7 +51,7 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.cmake-tools",
-                "espressif.esp-idf-extension",
+                "espressif.esp-idf-extension@1.11.1",
                 "streetsidesoftware.code-spell-checker",
                 "GitHub.vscode-github-actions"
             ]
