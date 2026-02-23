@@ -13,8 +13,6 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-ESP32_ADDRESS = os.environ.get("ESP32_ADDRESS", "ws://192.168.50.66")
-
 
 class Command(Enum):
     """Car commands."""
@@ -48,7 +46,8 @@ def interpolate(
 
 
 if __name__ == "__main__":
-    ws_conn = websockets.sync.client.connect(ESP32_ADDRESS)
+    controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
+    ws_conn = websockets.sync.client.connect(controller_client_uri)
 
     ds = pydualsense()
     ds.init()
