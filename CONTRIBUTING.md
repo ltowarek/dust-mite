@@ -88,9 +88,9 @@ If checks fail, apply automatic fixes:
 
 ### Test types
 
-- Unit tests: [controller/tests/unit/](controller/tests/unit/)
-- Integration tests: [controller/tests/integration/](controller/tests/integration/)
-- E2E tests: not implemented yet
+- Unit tests: validate individual controller modules and functions in isolation using focused test doubles where needed; implemented in [controller/tests/unit/](controller/tests/unit/).
+- Integration tests: validate interactions across controller boundaries (for example websocket communication and packet flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/).
+- E2E tests: validate full user-level control flows across the complete stack (controller input to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
 
 Run specific suites:
 
@@ -140,9 +140,14 @@ idf.py monitor
 
 ### Test types
 
-- Unit tests: [car/test/main/](car/test/main/) (Unity-based firmware tests)
-- Integration tests: not implemented yet
-- E2E tests: not implemented yet
+- Component tests: Unity-based tests focused on a single firmware component API/behavior, implemented in each component `test/` directory and run through the ESP-IDF test app, for example:
+	- [car/components/camera/test/](car/components/camera/test/)
+	- [car/components/motor/test/](car/components/motor/test/)
+	- [car/components/telemetry/test/](car/components/telemetry/test/)
+	- [car/components/web_server/test/](car/components/web_server/test/)
+- Test runner app: [car/test/](car/test/) is a dedicated ESP-IDF test project that collects and runs selected component tests.
+- Integration tests: validate interactions between multiple car components (for example command handling, telemetry, and web server behavior together) on target-like runtime conditions; not implemented yet.
+- E2E tests: validate complete end-to-end driving flows (input/control path to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
 
 Build test firmware:
 
