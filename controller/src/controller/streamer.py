@@ -22,11 +22,6 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-ESP32_ADDRESS = os.environ.get("ESP32_ADDRESS", "ws://192.168.50.66")
-TELEMETRY_CLIENT_URI = ESP32_ADDRESS + "/telemetry"
-CONTROLLER_CLIENT_URI = ESP32_ADDRESS
-STREAM_CLIENT_URI = os.environ.get("RPI_ADDRESS", "ws://192.168.50.16:8765")
-
 
 class ClientConnection:
     """Wrapper around Websocket client connection.
@@ -146,10 +141,14 @@ def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
     """WebSocket handler for incoming requests."""
     logger.info("Server connection from: %s", websocket.remote_address[0])
 
+    telemetry_client_uri = os.environ["TELEMETRY_CLIENT_URI"]
+    controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
+    stream_client_uri = os.environ["STREAM_CLIENT_URI"]
+
     with (
-        ClientConnection(STREAM_CLIENT_URI, "r") as stream_client,
-        ClientConnection(TELEMETRY_CLIENT_URI, "r") as telemetry_client,
-        ClientConnection(CONTROLLER_CLIENT_URI, "w") as controller_client,
+        ClientConnection(stream_client_uri, "r") as stream_client,
+        ClientConnection(telemetry_client_uri, "r") as telemetry_client,
+        ClientConnection(controller_client_uri, "w") as controller_client,
     ):
         camera_frame: bytes = b""
         telemetry: dict[str, Any] = {}
