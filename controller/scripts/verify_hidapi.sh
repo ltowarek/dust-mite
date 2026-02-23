@@ -2,5 +2,5 @@
 
 set -e
 
-hidapitester --list
+hidapitester --list-detail
 hidapitester --vidpid 054C:0CE6 --open --read-input
