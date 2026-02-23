@@ -21,7 +21,7 @@ If the controller does not connect because it was already connected previously, 
 After connecting the controller, list hidraw devices and inspect their metadata:
 
 ```bash
-./scripts/verify_hidapi.sh
+./controller/scripts/verify_hidapi.sh
 ```
 
 In the script output, look for the `DualSense Wireless Controller` section and use its `path` field (for example, `/dev/hidraw8`) as your controller device.
@@ -30,7 +30,7 @@ In the script output, look for the `DualSense Wireless Controller` section and u
 
 Use the same hidraw path everywhere.
 
-### [.env](../../.env)
+### [.env](../.env)
 
 Set:
 
@@ -38,7 +38,7 @@ Set:
 CONTROLLER_DEVICE=/dev/hidraw8
 ```
 
-### [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json)
+### [.devcontainer/python/devcontainer.json](../.devcontainer/python/devcontainer.json)
 
 In `runArgs`, make sure the `"--device"` value matches the same path:
 
