@@ -1,0 +1,174 @@
+# Contributing to dust-mite
+
+Thanks for contributing.
+This repository is an experimentation playground, so contributions that improve learning value, clarity, and iteration speed are especially welcome.
+
+## Ground rules
+
+- Keep changes focused and easy to review.
+- Prefer small pull requests over large rewrites.
+- Preserve existing style and tooling unless a change explicitly updates them.
+- Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
+
+## Prerequisites
+
+- Docker
+- VS Code with Dev Containers support
+
+## Initial setup
+
+From repository root:
+
+```bash
+./scripts/install_git_hooks.sh
+```
+
+This installs a Git pre-commit hook that can run project checks.
+
+The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRIPT` configured in each devcontainer.
+
+## Development environment
+
+This project is designed to be developed in VS Code Dev Containers.
+Use devcontainers as the default workflow for all contributions.
+
+Available environments:
+
+- [.devcontainer/python/](.devcontainer/python/) for [controller/](controller/) work
+- [.devcontainer/cpp/](.devcontainer/cpp/) for [car/](car/) firmware work
+
+### Open the correct devcontainer
+
+1. Open the repository in VS Code.
+2. From repository root, generate [.env](.env):
+
+```bash
+./scripts/dump_env.sh
+```
+
+3. Edit [.env](.env) and provide correct values for your setup (for example Wi-Fi SSID/password and other required variables).
+4. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `--device` entries in:
+   - [.devcontainer/python/devcontainer.json](.devcontainer/python/devcontainer.json)
+   - [.devcontainer/cpp/devcontainer.json](.devcontainer/cpp/devcontainer.json)
+5. Run `Dev Containers: Reopen in Container`.
+6. Select:
+	- `Python` when working on [controller/](controller/)
+	- `C++` when working on [car/](car/)
+
+The container image includes project dependencies and VS Code extensions required for that stack.
+
+## Repository map
+
+- [car/](car/) - ESP-IDF firmware for the RC car platform.
+- [controller/](controller/) - Python controller, stream/telemetry integration.
+- [docs/](docs/) - project documentation.
+- [scripts/](scripts/) - repository-level helper scripts.
+
+## Controller development ([controller/](controller/))
+
+In the Python devcontainer, the workspace opens at `/workspace/controller`.
+
+### Run quality checks
+
+```bash
+./scripts/run_checks.sh
+```
+
+If checks fail, apply automatic fixes:
+
+```bash
+./scripts/fix_checks.sh
+```
+
+### Run tests
+
+```bash
+./scripts/run_tests.sh
+```
+
+### Test types
+
+- Unit tests: [controller/tests/unit/](controller/tests/unit/)
+- Integration tests: [controller/tests/integration/](controller/tests/integration/)
+- E2E tests: not implemented yet
+
+Run specific suites:
+
+```bash
+./scripts/run_tests.sh tests/unit
+./scripts/run_tests.sh tests/integration
+```
+
+### Dependency updates
+
+```bash
+./scripts/update_requirements.sh
+./scripts/upgrade_requirements.sh
+./scripts/upgrade_package.sh <package_name>
+./scripts/run_requirements_checks.sh
+```
+
+### Dependency management
+
+This project uses [pip-compile-multi](https://pypi.org/project/pip-compile-multi/) for hard-pinning dependencies versions.
+Please see its documentation for usage instructions.
+In short, `requirements/base.in` contains the list of direct requirements with occasional version constraints (like `Django<2`)
+and `requirements/base.txt` is automatically generated from it by adding recursive tree of dependencies with fixed versions.
+The same goes for `test` and `dev`.
+
+To upgrade dependency versions, run `pip-compile-multi`.
+
+To add a new dependency without upgrade, add it to `requirements/base.in` and run `pip-compile-multi --no-upgrade`.
+
+For installation always use `.txt` files. For example, command `pip install -Ue . -r requirements/dev.txt` will install
+this project in development mode, testing requirements and development tools.
+Another useful command is `pip-sync requirements/dev.txt`, it uninstalls packages from your virtualenv that aren't listed in the file.
+
+## Car firmware development ([car/](car/))
+
+[car/](car/) is an ESP-IDF project.
+In the C++ devcontainer, the ESP-IDF environment is already configured.
+The C++ devcontainer opens at `/workspace/car`.
+
+Typical loop:
+
+```bash
+idf.py build
+idf.py flash
+idf.py monitor
+```
+
+### Test types
+
+- Unit tests: [car/test/main/](car/test/main/) (Unity-based firmware tests)
+- Integration tests: not implemented yet
+- E2E tests: not implemented yet
+
+Build test firmware:
+
+```bash
+cd test
+idf.py build
+```
+
+## CI/CD
+
+GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/).
+
+- [python-controller.yml](.github/workflows/python-controller.yml)
+	- Triggers on pull requests and pushes to `main`
+	- Builds and publishes the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
+	- Runs controller checks in container: lint, format check, type checks, requirements checks, and tests
+- [cpp-car.yml](.github/workflows/cpp-car.yml)
+	- Triggers on pull requests and pushes to `main`
+	- Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
+	- Runs firmware build for [car/](car/) and test build for [car/test/](car/test/)
+
+Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
+
+## Pull request checklist
+
+- Reference the related GitHub Issue (or explain why none is needed).
+- Keep PR description clear: motivation, scope, and validation steps.
+- Run relevant checks/tests for the component you changed.
+- Update docs ([README.md](README.md), [docs/](docs/)) when behavior or workflows change.
