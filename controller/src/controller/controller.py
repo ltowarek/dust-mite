@@ -55,7 +55,7 @@ if __name__ == "__main__":
     command: Command
     value: int | None
 
-    lx_dead_zone = 5
+    analog_dead_zone = 5
     last_command = Command.BRAKE
     last_value = None
     while not ds.state.ps:
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         elif ds.state.DpadLeft:
             command = Command.TURN_LEFT
             value = 50
-        elif not (-lx_dead_zone <= ds.state.LX <= lx_dead_zone):
+        elif not (-analog_dead_zone <= ds.state.LX <= analog_dead_zone):
             if ds.state.LX < 0:
                 command = Command.TURN_LEFT
                 value = int(interpolate(ds.state.LX, -128, 0, 100, 0))
@@ -81,10 +81,10 @@ if __name__ == "__main__":
         # TODO: Split car and camera commands
         # Currently there is no way to drive a car and look around
         # What's more, you can't look horizontally and vertically and the same time
-        elif ds.state.RX:
+        elif not (-analog_dead_zone <= ds.state.RX <= analog_dead_zone):
             command = Command.LOOK_HORIZONTALLY
             value = int(interpolate(ds.state.RX, -128, 127, -90, 90))
-        elif ds.state.RY:
+        elif not (-analog_dead_zone <= ds.state.RY <= analog_dead_zone):
             command = Command.LOOK_VERTICALLY
             value = int(interpolate(ds.state.RY, -128, 127, 90, -90))
         elif ds.state.R2 > 0:
