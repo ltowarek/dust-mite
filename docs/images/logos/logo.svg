@@ -3,7 +3,7 @@
   <defs>
     <mask id="eyeMask">
       <rect width="100%" height="100%" fill="white"/>
-      <circle cx="410" cy="220" r="16" fill="black"/>
+      <circle cx="404" cy="226" r="24" fill="black"/>
     </mask>
   </defs>
 
@@ -38,7 +38,8 @@
       L 105 310
       Z
     " stroke="none" mask="url(#eyeMask)"/>
-    <circle cx="412" cy="222" r="7" stroke="none"/>
+    <circle cx="406" cy="228" r="11" fill="#ffffff" stroke="#111111" stroke-width="2"/>
+    <circle cx="406" cy="228" r="5" fill="#111111" stroke="none"/>
 
     <!-- Antenna with sensor -->
     <path d="M410 195 Q430 140 445 100 Q450 85 460 78" fill="none" stroke-width="7"/>

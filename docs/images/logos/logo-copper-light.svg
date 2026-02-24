@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 400" width="512" height="400">
-  <!-- Dust Mite — LIGHT variant (dark mite, for use on light backgrounds) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 400" width="1260" height="400">
+  <!-- Dust Mite + Copper -->
   <defs>
     <mask id="eyeMask">
       <rect width="100%" height="100%" fill="white"/>
@@ -8,7 +8,6 @@
   </defs>
 
   <g id="mite" fill="#1a1a2e" stroke="#1a1a2e" stroke-linecap="round" stroke-linejoin="round">
-
     <!-- Rear wheel -->
     <circle cx="155" cy="320" r="40" fill="none" stroke-width="14"/>
     <circle cx="155" cy="320" r="10"/>
@@ -46,6 +45,17 @@
     <circle cx="463" cy="72" r="13" stroke="none"/>
     <path d="M476 60 A18 18 0 0 1 480 78" fill="none" stroke-width="4"/>
     <path d="M484 52 A30 30 0 0 1 490 86" fill="none" stroke-width="3"/>
-
   </g>
+
+  <text
+    x="530"
+    y="230"
+    fill="#1a1a2e"
+    font-family="Inter, Segoe UI, Arial, sans-serif"
+    font-size="130"
+    font-weight="700"
+    letter-spacing="1"
+  >
+    Copper
+  </text>
 </svg>

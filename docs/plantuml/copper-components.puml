@@ -1,0 +1,46 @@
+@startuml copper-components
+skinparam linetype ortho
+
+package "DualSense" {
+	interface "Bluetooth" as IF_BT_DS
+}
+
+cloud "Wi-Fi" {
+	package "Linux PC" {
+		component "Controller" as PC_CTRL {
+		    interface "Bluetooth" as IF_BT_PC_CTRL
+            interface "WebSocket\nClient [/]" as IF_WS_CLIENT_PC_CTRL
+        }
+		component "Streamer" as PC_STREAMER {
+            interface "WebSocket\nClient [/]" as IF_WS_CLIENT_PC_STREAMER_CTRL
+            interface "WebSocket\nClient [/stream]" as IF_WS_CLIENT_PC_STREAMER_STREAM
+            interface "WebSocket\nClient [/telemetry]" as IF_WS_CLIENT_PC_STREAMER_TELEMETRY
+            interface "WebSocket\nServer [/]" as IF_WS_SERVER_PC_STREAMER
+        }
+		component "Web page" as PC_WEB
+
+        IF_WS_SERVER_PC_STREAMER --> PC_WEB
+	}
+
+	package "ESP32-S3" {
+		component "Motor" as RB_MOTOR
+		component "Telemetry" as RB_TELEMETRY
+		component "Camera" as RB_CAMERA
+
+        interface "WebSocket\nServer [/]" as IF_WS_SERVER_RB_CTRL
+        interface "WebSocket\nServer [/stream]" as IF_WS_SERVER_RB_STREAM
+        interface "WebSocket\nServer [/telemetry]" as IF_WS_SERVER_RB_TELEMETRY
+
+        IF_WS_SERVER_RB_CTRL --> RB_MOTOR
+        IF_WS_SERVER_RB_TELEMETRY <-- RB_TELEMETRY
+        IF_WS_SERVER_RB_STREAM <-- RB_CAMERA
+	}
+}
+
+IF_BT_DS --> IF_BT_PC_CTRL
+IF_WS_CLIENT_PC_CTRL --> IF_WS_SERVER_RB_CTRL
+IF_WS_CLIENT_PC_STREAMER_STREAM <-- IF_WS_SERVER_RB_STREAM
+IF_WS_CLIENT_PC_STREAMER_TELEMETRY <-- IF_WS_SERVER_RB_TELEMETRY
+IF_WS_CLIENT_PC_STREAMER_CTRL --> IF_WS_SERVER_RB_CTRL
+
+@enduml

@@ -57,6 +57,17 @@ Available environments:
 
 The container image includes project dependencies and VS Code extensions required for that stack.
 
+## Variants
+
+Variants use code names based on chemical elements (for example `Copper`, `Iron`).
+
+Each new variant must include:
+
+- A dedicated logo in [docs/images/logos/](docs/images/logos/).
+- Variant photos in [docs/images/](docs/images/).
+- Variant documentation in [docs/variants/](docs/variants/).
+- An entry in [docs/variants.md](docs/variants.md).
+
 ## Repository map
 
 - [car/](car/) - ESP-IDF firmware for the RC car platform.
@@ -154,6 +165,51 @@ Build test firmware:
 ```bash
 cd test
 idf.py build
+```
+
+## Documentation
+
+### Diagrams
+
+Documentation diagrams are generated from PlantUML sources.
+
+Requirements (Ubuntu):
+
+```bash
+sudo apt install default-jre graphviz plantuml
+```
+
+Generate all diagrams from repository root:
+
+```bash
+./scripts/generate_plantuml_diagrams.sh
+```
+
+The script reads `.puml` files from [docs/plantuml/](docs/plantuml/) and regenerates `.svg` outputs in the same directory.
+
+### Images
+
+Documentation images should be optimized and branded consistently before they are committed.
+
+Requirements (Ubuntu):
+
+```bash
+sudo apt install imagemagick
+```
+
+When adding new documentation images:
+
+1. Put the image under [docs/images/](docs/images/).
+2. Optimize it:
+
+```bash
+./scripts/optimize_image.sh <path_to_image.jpg>
+```
+
+3. Apply logo overlay (available under [docs/images/logos/](docs/images/logos/)):
+
+```bash
+./scripts/apply_logo.sh <path_to_logo.svg> <path_to_image.jpg>
 ```
 
 ## CI/CD

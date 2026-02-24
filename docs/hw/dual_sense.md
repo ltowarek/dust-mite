@@ -4,7 +4,7 @@ This guide explains how to:
 
 1. Put a DualSense controller into pairing mode.
 2. Find which `/dev/hidraw*` device Linux assigned to it.
-3. Configure that device path in both `.env` and `.devcontainer/python/devcontainer.json`.
+3. Configure that device path in both [.env](../../.env) and [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json).
 
 ## 1) Enter pairing mode
 
@@ -30,7 +30,7 @@ In the script output, look for the `DualSense Wireless Controller` section and u
 
 Use the same hidraw path everywhere.
 
-### [.env](../.env)
+### [.env](../../.env)
 
 Set:
 
@@ -38,7 +38,7 @@ Set:
 CONTROLLER_DEVICE=/dev/hidraw8
 ```
 
-### [.devcontainer/python/devcontainer.json](../.devcontainer/python/devcontainer.json)
+### [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json)
 
 In `runArgs`, make sure the `"--device"` value matches the same path:
 
@@ -59,4 +59,4 @@ After changing device mapping values:
 2. Reconnect the controller if needed.
 3. Start the controller process again.
 
-If the path is wrong or mismatched between `.env` and `devcontainer.json`, the controller may be visible on the host but unavailable inside the container.
+If the path is wrong or mismatched between [.env](../../.env) and [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json), the controller may be visible on the host but unavailable inside the container.

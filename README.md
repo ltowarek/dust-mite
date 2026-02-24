@@ -16,10 +16,6 @@ The goal is not to create the most advanced self-driving RC car. The goal is to 
 - Learn by building real systems end to end.
 - Keep the project practical, hackable, and easy to evolve.
 
-## Quick start
-
-Getting started instructions are in [docs/quick_start.md](docs/quick_start.md).
-
 ## Variants
 
 There are multiple dust-mite variants documented in [docs/variants.md](docs/variants.md).
