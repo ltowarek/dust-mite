@@ -235,3 +235,10 @@ Before opening a pull request, run the relevant local checks in the matching dev
 - Keep PR description clear: motivation, scope, and validation steps.
 - Run relevant checks/tests for the component you changed.
 - Update docs ([README.md](README.md), [docs/](docs/)) when behavior or workflows change.
+
+## AGENTS.md
+
+[AGENTS.md](AGENTS.md) is a table-of-contents style index for coding agents.
+It links to authoritative guidance in [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) instead of duplicating procedures.
+
+When documentation structure or workflows change, keep [AGENTS.md](AGENTS.md) in sync in the same pull request so agent navigation remains accurate.
