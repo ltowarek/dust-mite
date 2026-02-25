@@ -2,11 +2,26 @@
 
 This guide explains how to:
 
-1. Put a DualSense controller into pairing mode.
-2. Find which `/dev/hidraw*` device Linux assigned to it.
-3. Configure that device path in both [.env](../../.env) and [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json).
+1. Configure a stable DualSense device mapping on Linux.
+2. Put a DualSense controller into pairing mode and verify host-side visibility.
+3. Configure the selected controller device path in both [.env](../../.env) and [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json).
+4. Start the Python devcontainer and verify controller visibility.
 
-## 1) Enter pairing mode
+## 1) Find the DualSense hidraw mapping
+
+Create a stable alias (`/dev/dual_sense`) so reconnects/reboots do not change the path.
+
+Install the udev rule on the host:
+
+```bash
+sudo ./controller/scripts/install_udev_rules.sh
+```
+
+This creates `/etc/udev/rules.d/70-dualsense.rules`, reloads rules, and maps the controller to `/dev/dual_sense`.
+
+If required, an explicit `/dev/hidrawN` path can still be provided manually, but it may change between reconnects/reboots.
+
+## 2) Enter pairing mode
 
 1. Turn the controller off.
 2. Press and hold **Create** + **PS** buttons together for about 5 seconds.
@@ -14,49 +29,53 @@ This guide explains how to:
 
 Pair the controller with the Linux PC.
 
-If the controller does not connect because it was already connected previously, forget/remove the device in Linux Bluetooth settings and pair it again.
-
-## 2) Find the DualSense hidraw device
-
-After connecting the controller, list hidraw devices and inspect their metadata:
+Quick connection check:
 
 ```bash
-./controller/scripts/verify_hidapi.sh
+CONTROLLER_DEVICE=/dev/dual_sense ./controller/scripts/verify_dualsense_connection.sh
 ```
 
-In the script output, look for the `DualSense Wireless Controller` section and use its `path` field (for example, `/dev/hidraw8`) as your controller device.
+If the controller does not connect because it was already connected previously, forget/remove the device in Linux Bluetooth settings and pair it again.
 
 ## 3) Configure the device path in all required places
 
-Use the same hidraw path everywhere.
+Use the same device path everywhere.
 
 ### [.env](../../.env)
 
 Set:
 
 ```env
-CONTROLLER_DEVICE=/dev/hidraw8
+CONTROLLER_DEVICE=/dev/dual_sense
 ```
 
 ### [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json)
 
-In `runArgs`, make sure the `"--device"` value matches the same path:
+In `runArgs`, ensure the `"--device"` value matches the same path:
 
 ```jsonc
 "runArgs": [
 	"--device",
-	"/dev/hidraw8",
+	"/dev/dual_sense",
 	"--env-file",
 	".env"
 ]
 ```
 
-## 4) Restart container/session
+## 4) Start the Python devcontainer and verify controller visibility
 
-After changing device mapping values:
+1. Rebuild/reopen the `Python` devcontainer.
+2. In the devcontainer terminal, verify HID visibility:
 
-1. Rebuild/reopen the devcontainer.
-2. Reconnect the controller if needed.
-3. Start the controller process again.
+	```bash
+	./controller/scripts/verify_hidapi.sh
+	```
 
-If the path is wrong or mismatched between [.env](../../.env) and [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json), the controller may be visible on the host but unavailable inside the container.
+	Confirm that `DualSense Wireless Controller` is listed.
+3. Start the controller process:
+
+	```bash
+	python ./controller/src/controller/controller.py
+	```
+
+If the controller is not visible in step 2, re-check `CONTROLLER_DEVICE` in [.env](../../.env), the `--device` mapping in [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json), and reconnect the controller on the host.
