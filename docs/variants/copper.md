@@ -46,7 +46,7 @@
 	- In one terminal, run `python src/controller/controller.py`.
 	- In another terminal, run `python src/controller/streamer.py`.
 	- Open [src/controller/web/index.html](../../controller/src/controller/web/index.html) in a web browser (the page connects to `ws://localhost:8765`).
-- If everything works correctly, you can control the robot with the DualSense controller and monitor both telemetry and camera feed on the web page.
+- After successful setup, the robot can be controlled with the DualSense controller, and telemetry plus camera feed can be monitored on the web page.
 
 
 ## HW notes

@@ -6,15 +6,15 @@
 
 # dust-mite
 
-dust-mite is a playground for building a self-driving RC car across different hardware and software setups.
+dust-mite is an experimental platform for developing a self-driving RC car across multiple hardware and software configurations.
 
-The goal is not to create the most advanced self-driving RC car. The goal is to experiment, compare platforms, and learn something new with every iteration.
+The primary objective is to evaluate platform trade-offs, compare implementation approaches, and iteratively improve system understanding.
 
 ## Why this project
 
-- Explore multiple HW + SW combinations for the same core objective.
-- Learn by building real systems end to end.
-- Keep the project practical, hackable, and easy to evolve.
+- Evaluate multiple hardware and software combinations for a shared control objective.
+- Support end-to-end system learning through implementation and validation.
+- Maintain a practical architecture that is straightforward to extend.
 
 ## Variants
 

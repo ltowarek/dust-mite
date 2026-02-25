@@ -1,7 +1,7 @@
 # Contributing to dust-mite
 
-Thanks for contributing.
-This repository is an experimentation playground, so contributions that improve learning value, clarity, and iteration speed are especially welcome.
+Contributions are welcome.
+This repository is an experimental platform, and contributions that improve technical clarity, learning value, and iteration speed are prioritized.
 
 ## Ground rules
 
@@ -60,12 +60,12 @@ Available environments:
 
 The container image includes project dependencies and VS Code extensions required for that stack.
 
-#### Why VS Code workspace files are used
+#### Rationale for VS Code workspace files
 
-- A plain single-root workspace is not a good fit for this repository layout when using the ESP-IDF extension. The extension expects the workspace root to match an ESP-IDF project structure (see the [ESP-IDF example project layout](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/build-system.html#example-project)).
-- Pointing `workspaceFolder` directly to [car/](car/) makes ESP-IDF tooling work reliably, but then editing files at repository root (for example docs or devcontainer config) becomes terminal-only and cumbersome.
+- A plain single-root workspace is not suitable for this repository layout when using the ESP-IDF extension. The extension expects the workspace root to match an ESP-IDF project structure (see the [ESP-IDF example project layout](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/build-system.html#example-project)).
+- Pointing `workspaceFolder` directly to [car/](car/) enables reliable ESP-IDF tooling, but editing files at repository root (for example docs or devcontainer config) becomes terminal-only and inefficient.
 - Using [cpp.code-workspace](cpp.code-workspace) keeps [car/](car/) as the active project while still exposing the repository root in the same VS Code session.
-- Keep workspace files (for example [cpp.code-workspace](cpp.code-workspace) and [python.code-workspace](python.code-workspace)) at repository root. If a `.code-workspace` file is stored in a subfolder, Dev Containers can't resolve that subfolder's parent as the shared directory.
+- Keep workspace files (for example [cpp.code-workspace](cpp.code-workspace) and [python.code-workspace](python.code-workspace)) at repository root. If a `.code-workspace` file is stored in a subfolder, Dev Containers cannot resolve that subfolder's parent as the shared directory.
 
 ## Variants
 
@@ -182,6 +182,8 @@ idf.py build
 Use the `Docs` devcontainer for documentation updates that require PlantUML/Graphviz/ImageMagick tooling.
 
 Open repository root in the `Docs` devcontainer and run documentation scripts from repository root.
+
+Documentation content should use formal technical language and avoid conversational phrasing.
 
 ### Diagrams
 
