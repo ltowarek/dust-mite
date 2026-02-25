@@ -36,26 +36,36 @@ Available environments:
 
 - [.devcontainer/python/](.devcontainer/python/) for [controller/](controller/) work
 - [.devcontainer/cpp/](.devcontainer/cpp/) for [car/](car/) firmware work
+- [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
 
-### Open the correct devcontainer
+### Open the correct workspace in container
 
 1. Open the repository in VS Code.
 2. From repository root, generate [.env](.env):
 
-```bash
-./scripts/dump_env.sh
-```
+   ```bash
+   ./scripts/dump_env.sh
+   ```
 
 3. Edit [.env](.env) and provide correct values for your setup (for example Wi-Fi SSID/password and other required variables).
-4. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `--device` entries in:
+4. Open the target locally first in VS Code:
+   - For [python.code-workspace](python.code-workspace) or [cpp.code-workspace](cpp.code-workspace):
+     1. Run `File: Open Workspace from File...`.
+     2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, or [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work.
+   - For docs work: run `File: Open Folder...` and select the repository root folder for [docs/](docs/).
+5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `--device` entries in:
    - [.devcontainer/python/devcontainer.json](.devcontainer/python/devcontainer.json)
    - [.devcontainer/cpp/devcontainer.json](.devcontainer/cpp/devcontainer.json)
-5. Run `Dev Containers: Reopen in Container`.
-6. Select:
-	- `Python` when working on [controller/](controller/)
-	- `C++` when working on [car/](car/)
+6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, or `Docs`).
 
 The container image includes project dependencies and VS Code extensions required for that stack.
+
+#### Why VS Code workspace files are used
+
+- A plain single-root workspace is not a good fit for this repository layout when using the ESP-IDF extension. The extension expects the workspace root to match an ESP-IDF project structure (see the [ESP-IDF example project layout](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/build-system.html#example-project)).
+- Pointing `workspaceFolder` directly to [car/](car/) makes ESP-IDF tooling work reliably, but then editing files at repository root (for example docs or devcontainer config) becomes terminal-only and cumbersome.
+- Using [cpp.code-workspace](cpp.code-workspace) keeps [car/](car/) as the active project while still exposing the repository root in the same VS Code session.
+- Keep workspace files (for example [cpp.code-workspace](cpp.code-workspace) and [python.code-workspace](python.code-workspace)) at repository root. If a `.code-workspace` file is stored in a subfolder, Dev Containers can resolve that subfolder's parent as the shared directory.
 
 ## Variants
 
@@ -97,7 +107,7 @@ If checks fail, apply automatic fixes:
 ./scripts/run_tests.sh
 ```
 
-### Test types
+### Controller test types
 
 - Unit tests: validate individual controller modules and functions in isolation using focused test doubles where needed; implemented in [controller/tests/unit/](controller/tests/unit/).
 - Integration tests: validate interactions across controller boundaries (for example websocket communication and packet flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/).
@@ -149,13 +159,13 @@ idf.py flash
 idf.py monitor
 ```
 
-### Test types
+### Car test types
 
 - Component tests: Unity-based tests focused on a single firmware component API/behavior, implemented in each component `test/` directory and run through the ESP-IDF test app, for example:
-	- [car/components/camera/test/](car/components/camera/test/)
-	- [car/components/motor/test/](car/components/motor/test/)
-	- [car/components/telemetry/test/](car/components/telemetry/test/)
-	- [car/components/web_server/test/](car/components/web_server/test/)
+  - [car/components/camera/test/](car/components/camera/test/)
+  - [car/components/motor/test/](car/components/motor/test/)
+  - [car/components/telemetry/test/](car/components/telemetry/test/)
+  - [car/components/web_server/test/](car/components/web_server/test/)
 - Test runner app: [car/test/](car/test/) is a dedicated ESP-IDF test project that collects and runs selected component tests.
 - Integration tests: validate interactions between multiple car components (for example command handling, telemetry, and web server behavior together) on target-like runtime conditions; not implemented yet.
 - E2E tests: validate complete end-to-end driving flows (input/control path to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
@@ -169,15 +179,13 @@ idf.py build
 
 ## Documentation
 
+Use the `Docs` devcontainer for documentation updates that require PlantUML/Graphviz/ImageMagick tooling.
+
+Open repository root in the `Docs` devcontainer and run documentation scripts from repository root.
+
 ### Diagrams
 
 Documentation diagrams are generated from PlantUML sources.
-
-Requirements (Ubuntu):
-
-```bash
-sudo apt install default-jre graphviz plantuml
-```
 
 Generate all diagrams from repository root:
 
@@ -191,39 +199,33 @@ The script reads `.puml` files from [docs/plantuml/](docs/plantuml/) and regener
 
 Documentation images should be optimized and branded consistently before they are committed.
 
-Requirements (Ubuntu):
-
-```bash
-sudo apt install imagemagick
-```
-
 When adding new documentation images:
 
 1. Put the image under [docs/images/](docs/images/).
 2. Optimize it:
 
-```bash
-./scripts/optimize_image.sh <path_to_image.jpg>
-```
+   ```bash
+   ./scripts/optimize_image.sh <path_to_image.jpg>
+   ```
 
 3. Apply logo overlay (available under [docs/images/logos/](docs/images/logos/)):
 
-```bash
-./scripts/apply_logo.sh <path_to_logo.svg> <path_to_image.jpg>
-```
+   ```bash
+   ./scripts/apply_logo.sh <path_to_logo.svg> <path_to_image.jpg>
+   ```
 
 ## CI/CD
 
 GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/).
 
 - [python-controller.yml](.github/workflows/python-controller.yml)
-	- Triggers on pull requests and pushes to `main`
-	- Builds and publishes the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
-	- Runs controller checks in container: lint, format check, type checks, requirements checks, and tests
+  - Triggers on pull requests and pushes to `main`
+  - Builds and publishes the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
+  - Runs controller checks in container: lint, format check, type checks, requirements checks, and tests
 - [cpp-car.yml](.github/workflows/cpp-car.yml)
-	- Triggers on pull requests and pushes to `main`
-	- Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
-	- Runs firmware build for [car/](car/) and test build for [car/test/](car/test/)
+  - Triggers on pull requests and pushes to `main`
+  - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
+  - Runs firmware build for [car/](car/) and test build for [car/test/](car/test/)
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
 

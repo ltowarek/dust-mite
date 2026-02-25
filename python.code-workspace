@@ -1,0 +1,9 @@
+{
+  "folders": [
+    { "path": "controller" },
+    { "path": "." }
+  ],
+  "settings": {
+    "terminal.integrated.cwd": "${workspaceFolder:controller}"
+  }
+}

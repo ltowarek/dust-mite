@@ -4,8 +4,6 @@
         "dockerfile": "./Dockerfile",
         "context": "../../"
     },
-    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-    "workspaceFolder": "/workspace/car",
     "runArgs": [
         // Mount ESP32
         // Need to hard-code the device due to https://github.com/microsoft/vscode-remote-release/issues/3972
@@ -16,7 +14,7 @@
         ".env"
     ],
     "containerEnv": {
-        "PRE_COMMIT_SCRIPT": "/workspace/car/scripts/pre-commit.sh"
+        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/car/scripts/pre-commit.sh"
     },
     "customizations": {
         "vscode": {
@@ -29,7 +27,7 @@
                 "idf.flashType": "UART",
                 "idf.adapterTargetName": "esp32s3",
                 "cmake.generator": "Ninja",
-                "git.openRepositoryInParentFolders": "always",
+                "cmake.configureOnOpen": false,
                 "cSpell.words": [
                     "devcontainer",
                     "UART",
@@ -52,8 +50,7 @@
                 "ms-vscode.cpptools",
                 "ms-vscode.cmake-tools",
                 "espressif.esp-idf-extension@1.11.1",
-                "streetsidesoftware.code-spell-checker",
-                "GitHub.vscode-github-actions"
+                "streetsidesoftware.code-spell-checker"
             ]
         }
     },

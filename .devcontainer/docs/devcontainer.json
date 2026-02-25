@@ -1,0 +1,16 @@
+{
+    "name": "Docs",
+    "build": {
+        "dockerfile": "./Dockerfile",
+        "context": "../../"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "streetsidesoftware.code-spell-checker",
+                "jebbs.plantuml"
+            ]
+        }
+    },
+    "remoteUser": "vscode"
+}

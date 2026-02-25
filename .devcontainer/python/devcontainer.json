@@ -4,8 +4,6 @@
         "dockerfile": "./Dockerfile",
         "context": "../../"
     },
-    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-    "workspaceFolder": "/workspace/controller",
     "runArgs": [
         // Mount PS5 controller
         // Need to hard-code the device due to https://github.com/microsoft/vscode-remote-release/issues/3972
@@ -21,12 +19,11 @@
         "VIRTUAL_ENV": "/opt/venv"
     },
     "containerEnv": {
-        "PRE_COMMIT_SCRIPT": "/workspace/controller/scripts/pre-commit.sh"
+        "PRE_COMMIT_SCRIPT": "/${containerWorkspaceFolder}/controller/scripts/pre-commit.sh"
     },
     "customizations": {
         "vscode": {
             "settings": {
-                "git.openRepositoryInParentFolders": "always",
                 "python.defaultInterpreterPath": "/opt/venv",
                 "python.testing.pytestEnabled": true,
                 "python.testing.pytestArgs": [
@@ -62,8 +59,7 @@
                 "ms-python.debugpy",
                 "streetsidesoftware.code-spell-checker",
                 "charliermarsh.ruff",
-                "ms-python.mypy-type-checker",
-                "GitHub.vscode-github-actions"
+                "ms-python.mypy-type-checker"
             ]
         }
     },
