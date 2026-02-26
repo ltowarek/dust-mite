@@ -31,12 +31,15 @@ The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRI
 
 This project is designed to be developed in VS Code Dev Containers.
 Use devcontainers as the default workflow for all contributions.
+Define shared default VS Code settings in the relevant devcontainer configuration instead of local `.vscode/settings.json` files.
 
 Available environments:
 
-- [.devcontainer/python/](.devcontainer/python/) for [controller/](controller/) work
+- [.devcontainer/python/](.devcontainer/python/) for [controller/](controller/) work (controller app and Raspberry Pi camera service code quality checks)
 - [.devcontainer/cpp/](.devcontainer/cpp/) for [car/](car/) firmware work
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
+
+There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
 
 ### Open the correct workspace in container
 
@@ -81,7 +84,7 @@ Each new variant must include:
 ## Repository map
 
 - [car/](car/) - ESP-IDF firmware for the RC car platform.
-- [controller/](controller/) - Python controller, stream/telemetry integration.
+- [controller/](controller/) - Python controller, stream/telemetry integration, and Raspberry Pi camera service source under [controller/src/controller/rpi/camera.py](controller/src/controller/rpi/camera.py).
 - [docs/](docs/) - project documentation.
 - [scripts/](scripts/) - repository-level helper scripts.
 
@@ -120,7 +123,25 @@ Run specific suites:
 ./scripts/run_tests.sh tests/integration
 ```
 
-### Dependency updates
+### Raspberry Pi camera service ([controller/src/controller/rpi/camera.py](controller/src/controller/rpi/camera.py))
+
+Camera service code is developed with the same formatter/linter/type-checker settings as the rest of Python code in [controller/](controller/).
+
+For Raspberry Pi provisioning, runtime requirements, and camera service execution workflow, use [docs/hw/rpi.md](docs/hw/rpi.md).
+
+### Dependency management
+
+Dependencies are managed with [pip-compile-multi](https://pypi.org/project/pip-compile-multi/).
+
+The controller uses three requirement sets:
+
+- `requirements/base.in` → `requirements/base.txt`: main controller runtime dependencies.
+- `requirements/dev.in` → `requirements/dev.txt`: development tooling and test dependencies.
+- `requirements/rpi.in` → `requirements/rpi.txt`: Raspberry Pi camera runtime dependencies.
+
+Edit `.in` files only. Generated `.txt` files are pinned dependencies and should be updated via scripts.
+
+#### Update and verify dependencies
 
 ```bash
 ./scripts/update_requirements.sh
@@ -128,22 +149,6 @@ Run specific suites:
 ./scripts/upgrade_package.sh <package_name>
 ./scripts/run_requirements_checks.sh
 ```
-
-### Dependency management
-
-This project uses [pip-compile-multi](https://pypi.org/project/pip-compile-multi/) for hard-pinning dependencies versions.
-Please see its documentation for usage instructions.
-In short, `requirements/base.in` contains the list of direct requirements with occasional version constraints (like `Django<2`)
-and `requirements/base.txt` is automatically generated from it by adding recursive tree of dependencies with fixed versions.
-The same goes for `test` and `dev`.
-
-To upgrade dependency versions, run `pip-compile-multi`.
-
-To add a new dependency without upgrade, add it to `requirements/base.in` and run `pip-compile-multi --no-upgrade`.
-
-For installation always use `.txt` files. For example, command `pip install -Ue . -r requirements/dev.txt` will install
-this project in development mode, testing requirements and development tools.
-Another useful command is `pip-sync requirements/dev.txt`, it uninstalls packages from your virtualenv that aren't listed in the file.
 
 ## Car firmware development ([car/](car/))
 

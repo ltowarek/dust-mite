@@ -4,7 +4,6 @@ This file is a lightweight navigation guide for coding agents.
 
 - Source-of-truth guidance lives in existing project docs.
 - This file intentionally avoids duplicating procedural details.
-- `camera/` is intentionally omitted at this stage.
 
 ## Table of Contents
 
@@ -24,7 +23,7 @@ This file is a lightweight navigation guide for coding agents.
 
 - Repository layout and contribution flow: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Firmware code and components: [car/](car/)
-- Controller code and tests: [controller/](controller/)
+- Controller code, tests, and Raspberry Pi camera service: [controller/](controller/)
 - Documentation and variant material: [docs/](docs/)
 - Repo-level automation and helper scripts: [scripts/](scripts/)
 
@@ -33,6 +32,7 @@ This file is a lightweight navigation guide for coding agents.
 - Treat [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) as authoritative.
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes.
+- For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 
 ## Validation by Area
@@ -48,4 +48,3 @@ This file is a lightweight navigation guide for coding agents.
 - Diagram sources and generated outputs are in [docs/plantuml/](docs/plantuml/).
 - Use repository docs tooling from [scripts/](scripts/) to regenerate artifacts when needed.
 - Prefer editing source files and regenerating derived outputs; avoid manual edits to generated files unless explicitly requested.
-- Do not change "Dependency management" as it is copied from the official pip-compile-multi documentation.

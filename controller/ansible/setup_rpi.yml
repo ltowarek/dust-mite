@@ -1,0 +1,35 @@
+- name: Configure Raspberry Pi runtime for dust-mite camera service
+  hosts: all
+  vars:
+    repo_local_path: "{{ playbook_dir }}/../.."
+    repo_remote_path: "/home/{{ ansible_user }}/dust-mite"
+    rpi_python_bin: "/usr/bin/python3"
+    rpi_venv_path: "/home/{{ ansible_user }}/venv"
+
+  tasks:
+    - name: Install runtime packages on Raspberry Pi OS
+      become: true
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        name:
+          - python3
+          - python3-venv
+          - python3-pip
+          - python3-picamera2
+          - rsync
+        state: present
+
+    - name: Synchronize repository from local host to Raspberry Pi
+      delegate_to: localhost
+      ansible.posix.synchronize:
+        src: "{{ repo_local_path }}/"
+        dest: "{{ repo_remote_path }}/"
+        archive: true
+        delete: true
+
+    - name: Create virtual environment and install Raspberry Pi runtime requirements
+      ansible.builtin.pip:
+        requirements: "{{ repo_remote_path }}/controller/requirements/rpi.txt"
+        virtualenv: "{{ rpi_venv_path }}"
+        virtualenv_command: "{{ rpi_python_bin }} -m venv --system-site-packages"

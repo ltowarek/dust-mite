@@ -2,8 +2,10 @@ FROM python:3.12-bookworm
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
+    ansible \
     libhidapi-dev \
-    locales
+    locales \
+    rsync
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen

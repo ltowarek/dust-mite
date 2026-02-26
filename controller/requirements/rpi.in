@@ -1,0 +1,2 @@
+# picamera2 is provided by Raspberry Pi OS (system package), so it is not pinned here.
+websockets
