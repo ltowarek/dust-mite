@@ -60,7 +60,7 @@ pytest==8.3.3
     #   pytest-asyncio
 pytest-asyncio==0.24.0
     # via -r requirements/dev.in
-ruff==0.6.9
+ruff==0.15.2
     # via -r requirements/dev.in
 toposort==1.10
     # via pip-compile-multi

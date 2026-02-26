@@ -24,7 +24,7 @@
     "customizations": {
         "vscode": {
             "settings": {
-                "python.defaultInterpreterPath": "/opt/venv",
+                "python.defaultInterpreterPath": "/opt/venv/bin/python",
                 "python.analysis.enabled": false,
                 "python.analysis.typeCheckingMode": "off",
                 "python.testing.pytestEnabled": true,

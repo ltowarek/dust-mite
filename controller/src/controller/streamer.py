@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 import cv2
 import numpy as np
@@ -122,7 +122,7 @@ class ClientConnection:
         """Send a frame."""
         self._send_queue.put(frame)
 
-    def __enter__(self) -> "ClientConnection":
+    def __enter__(self) -> Self:
         """Open a connection in a context manager."""
         self.connect()
         return self
