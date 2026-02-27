@@ -2,45 +2,46 @@
 skinparam linetype ortho
 
 package "DualSense" {
-	interface "Bluetooth" as IF_BT_DS
+	component "Bluetooth" as DS_BT
 }
 
 cloud "Wi-Fi" {
 	package "Linux PC" {
-		component "Controller" as PC_CTRL {
-		    interface "Bluetooth" as IF_BT_PC_CTRL
-            interface "WebSocket\nClient [/]" as IF_WS_CLIENT_PC_CTRL
+		component "Controller" as PC_CONTROLLER {
+		    component "Bluetooth" as PC_BT
+            component "WebSocket\nClient [/]" as PC_CONTROLLER_WS_CLIENT_CONTROL
         }
 		component "Streamer" as PC_STREAMER {
-            interface "WebSocket\nClient [/]" as IF_WS_CLIENT_PC_STREAMER_CTRL
-            interface "WebSocket\nClient [/stream]" as IF_WS_CLIENT_PC_STREAMER_STREAM
-            interface "WebSocket\nClient [/telemetry]" as IF_WS_CLIENT_PC_STREAMER_TELEMETRY
-            interface "WebSocket\nServer [/]" as IF_WS_SERVER_PC_STREAMER
+            component "WebSocket\nClient [/]" as PC_STREAMER_WS_CLIENT_CONTROL
+            component "WebSocket\nClient [/stream]" as PC_STREAMER_WS_CLIENT_STREAM
+            component "WebSocket\nClient [/telemetry]" as PC_STREAMER_WS_CLIENT_TELEMETRY
+            component "WebSocket\nServer [/]" as PC_STREAMER_WS_SERVER_WEB
         }
 		component "Web page" as PC_WEB
-
-        IF_WS_SERVER_PC_STREAMER --> PC_WEB
 	}
 
 	package "ESP32-S3" {
-		component "Motor" as RB_MOTOR
-		component "Telemetry" as RB_TELEMETRY
-		component "Camera" as RB_CAMERA
+		component "Motor" as ESP_MOTOR
+		component "Telemetry" as ESP_TELEMETRY
+		component "Camera" as ESP_CAMERA
 
-        interface "WebSocket\nServer [/]" as IF_WS_SERVER_RB_CTRL
-        interface "WebSocket\nServer [/stream]" as IF_WS_SERVER_RB_STREAM
-        interface "WebSocket\nServer [/telemetry]" as IF_WS_SERVER_RB_TELEMETRY
-
-        IF_WS_SERVER_RB_CTRL --> RB_MOTOR
-        IF_WS_SERVER_RB_TELEMETRY <-- RB_TELEMETRY
-        IF_WS_SERVER_RB_STREAM <-- RB_CAMERA
+        component "WebSocket\nServer [/]" as ESP_WS_SERVER_CONTROL
+        component "WebSocket\nServer [/stream]" as ESP_WS_SERVER_STREAM
+        component "WebSocket\nServer [/telemetry]" as ESP_WS_SERVER_TELEMETRY
 	}
 }
 
-IF_BT_DS --> IF_BT_PC_CTRL
-IF_WS_CLIENT_PC_CTRL --> IF_WS_SERVER_RB_CTRL
-IF_WS_CLIENT_PC_STREAMER_STREAM <-- IF_WS_SERVER_RB_STREAM
-IF_WS_CLIENT_PC_STREAMER_TELEMETRY <-- IF_WS_SERVER_RB_TELEMETRY
-IF_WS_CLIENT_PC_STREAMER_CTRL --> IF_WS_SERVER_RB_CTRL
+DS_BT --> PC_BT
+
+PC_STREAMER_WS_SERVER_WEB --> PC_WEB
+
+PC_CONTROLLER_WS_CLIENT_CONTROL --> ESP_WS_SERVER_CONTROL
+ESP_WS_SERVER_STREAM --> PC_STREAMER_WS_CLIENT_STREAM
+ESP_WS_SERVER_TELEMETRY --> PC_STREAMER_WS_CLIENT_TELEMETRY
+PC_STREAMER_WS_CLIENT_CONTROL --> ESP_WS_SERVER_CONTROL
+
+ESP_WS_SERVER_CONTROL --> ESP_MOTOR
+ESP_TELEMETRY --> ESP_WS_SERVER_TELEMETRY
+ESP_CAMERA --> ESP_WS_SERVER_STREAM
 
 @enduml

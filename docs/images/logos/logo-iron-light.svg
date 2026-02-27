@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 400" width="1260" height="400">
+  <!-- Dust Mite + Iron -->
+  <defs>
+    <mask id="eyeMask">
+      <rect width="100%" height="100%" fill="white"/>
+      <circle cx="404" cy="226" r="24" fill="black"/>
+    </mask>
+  </defs>
+
+  <g id="mite" fill="#1a1a2e" stroke="#1a1a2e" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Rear wheel -->
+    <circle cx="155" cy="320" r="40" fill="none" stroke-width="14"/>
+    <circle cx="155" cy="320" r="10"/>
+    <line x1="155" y1="292" x2="155" y2="304" stroke-width="4"/>
+    <line x1="155" y1="336" x2="155" y2="348" stroke-width="4"/>
+    <line x1="127" y1="320" x2="139" y2="320" stroke-width="4"/>
+    <line x1="171" y1="320" x2="183" y2="320" stroke-width="4"/>
+
+    <!-- Front wheel -->
+    <circle cx="385" cy="320" r="40" fill="none" stroke-width="14"/>
+    <circle cx="385" cy="320" r="10"/>
+    <line x1="385" y1="292" x2="385" y2="304" stroke-width="4"/>
+    <line x1="385" y1="336" x2="385" y2="348" stroke-width="4"/>
+    <line x1="357" y1="320" x2="369" y2="320" stroke-width="4"/>
+    <line x1="401" y1="320" x2="413" y2="320" stroke-width="4"/>
+
+    <!-- Body / chassis -->
+    <path d="
+      M 105 310
+      Q 95 290, 105 260
+      Q 120 220, 180 195
+      Q 250 172, 340 175
+      Q 400 180, 430 205
+      Q 448 222, 442 250
+      L 438 280
+      Q 435 305, 425 310
+      L 105 310
+      Z
+    " stroke="none" mask="url(#eyeMask)"/>
+    <circle cx="406" cy="228" r="11" fill="#ffffff" stroke="#111111" stroke-width="2"/>
+    <circle cx="406" cy="228" r="5" fill="#111111" stroke="none"/>
+
+    <!-- Antenna with sensor -->
+    <path d="M410 195 Q430 140 445 100 Q450 85 460 78" fill="none" stroke-width="7"/>
+    <circle cx="463" cy="72" r="13" stroke="none"/>
+    <path d="M476 60 A18 18 0 0 1 480 78" fill="none" stroke-width="4"/>
+    <path d="M484 52 A30 30 0 0 1 490 86" fill="none" stroke-width="3"/>
+  </g>
+
+  <text
+    x="530"
+    y="230"
+    fill="#1a1a2e"
+    font-family="Inter, Segoe UI, Arial, sans-serif"
+    font-size="130"
+    font-weight="700"
+    letter-spacing="1"
+  >
+    Iron
+  </text>
+</svg>

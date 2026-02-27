@@ -1,0 +1,41 @@
+@startuml iron-components
+skinparam linetype ortho
+
+package "DualSense" {
+    component "Bluetooth" as DS_BT
+}
+
+package "Raspberry Pi 2" {
+    component "Streamer" as RPI_STREAMER {
+        component "WebSocket\nServer [/]" as RPI_STREAMER_WS_SERVER
+        component "Serial\n[telemetry]" as RPI_STREAMER_SERIAL
+        component "Camera" as RPI_CAMERA
+    }
+    component "Controller" as RPI_CONTROLLER {
+        component "Bluetooth" as RPI_BT
+        component "Serial\n[control]" as RPI_CONTROLLER_SERIAL
+    }
+    component "Web page" as RPI_WEB
+}
+
+package "ESP32-S3" {
+    component "Motor" as ESP_MOTOR
+    component "Telemetry" as ESP_TELEMETRY
+
+    component "Serial\n[control]" as ESP_SERIAL_CONTROL
+    component "Serial\n[telemetry]" as ESP_SERIAL_TELEMETRY
+}
+
+DS_BT --> RPI_BT
+RPI_BT --> RPI_CONTROLLER_SERIAL
+
+RPI_CONTROLLER_SERIAL --> ESP_SERIAL_CONTROL
+ESP_SERIAL_TELEMETRY --> RPI_STREAMER_SERIAL
+RPI_CAMERA --> RPI_STREAMER_WS_SERVER
+RPI_STREAMER_SERIAL --> RPI_STREAMER_WS_SERVER
+RPI_STREAMER_WS_SERVER --> RPI_WEB
+
+ESP_SERIAL_CONTROL --> ESP_MOTOR
+ESP_TELEMETRY --> ESP_SERIAL_TELEMETRY
+
+@enduml
