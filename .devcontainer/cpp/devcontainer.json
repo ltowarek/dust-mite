@@ -13,8 +13,12 @@
         "--env-file",
         ".env"
     ],
+    "mounts": [
+        "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+    ],
     "containerEnv": {
-        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/car/scripts/pre-commit.sh"
+        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/car/scripts/pre-commit.sh",
+        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
     },
     "customizations": {
         "vscode": {

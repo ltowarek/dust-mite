@@ -3,6 +3,7 @@ FROM python:3.12-bookworm
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     ansible \
+    curl \
     libhidapi-dev \
     locales \
     rsync
@@ -29,4 +30,10 @@ ARG USER_GID=$USER_UID
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME
 
+RUN mkdir -p /home/$USERNAME/.claude && \
+    chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
+
 USER $USERNAME
+
+RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc

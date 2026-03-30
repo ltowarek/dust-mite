@@ -4,6 +4,12 @@
         "dockerfile": "./Dockerfile",
         "context": "../../"
     },
+    "mounts": [
+        "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+    ],
+    "containerEnv": {
+        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+    },
     "customizations": {
         "vscode": {
             "extensions": [
