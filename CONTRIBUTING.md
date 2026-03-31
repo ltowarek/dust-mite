@@ -56,9 +56,9 @@ There is currently no dedicated Raspberry Pi devcontainer profile. Use the Pytho
      1. Run `File: Open Workspace from File...`.
      2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, or [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work.
    - For docs work: no additional action is required; continue with the repository root opened in step 1.
-5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `--device` entries in:
-   - [.devcontainer/python/devcontainer.json](.devcontainer/python/devcontainer.json)
-   - [.devcontainer/cpp/devcontainer.json](.devcontainer/cpp/devcontainer.json)
+5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `devices:` entries in:
+   - [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml)
+   - [.devcontainer/cpp/docker-compose.yml](.devcontainer/cpp/docker-compose.yml)
 6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, or `Docs`).
 
 The container image includes project dependencies and VS Code extensions required for that stack.

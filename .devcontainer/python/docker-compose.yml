@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: .devcontainer/python/Dockerfile
+    volumes:
+      - ../..:/workspaces/dust-mite:cached
+    env_file:
+      - path: ../../.env
+        required: false
+    # Uncomment to pass through PS5 DualSense controller.
+    # The device path must be hard-coded; see:
+    # https://github.com/microsoft/vscode-remote-release/issues/3972
+    # devices:
+    #   - /dev/dual_sense:/dev/dual_sense
+    command: sleep infinity

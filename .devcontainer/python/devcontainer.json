@@ -1,21 +1,15 @@
 {
     "name": "Python",
-    "build": {
-        "dockerfile": "./Dockerfile",
-        "context": "../../"
-    },
-    "runArgs": [
-        // Mount PS5 controller
-        // Need to hard-code the device due to https://github.com/microsoft/vscode-remote-release/issues/3972
-        // "--device",
-        // "/dev/dual_sense",
-        // Set environment variables
-        "--env-file",
-        ".env"
+    "dockerComposeFile": [
+        "./docker-compose.yml",
+        "../../observability/docker-compose.yml"
     ],
+    "service": "app",
+    "workspaceFolder": "/workspaces/dust-mite",
     "mounts": [
-        "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+        "source=claude-code-config,target=/home/vscode/.claude,type=volume"
     ],
+    "forwardPorts": [16686],
     // Need to "activate" venv in VSCode because of https://github.com/microsoft/vscode-python/issues/10165
     "remoteEnv": {
         "PATH": "/opt/venv/bin:${containerEnv:PATH}",

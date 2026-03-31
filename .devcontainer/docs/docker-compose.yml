@@ -1,0 +1,8 @@
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: .devcontainer/docs/Dockerfile
+    volumes:
+      - ../..:/workspaces/dust-mite:cached
+    command: sleep infinity

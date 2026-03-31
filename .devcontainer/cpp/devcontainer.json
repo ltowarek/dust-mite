@@ -1,21 +1,15 @@
 {
     "name": "C++",
-    "build": {
-        "dockerfile": "./Dockerfile",
-        "context": "../../"
-    },
-    "runArgs": [
-        // Mount ESP32
-        // Need to hard-code the device due to https://github.com/microsoft/vscode-remote-release/issues/3972
-        // "--device",
-        // "/dev/ttyACM0",
-        // Set environment variables
-        "--env-file",
-        ".env"
+    "dockerComposeFile": [
+        "./docker-compose.yml",
+        "../../observability/docker-compose.yml"
     ],
+    "service": "app",
+    "workspaceFolder": "/workspaces/dust-mite",
     "mounts": [
-        "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+        "source=claude-code-config,target=/home/vscode/.claude,type=volume"
     ],
+    "forwardPorts": [16686],
     "containerEnv": {
         "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/car/scripts/pre-commit.sh",
         "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
