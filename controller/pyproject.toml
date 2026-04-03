@@ -1,3 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "controller"
+version = "0.0.0"
+requires-python = ">=3.12"
+
+[project.scripts]
+controller = "controller.controller:main"
+streamer = "controller.streamer:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.tox]
 legacy_tox_ini = """
     [tox]

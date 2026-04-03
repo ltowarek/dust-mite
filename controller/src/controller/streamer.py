@@ -18,6 +18,8 @@ import websockets.exceptions
 import websockets.sync.client
 import websockets.sync.server
 
+from .tracing import configure_tracing
+
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -220,7 +222,9 @@ def drive_car(_frame: bytes, telemetry: dict[str, Any]) -> dict[str, Any] | None
     return None
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Run the main entry point."""
+    configure_tracing("dust-mite-streamer")
     try:
         with websockets.sync.server.serve(server_handler, "localhost", 8765) as server:
             logger.info("Starting server")
@@ -229,3 +233,7 @@ if __name__ == "__main__":
         logger.info("Received keyboard interrupt")
     logger.info("Shutting down server")
     server.shutdown()
+
+
+if __name__ == "__main__":
+    main()

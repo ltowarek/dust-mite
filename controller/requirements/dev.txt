@@ -66,8 +66,6 @@ toposort==1.10
     # via pip-compile-multi
 tox==4.22.0
     # via -r requirements/dev.in
-typing-extensions==4.12.2
-    # via mypy
 virtualenv==20.26.6
     # via tox
 wheel==0.44.0

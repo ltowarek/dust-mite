@@ -57,9 +57,12 @@ jobs:
 
     - name: Activate venv
       run: |
-        source /opt/venv/bin/activate
+        source /home/vscode/venv/bin/activate
         echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
         echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
+
+    - name: Install package
+      run: pip install --disable-pip-version-check --no-cache-dir -e .
 
     - name: Run linters
       run: ./scripts/run_linters.sh --output-format=github

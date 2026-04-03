@@ -13,4 +13,5 @@ services:
     # https://github.com/microsoft/vscode-remote-release/issues/3972
     # devices:
     #   - /dev/dual_sense:/dev/dual_sense
+    #   - /dev/hidraw4:/dev/hidraw4
     command: sleep infinity

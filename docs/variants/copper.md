@@ -42,9 +42,8 @@
 	- Set JP1 jumper to **ON**.
 	- Turn on the robot.
 - Host setup:
-	- In the Python devcontainer, open `/workspace/controller`.
-	- In one terminal, run `python src/controller/controller.py`.
-	- In another terminal, run `python src/controller/streamer.py`.
+	- In one terminal, run `controller`.
+	- In another terminal, run `streamer`.
 	- Open [src/controller/web/index.html](../../controller/src/controller/web/index.html) in a web browser (the page connects to `ws://localhost:8765`).
 - After successful setup, the robot can be controlled with the DualSense controller, and telemetry plus camera feed can be monitored on the web page.
 

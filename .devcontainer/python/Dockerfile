@@ -16,13 +16,6 @@ RUN wget https://github.com/todbot/hidapitester/releases/download/v0.5/hidapites
     && rm hidapitester-linux-x86_64.zip \
     && mv ./hidapitester /usr/local/bin/hidapitester
 
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-COPY ./controller/requirements/ /tmp/requirements/
-RUN pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements/dev.txt \
-    && rm -rf /tmp/requirements/
-
 ARG USERNAME=vscode
 ARG USER_UID=1050
 ARG USER_GID=$USER_UID
@@ -30,10 +23,15 @@ ARG USER_GID=$USER_UID
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME
 
-RUN mkdir -p /home/$USERNAME/.claude && \
-    chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
-
 USER $USERNAME
 
+RUN python3 -m venv /home/$USERNAME/venv
+ENV PATH="/home/$USERNAME/venv/bin:$PATH"
+
+COPY --chown=$USERNAME:$USERNAME ./controller/requirements/ /tmp/requirements/
+RUN pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements/dev.txt \
+    && rm -rf /tmp/requirements/
+
+RUN mkdir -p /home/$USERNAME/.claude
 RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc

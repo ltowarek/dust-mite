@@ -12,8 +12,8 @@
     "forwardPorts": [16686],
     // Need to "activate" venv in VSCode because of https://github.com/microsoft/vscode-python/issues/10165
     "remoteEnv": {
-        "PATH": "/opt/venv/bin:${containerEnv:PATH}",
-        "VIRTUAL_ENV": "/opt/venv"
+        "PATH": "/home/vscode/venv/bin:${containerEnv:PATH}",
+        "VIRTUAL_ENV": "/home/vscode/venv"
     },
     "containerEnv": {
         "PRE_COMMIT_SCRIPT": "/${containerWorkspaceFolder}/controller/scripts/pre-commit.sh",
@@ -22,13 +22,10 @@
     "customizations": {
         "vscode": {
             "settings": {
-                "python.defaultInterpreterPath": "/opt/venv/bin/python",
+                "python.defaultInterpreterPath": "/home/vscode/venv/bin/python",
                 "python.analysis.enabled": false,
                 "python.analysis.typeCheckingMode": "off",
                 "python.testing.pytestEnabled": true,
-                "python.testing.pytestArgs": [
-                    "tests"
-                ],
                 "[python]": {
                     "editor.formatOnSave": true,
                     "editor.codeActionsOnSave": {
@@ -48,7 +45,8 @@
                     "hidapi",
                     "devcontainer",
                     "RSSI",
-                    "raspberrypi"
+                    "raspberrypi",
+                    "traceparent"
                 ]
             },
             "extensions": [
@@ -64,5 +62,6 @@
         }
     },
     "remoteUser": "vscode",
-    "initializeCommand": "touch .env"
+    "initializeCommand": "touch .env",
+    "postCreateCommand": "pip install --disable-pip-version-check --no-cache-dir -e controller/"
 }

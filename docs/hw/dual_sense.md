@@ -75,7 +75,7 @@ In `runArgs`, ensure the `"--device"` value matches the same path:
 3. Start the controller process:
 
 	```bash
-	python ./controller/src/controller/controller.py
+	controller
 	```
 
 If the controller is not visible in step 2, verify `CONTROLLER_DEVICE` in [.env](../../.env), validate the `--device` mapping in [.devcontainer/python/devcontainer.json](../../.devcontainer/python/devcontainer.json), and reconnect the controller on the host.

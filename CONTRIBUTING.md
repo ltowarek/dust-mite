@@ -61,7 +61,7 @@ There is currently no dedicated Raspberry Pi devcontainer profile. Use the Pytho
    - [.devcontainer/cpp/docker-compose.yml](.devcontainer/cpp/docker-compose.yml)
 6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, or `Docs`).
 
-The container image includes project dependencies and VS Code extensions required for that stack.
+The container image includes project dependencies and VS Code extensions required for that stack. On first open, the devcontainer installs the controller package into the virtual environment via `postCreateCommand`.
 
 #### Rationale for VS Code workspace files
 
