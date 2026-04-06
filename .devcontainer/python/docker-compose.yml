@@ -7,11 +7,8 @@ services:
       - ../..:/workspaces/dust-mite:cached
     env_file:
       - path: ../../.env
-        required: false
     # Uncomment to pass through PS5 DualSense controller.
-    # The device path must be hard-coded; see:
-    # https://github.com/microsoft/vscode-remote-release/issues/3972
+    # Run ./controller/scripts/find_dualsense.sh on the host to find the hidraw path.
     # devices:
-    #   - /dev/dual_sense:/dev/dual_sense
     #   - /dev/hidraw4:/dev/hidraw4
     command: sleep infinity

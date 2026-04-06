@@ -2,5 +2,7 @@
 
 set -e
 
+DEVICE="$($(dirname "$0")/find_dualsense.sh)"
+
 hidapitester --list
-hidapitester --open-path "$CONTROLLER_DEVICE" --read-input
+hidapitester --open-path "$DEVICE" --read-input

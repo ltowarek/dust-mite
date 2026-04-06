@@ -52,6 +52,5 @@
             ]
         }
     },
-    "remoteUser": "vscode",
-    "initializeCommand": "touch .env"
+    "remoteUser": "vscode"
 }

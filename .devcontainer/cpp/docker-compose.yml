@@ -7,10 +7,7 @@ services:
       - ../..:/workspaces/dust-mite:cached
     env_file:
       - path: ../../.env
-        required: false
     # Uncomment to pass through ESP32 device.
-    # The device path must be hard-coded; see:
-    # https://github.com/microsoft/vscode-remote-release/issues/3972
     # devices:
     #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity

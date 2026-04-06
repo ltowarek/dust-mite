@@ -62,6 +62,5 @@
         }
     },
     "remoteUser": "vscode",
-    "initializeCommand": "touch .env",
     "postCreateCommand": "pip install --disable-pip-version-check --no-cache-dir -e controller/"
 }
