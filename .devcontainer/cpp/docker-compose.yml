@@ -1,3 +1,7 @@
+networks:
+  dust-mite-observability:
+    name: dust-mite-observability
+
 services:
   app:
     build:
@@ -11,3 +15,5 @@ services:
     # devices:
     #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
+    networks:
+      - dust-mite-observability

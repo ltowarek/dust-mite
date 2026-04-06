@@ -1,3 +1,7 @@
+networks:
+  dust-mite-observability:
+    name: dust-mite-observability
+
 services:
   app:
     build:
@@ -12,3 +16,5 @@ services:
     # devices:
     #   - /dev/hidraw4:/dev/hidraw4
     command: sleep infinity
+    networks:
+      - dust-mite-observability

@@ -1,3 +1,7 @@
+networks:
+  dust-mite-observability:
+    name: dust-mite-observability
+
 services:
   jaeger:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.16.0
@@ -7,3 +11,5 @@ services:
       - "4318:4318"     # OTLP HTTP
       - "5778:5778"     # Serve configurations
       - "9411:9411"     # Zipkin collector
+    networks:
+      - dust-mite-observability

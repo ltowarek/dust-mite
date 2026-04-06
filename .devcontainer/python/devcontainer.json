@@ -1,15 +1,13 @@
 {
     "name": "Python",
     "dockerComposeFile": [
-        "./docker-compose.yml",
-        "../../observability/docker-compose.yml"
+        "./docker-compose.yml"
     ],
     "service": "app",
     "workspaceFolder": "/workspaces/dust-mite",
     "mounts": [
         "source=claude-code-config,target=/home/vscode/.claude,type=volume"
     ],
-    "forwardPorts": [16686],
     // Need to "activate" venv in VSCode because of https://github.com/microsoft/vscode-python/issues/10165
     "remoteEnv": {
         "PATH": "/home/vscode/venv/bin:${containerEnv:PATH}",
