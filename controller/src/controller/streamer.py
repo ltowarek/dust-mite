@@ -17,12 +17,15 @@ import numpy as np
 import websockets.exceptions
 import websockets.sync.client
 import websockets.sync.server
+from opentelemetry import trace
 
-from .tracing import configure_tracing
+from .tracing import configure_tracing, inject_trace_context
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+tracer = trace.get_tracer(__name__)
 
 
 class ClientConnection:
@@ -141,7 +144,8 @@ class ClientConnection:
 
 def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
     """WebSocket handler for incoming requests."""
-    logger.info("Server connection from: %s", websocket.remote_address[0])
+    remote_address = websocket.remote_address[0]
+    logger.info("Server connection from: %s", remote_address)
 
     telemetry_client_uri = os.environ["TELEMETRY_CLIENT_URI"]
     controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
@@ -152,60 +156,117 @@ def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
         ClientConnection(telemetry_client_uri, "r") as telemetry_client,
         ClientConnection(controller_client_uri, "w") as controller_client,
     ):
-        camera_frame: bytes = b""
-        telemetry: dict[str, Any] = {}
-        keep_server_connection = True
-        while keep_server_connection:
-            packets: list[dict[str, Any]] = []
+        last_camera_frame: bytes = b""
+        last_telemetry: dict[str, Any] = {}
+        while True:
             if stream_client.is_frame_available():
-                camera_frame = stream_client.recv()  # type: ignore[assignment]
-                camera_frame = process_frame(camera_frame)
-                packets.append(
-                    {
-                        "type": "stream",
-                        "data": base64.encodebytes(camera_frame).decode("ascii"),
-                    }
-                )
+                frame = handle_camera_frame(stream_client, websocket)
+                if frame is None:
+                    break
+                last_camera_frame = frame
 
             if telemetry_client.is_frame_available():
-                telemetry = json.loads(telemetry_client.recv())
-                packets.append(
-                    {
-                        "type": "telemetry",
-                        "data": telemetry,
-                    }
+                telemetry = handle_telemetry(telemetry_client, websocket)
+                if telemetry is None:
+                    break
+                last_telemetry = telemetry
+
+            if last_camera_frame and last_telemetry:
+                handle_drive_command(
+                    controller_client, last_camera_frame, last_telemetry
                 )
-
-            # TODO: Make it opt-in, so user can drive as he wants
-            if packets:
-                command_packet = drive_car(camera_frame, telemetry)
-                if command_packet is not None:
-                    controller_client.send(json.dumps(command_packet))
-
-            for packet in packets:
-                try:
-                    websocket.send(json.dumps(packet))
-                except websockets.exceptions.ConnectionClosed:
-                    logger.info("Server connection closed")
-                    keep_server_connection = False
 
     logger.debug("Server handler finished")
 
 
+@tracer.start_as_current_span("streamer.handle_camera_frame")
+def handle_camera_frame(
+    stream_client: ClientConnection,
+    websocket: websockets.sync.server.ServerConnection,
+) -> bytes | None:
+    """Receive, process, and forward one camera frame.
+
+    Returns the processed frame, or None on disconnect.
+    """
+    frame: bytes = stream_client.recv()  # type: ignore[assignment]
+    frame = process_frame(frame)
+    p = prepare_camera_frame_packet(frame)
+    try:
+        websocket.send(json.dumps(p))
+    except websockets.exceptions.ConnectionClosed:
+        logger.info("Server connection closed")
+        return None
+    return frame
+
+
+@tracer.start_as_current_span("streamer.process_frame")
 def process_frame(frame: bytes) -> bytes:
     """Process camera frame."""
+    span = trace.get_current_span()
+    span.set_attribute("input_size_bytes", len(frame))
+
     arr = np.frombuffer(frame, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    result = cv2.imencode(".jpg", img)[1].tobytes()
 
-    return cv2.imencode(".jpg", img)[1].tobytes()
+    span.set_attribute("output_size_bytes", len(result))
+    return result
 
 
+@tracer.start_as_current_span("streamer.prepare_camera_frame_packet")
+def prepare_camera_frame_packet(frame: bytes) -> dict[str, Any]:
+    """Build a stream packet for a processed camera frame with trace context."""
+    packet = {"type": "stream", "data": base64.encodebytes(frame).decode("ascii")}
+    return inject_trace_context(packet)
+
+
+@tracer.start_as_current_span("streamer.handle_telemetry")
+def handle_telemetry(
+    telemetry_client: ClientConnection,
+    websocket: websockets.sync.server.ServerConnection,
+) -> dict[str, Any] | None:
+    """Receive and forward one telemetry message.
+
+    Returns the telemetry dict, or None on disconnect.
+    """
+    telemetry: dict[str, Any] = json.loads(telemetry_client.recv())
+    p = prepare_telemetry_packet(telemetry)
+    try:
+        websocket.send(json.dumps(p))
+    except websockets.exceptions.ConnectionClosed:
+        logger.info("Server connection closed")
+        return None
+    return telemetry
+
+
+@tracer.start_as_current_span("streamer.prepare_telemetry_packet")
+def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
+    """Build a telemetry packet with trace context."""
+    packet = {"type": "telemetry", "data": telemetry}
+    return inject_trace_context(packet)
+
+
+@tracer.start_as_current_span("streamer.handle_drive_command")
+def handle_drive_command(
+    controller_client: ClientConnection,
+    frame: bytes,
+    telemetry: dict[str, Any],
+) -> None:
+    """Compute a drive command and send it to the controller if one is produced."""
+    # TODO: Make it opt-in, so user can drive as he wants
+    command_packet = drive_car(frame, telemetry)
+    if command_packet is not None:
+        p = prepare_command_packet(command_packet)
+        controller_client.send(json.dumps(p))
+
+
+@tracer.start_as_current_span("streamer.drive_car")
 def drive_car(_frame: bytes, telemetry: dict[str, Any]) -> dict[str, Any] | None:
     """Update car's state based on camera frame and telemetry."""
-    if not telemetry:
-        return None
+    span = trace.get_current_span()
+    command_packet = None
 
     # TODO: Get also current state of the car i.e. commands and their values
     # If new state is the same as the old state then
@@ -213,20 +274,25 @@ def drive_car(_frame: bytes, telemetry: dict[str, Any]) -> dict[str, Any] | None
     # Maybe CONTROLLER_CLIENT_URI should send new state after receiving commands
 
     min_distance = 5
+    span.set_attribute("distance_ahead", telemetry["distance_ahead"])
     if telemetry["distance_ahead"] < min_distance:
         # TODO: Integrate with controller.py
-        return {
-            "command": 3,
-            "value": None,
-        }
-    return None
+        command_packet = {"command": 3, "value": None}
+
+    return command_packet
+
+
+@tracer.start_as_current_span("streamer.prepare_command_packet")
+def prepare_command_packet(command: dict[str, Any]) -> dict[str, Any]:
+    """Build a drive command packet with trace context."""
+    return inject_trace_context(command)
 
 
 def main() -> None:
     """Run the main entry point."""
     configure_tracing("dust-mite-streamer")
     try:
-        with websockets.sync.server.serve(server_handler, "localhost", 8765) as server:
+        with websockets.sync.server.serve(server_handler, "0.0.0.0", 8765) as server:  # noqa: S104 - intentional, streamer must accept connections from all interfaces
             logger.info("Starting server")
             server.serve_forever()
     except KeyboardInterrupt:

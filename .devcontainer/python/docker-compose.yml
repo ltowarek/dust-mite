@@ -18,3 +18,4 @@ services:
     command: sleep infinity
     networks:
       - dust-mite-observability
+      - default
