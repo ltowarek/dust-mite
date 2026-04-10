@@ -26,6 +26,8 @@ static const char* TAG = "web_server";
 #define WIFI_PASSWORD "<PASSWORD>"
 #endif
 
+#define WIFI_MAXIMUM_RETRY 5
+
 #define CAMERA_STOPPED_NOTIFICATION_INDEX 0
 #define TELEMETRY_STOPPED_NOTIFICATION_INDEX 1
 
@@ -41,6 +43,8 @@ static TaskHandle_t g_stream_task_handle = NULL;
 static QueueHandle_t g_telemetry_packet_queue = NULL;
 static QueueHandle_t g_telemetry_req_queue = NULL;
 static TaskHandle_t g_telemetry_task_handle = NULL;
+
+static int g_wifi_retry_number = 0;
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
   esp_err_t ret = ESP_OK;
@@ -442,8 +446,24 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue, Qu
 
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &web_server_handler_on_got_ip, &server));
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &web_server_handler_on_wifi_disconnect, &server));
+}
 
-  start_web_server();
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                               int32_t event_id, void* event_data)
+{
+  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    esp_wifi_connect();
+  } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    if (g_wifi_retry_number < WIFI_MAXIMUM_RETRY) {
+      esp_wifi_connect();
+      g_wifi_retry_number++;
+      ESP_LOGI(TAG, "retry to connect to the AP");
+    } else {
+      ESP_LOGE(TAG, "failed to connect to the AP");
+    }
+  } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    g_wifi_retry_number = 0;
+  }
 }
 
 void wifi_setup()
@@ -456,13 +476,17 @@ void wifi_setup()
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+  ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
+  ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+
   wifi_config_t wifi_config = {};
   strcpy((char*)wifi_config.sta.ssid, WIFI_SSID);
   strcpy((char*)wifi_config.sta.password, WIFI_PASSWORD);
+  wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
-  ESP_ERROR_CHECK(esp_wifi_connect());
 
   ESP_LOGI(TAG, "wifi_init_sta finished.");
 }
