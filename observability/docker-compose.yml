@@ -11,5 +11,9 @@ services:
       - "4318:4318"     # OTLP HTTP
       - "5778:5778"     # Serve configurations
       - "9411:9411"     # Zipkin collector
+    volumes:
+      - ./config.yml:/config.yml:ro
+    command:
+      - --config=/config.yml
     networks:
       - dust-mite-observability

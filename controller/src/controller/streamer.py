@@ -142,7 +142,7 @@ class ClientConnection:
         self.close()
 
 
-@tracer.start_as_current_span("streamer.server_handler")
+@tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
     """WebSocket handler for incoming requests."""
     span = trace.get_current_span()
