@@ -444,6 +444,11 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue, Qu
     return;
   }
 
+  // Start the server before registering event handlers to avoid a race where
+  // IP_EVENT_STA_GOT_IP fires in the gap and on_got_ip starts a second server
+  // instance while this function is still about to call start_web_server().
+  server = start_web_server();
+
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &web_server_handler_on_got_ip, &server));
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &web_server_handler_on_wifi_disconnect, &server));
 }
