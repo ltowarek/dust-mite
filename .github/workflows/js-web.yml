@@ -42,6 +42,8 @@ jobs:
     container:
       image: ghcr.io/ltowarek/dust-mite-js-devcontainer
       options: --user root
+      env:
+        HOME: /root
       credentials:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -61,7 +63,7 @@ jobs:
     - name: Run linters
       run: ./scripts/run_linters.sh
     - name: Run formatter
-      run: ./scripts/run_formatter.sh
+      run: ./scripts/run_formatter.sh --check
     - name: Run build
       run: ./scripts/run_build.sh
     - name: Run tests

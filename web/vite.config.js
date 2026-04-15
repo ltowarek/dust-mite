@@ -1,6 +1,16 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      onwarn(warning, defaultHandler) {
+        if (warning.code === "EVAL" && warning.id?.includes("@protobufjs/inquire")) {
+          return;
+        }
+        defaultHandler(warning);
+      },
+    },
+  },
   fmt: {
     ignorePatterns: [],
   },

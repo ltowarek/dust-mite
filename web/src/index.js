@@ -33,7 +33,7 @@ window.addEventListener("DOMContentLoaded", () => {
   let connectionSpan = null;
   let connectionContext = null;
 
-  socket.onopen = () => {
+  socket.addEventListener("open", () => {
     connectionSpan = tracer.startSpan("ws.connection", {
       kind: SpanKind.CLIENT,
       attributes: {
@@ -42,9 +42,9 @@ window.addEventListener("DOMContentLoaded", () => {
       },
     });
     connectionContext = trace.setSpan(context.active(), connectionSpan);
-  };
+  });
 
-  socket.onmessage = (event) => {
+  socket.addEventListener("message", (event) => {
     const event_data = JSON.parse(event.data);
 
     const carrier = {
@@ -70,16 +70,16 @@ window.addEventListener("DOMContentLoaded", () => {
     } finally {
       messageSpan.end();
     }
-  };
+  });
 
-  socket.onclose = (event) => {
+  socket.addEventListener("close", (event) => {
     if (connectionSpan) {
       connectionSpan.setAttribute("ws.close.code", event.code);
       connectionSpan.end();
     }
-  };
+  });
 
-  socket.onerror = () => {
+  socket.addEventListener("error", () => {
     if (connectionSpan) {
       connectionSpan.setStatus({
         code: SpanStatusCode.ERROR,
@@ -87,5 +87,5 @@ window.addEventListener("DOMContentLoaded", () => {
       });
       connectionSpan.end();
     }
-  };
+  });
 });
