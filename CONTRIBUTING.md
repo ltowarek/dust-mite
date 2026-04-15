@@ -8,6 +8,7 @@ This repository is an experimental platform, and contributions that improve tech
 - Keep changes focused and easy to review.
 - Prefer small pull requests over large rewrites.
 - Preserve existing style and tooling unless a change explicitly updates them.
+- Follow classical TDD: use real collaborators in tests instead of mocks or stubs.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
 
 ## Prerequisites
@@ -37,6 +38,7 @@ Available environments:
 
 - [.devcontainer/python/](.devcontainer/python/) for [controller/](controller/) work (controller app and Raspberry Pi camera service code quality checks)
 - [.devcontainer/cpp/](.devcontainer/cpp/) for [car/](car/) firmware work
+- [.devcontainer/js/](.devcontainer/js/) for [web/](web/) frontend work (bundler, linter, formatter, local dev server)
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
 
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
@@ -52,9 +54,9 @@ There is currently no dedicated Raspberry Pi devcontainer profile. Use the Pytho
 
 3. Edit [.env](.env) and provide correct values for your setup (for example Wi-Fi SSID/password and other required variables).
 4. Open the target locally first in VS Code:
-   - For [python.code-workspace](python.code-workspace) or [cpp.code-workspace](cpp.code-workspace):
+   - For [python.code-workspace](python.code-workspace), [cpp.code-workspace](cpp.code-workspace), or [js.code-workspace](js.code-workspace):
      1. Run `File: Open Workspace from File...`.
-     2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, or [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work.
+     2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work, or [js.code-workspace](js.code-workspace) for [web/](web/) work.
    - For docs work: no additional action is required; continue with the repository root opened in step 1.
 5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `devices:` entries in:
    - [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml)
@@ -85,12 +87,13 @@ Each new variant must include:
 
 - [car/](car/) - ESP-IDF firmware for the RC car platform.
 - [controller/](controller/) - Python controller, stream/telemetry integration, and Raspberry Pi camera service source under [controller/src/controller/rpi/camera.py](controller/src/controller/rpi/camera.py).
+- [web/](web/) - JavaScript web frontend (camera stream display, telemetry dashboard).
 - [docs/](docs/) - project documentation.
 - [scripts/](scripts/) - repository-level helper scripts.
 
 ## Controller development ([controller/](controller/))
 
-In the Python devcontainer, the workspace opens at `/workspace/controller`.
+In the Python devcontainer, the workspace opens at `/workspaces/dust-mite/controller`.
 
 ### Run quality checks
 
@@ -150,11 +153,61 @@ Edit `.in` files only. Generated `.txt` files are pinned dependencies and should
 ./scripts/run_requirements_checks.sh
 ```
 
+## Web frontend development ([web/](web/))
+
+In the JavaScript devcontainer, the workspace opens at `/workspaces/dust-mite/web`.
+
+### Run quality checks
+
+```bash
+./scripts/run_checks.sh
+```
+
+If checks fail, apply automatic fixes:
+
+```bash
+./scripts/fix_checks.sh
+```
+
+### Start development server
+
+```bash
+./scripts/run_dev_server.sh
+```
+
+### Build for production
+
+```bash
+./scripts/run_build.sh
+```
+
+### Run tests
+
+```bash
+./scripts/run_tests.sh
+```
+
+### Web frontend test types
+
+- Unit tests: validate individual modules and functions in isolation; implemented in [web/tests/unit/](web/tests/unit/).
+- Integration tests: validate interactions across component boundaries; implemented in [web/tests/integration/](web/tests/integration/).
+- E2E tests: validate full user-level flows in realistic browser conditions; implemented in [web/tests/e2e/](web/tests/e2e/).
+
+Run specific suites:
+
+```bash
+./scripts/run_tests.sh tests/unit
+./scripts/run_tests.sh tests/integration
+./scripts/run_tests.sh tests/e2e
+```
+
+
+
 ## Car firmware development ([car/](car/))
 
 [car/](car/) is an ESP-IDF project.
 In the C++ devcontainer, the ESP-IDF environment is already configured.
-The C++ devcontainer opens at `/workspace/car`.
+The C++ devcontainer opens at `/workspaces/dust-mite/car`.
 
 Typical loop:
 
@@ -229,6 +282,10 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
   - Runs controller checks in container: lint, format check, type checks, requirements checks, and tests
+- [js-web.yml](.github/workflows/js-web.yml)
+  - Triggers on pull requests and pushes to `main`
+  - Builds and publishes the JavaScript devcontainer image from [.devcontainer/js/Dockerfile](.devcontainer/js/Dockerfile)
+  - Runs web frontend checks in container: lint, format check, and production build
 - [cpp-car.yml](.github/workflows/cpp-car.yml)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)

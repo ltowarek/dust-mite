@@ -1,0 +1,17 @@
+networks:
+  dust-mite-observability:
+    name: dust-mite-observability
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: .devcontainer/js/Dockerfile
+    volumes:
+      - ../..:/workspaces/dust-mite:cached
+    env_file:
+      - path: ../../.env
+    command: sleep infinity
+    networks:
+      - dust-mite-observability
+      - default

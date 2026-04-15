@@ -230,7 +230,6 @@ def process_frame(frame: bytes) -> bytes:
     return result
 
 
-@tracer.start_as_current_span("streamer.prepare_camera_frame_packet")
 def prepare_camera_frame_packet(frame: bytes) -> dict[str, Any]:
     """Build a stream packet for a processed camera frame with trace context."""
     packet = {"type": "stream", "data": base64.encodebytes(frame).decode("ascii")}
@@ -266,7 +265,6 @@ def handle_telemetry(
     return telemetry
 
 
-@tracer.start_as_current_span("streamer.prepare_telemetry_packet")
 def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
     """Build a telemetry packet with trace context."""
     packet = {"type": "telemetry", "data": telemetry}
@@ -303,7 +301,6 @@ def drive_car(_frame: bytes, telemetry: dict[str, Any]) -> dict[str, Any] | None
     return None
 
 
-@tracer.start_as_current_span("streamer.prepare_command_packet")
 def prepare_command_packet(command: dict[str, Any]) -> dict[str, Any]:
     """Build a drive command packet with trace context."""
     return inject_trace_context(command)

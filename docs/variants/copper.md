@@ -42,9 +42,12 @@
 	- Set JP1 jumper to **ON**.
 	- Turn on the robot.
 - Host setup:
-	- In one terminal, run `controller`.
-	- In another terminal, run `streamer`.
-	- Open [src/controller/web/index.html](../../controller/src/controller/web/index.html) in a web browser (the page connects to `ws://localhost:8765`).
+	- Python devcontainer:
+		- In one terminal, run `controller`.
+		- In another terminal, run `streamer`.
+	- JavaScript devcontainer:
+		- Run `./scripts/run_dev_server.sh`.
+		- Open `http://localhost:5173` in a web browser (the page connects to `ws://localhost:8765`).
 - After successful setup, the robot can be controlled with the DualSense controller, and telemetry plus camera feed can be monitored on the web page.
 
 
@@ -63,7 +66,7 @@
 - On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to `CONTROLLER_CLIENT_URI`.
 - On the Linux host, `streamer.py` reads camera frames from `STREAM_CLIENT_URI`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and publishes packets to a local WebSocket server at `ws://localhost:8765`.
 - `streamer.py` can also send automatic brake commands to `CONTROLLER_CLIENT_URI` when `distance_ahead` is below the configured threshold.
-- The web page in `src/controller/web/index.html` connects to `ws://localhost:8765` and displays the processed camera stream with live telemetry.
+- The web page served by the JavaScript devcontainer connects to `ws://localhost:8765` and displays the processed camera stream with live telemetry.
 
 ### Components
 

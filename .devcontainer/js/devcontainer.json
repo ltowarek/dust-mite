@@ -1,0 +1,38 @@
+{
+    "name": "JavaScript",
+    "dockerComposeFile": [
+        "./docker-compose.yml"
+    ],
+    "service": "app",
+    "workspaceFolder": "/workspaces/dust-mite",
+    "mounts": [
+        "source=claude-code-config,target=/home/vscode/.claude,type=volume"
+    ],
+    "containerEnv": {
+        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/web/scripts/pre-commit.sh",
+        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "cSpell.words": [
+                    "devcontainer",
+                    "RSSI",
+                    "traceparent",
+                    "tracestate",
+                    "oxlint",
+                    "oxfmt",
+                    "viteplus",
+                    "voidzero"
+                ]
+            },
+            "extensions": [
+                "voidzero.vite-plus-extension-pack",
+                "streetsidesoftware.code-spell-checker",
+                "ms-playwright.playwright"
+            ]
+        }
+    },
+    "remoteUser": "vscode",
+    "postCreateCommand": "cd web && npm ci"
+}

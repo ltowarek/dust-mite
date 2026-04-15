@@ -24,12 +24,14 @@ This file is a lightweight navigation guide for coding agents.
 - Repository layout and contribution flow: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Firmware code and components: [car/](car/)
 - Controller code, tests, and Raspberry Pi camera service: [controller/](controller/)
+- Web frontend code: [web/](web/)
 - Documentation and variant material: [docs/](docs/)
 - Repo-level automation and helper scripts: [scripts/](scripts/)
 
 ## Working Rules for Agents
 
 - Treat [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) as authoritative.
+- Run all commands inside the appropriate devcontainer, not on the host. See [CONTRIBUTING.md](CONTRIBUTING.md) for available environments.
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes.
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -39,6 +41,7 @@ This file is a lightweight navigation guide for coding agents.
 
 - Run minimal validation relevant to the touched area.
 - For controller changes, use scripts under [controller/scripts/](controller/scripts/).
+- For web frontend changes, use scripts under [web/scripts/](web/scripts/).
 - For car firmware changes, use scripts and build flow under [car/scripts/](car/scripts/) and [CONTRIBUTING.md](CONTRIBUTING.md).
 - For repo-wide checks/hooks, use [scripts/](scripts/).
 
