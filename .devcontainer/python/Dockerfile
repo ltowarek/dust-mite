@@ -23,6 +23,9 @@ ARG USER_GID=$USER_UID
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME
 
+COPY scripts/install-gh.sh /tmp/install-gh.sh
+RUN chmod +x /tmp/install-gh.sh && /tmp/install-gh.sh
+
 USER $USERNAME
 
 RUN python3 -m venv /home/$USERNAME/venv

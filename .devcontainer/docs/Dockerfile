@@ -23,6 +23,9 @@ RUN groupadd --gid $USER_GID $USERNAME \
 RUN mkdir -p /home/$USERNAME/.claude && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
 
+COPY scripts/install-gh.sh /tmp/install-gh.sh
+RUN chmod +x /tmp/install-gh.sh && /tmp/install-gh.sh
+
 USER $USERNAME
 
 RUN curl -fsSL https://claude.ai/install.sh | bash -s stable

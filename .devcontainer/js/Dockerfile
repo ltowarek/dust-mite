@@ -19,6 +19,9 @@ RUN userdel -r node \
 RUN mkdir -p /home/$USERNAME/.claude && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
 
+COPY scripts/install-gh.sh /tmp/install-gh.sh
+RUN chmod +x /tmp/install-gh.sh && /tmp/install-gh.sh
+
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
 COPY ./web/package.json ./web/package-lock.json /tmp/web/
