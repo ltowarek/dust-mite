@@ -21,6 +21,8 @@ ENV_MAP[STREAM_CLIENT_URI]="${ENV_MAP[ESP32_ADDRESS]}/stream"
 
 ENV_MAP[OTEL_EXPORTER_OTLP_ENDPOINT]=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
 
+ENV_MAP[GH_TOKEN]=${GH_TOKEN:-}
+
 # Iterate all env entries by sorted key so .env output is deterministic.
 while IFS= read -r key; do
 	printf '%s=%s\n' "$key" "${ENV_MAP[$key]}" >> .env.tmp
