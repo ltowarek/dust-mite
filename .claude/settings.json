@@ -1,0 +1,6 @@
+{
+  "advisorModel": "claude-opus-4-7",
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
+}
