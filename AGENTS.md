@@ -54,8 +54,9 @@ This file is a lightweight navigation guide for coding agents.
 
 ## Firmware Flashing and Serial Monitoring
 
-`idf.py monitor` requires an interactive TTY and will fail in non-interactive shells.
-Use the `ESP_IDF_MONITOR_TEST=1` environment variable to bypass the check.
+`idf.py monitor` requires both stdin and stdout to be a TTY. In non-interactive shells
+`ESP_IDF_MONITOR_TEST=1` is not sufficient — wrap the command with `script -q -c "..." /tmp/out.txt`
+to provide a pseudo-TTY, then read the output file.
 
 When rebuilding after a `sdkconfig.defaults` or Kconfig change, delete only
 `sdkconfig` (not the whole `build/` directory) — IDF detects the stale config

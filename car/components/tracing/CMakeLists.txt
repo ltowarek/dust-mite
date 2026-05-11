@@ -3,5 +3,5 @@ idf_component_register(SRCS "tracing.cpp"
                     REQUIRES
                     esp-opentelemetry-cpp
                     json
-                    esp_pthread
+                    pthread
                     )
