@@ -209,6 +209,12 @@ Run specific suites:
 In the C++ devcontainer, the ESP-IDF environment is already configured.
 The C++ devcontainer opens at `/workspaces/dust-mite/car`.
 
+The firmware depends on vendored submodules (for example the OpenTelemetry C++ SDK under [car/components/esp-opentelemetry-cpp/third_party/](car/components/esp-opentelemetry-cpp/third_party/)). After cloning the repository, initialize submodules recursively:
+
+```bash
+git submodule update --init --recursive
+```
+
 Typical loop:
 
 ```bash

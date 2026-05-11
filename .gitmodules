@@ -1,3 +1,6 @@
 [submodule "car/components/DFRobot_AXP313A/DFRobot_AXP313A"]
 	path = car/components/DFRobot_AXP313A/DFRobot_AXP313A
 	url = https://github.com/ltowarek/DFRobot_AXP313A.git
+[submodule "car/components/esp-opentelemetry-cpp"]
+	path = car/components/esp-opentelemetry-cpp
+	url = https://github.com/ltowarek/esp-opentelemetry-cpp.git

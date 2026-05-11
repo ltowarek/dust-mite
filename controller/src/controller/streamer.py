@@ -19,7 +19,7 @@ import websockets.sync.client
 import websockets.sync.server
 from opentelemetry import trace
 
-from .tracing import configure_tracing, inject_trace_context
+from .tracing import configure_tracing, extract_trace_context, inject_trace_context
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -146,6 +146,7 @@ class ClientConnection:
 def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
     """WebSocket handler for incoming requests."""
     span = trace.get_current_span()
+    span.set_attribute("network.protocol.name", "websocket")
 
     remote_address = websocket.remote_address[0]
     logger.info("Server connection from: %s", remote_address)
@@ -195,12 +196,16 @@ def handle_camera_frame(
     """
     if not stream_client.is_frame_available():
         return None
+    packet: dict[str, Any] = json.loads(stream_client.recv())
+    car_context = extract_trace_context(packet)
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame",
+        context=car_context,
         record_exception=False,
         set_status_on_exception=False,
     ) as span:
-        frame: bytes = stream_client.recv()  # type: ignore[assignment]
+        span.set_attribute("network.protocol.name", "websocket")
+        frame: bytes = base64.b64decode(packet["data"])
         frame = process_frame(frame)
         p = prepare_camera_frame_packet(frame)
         try:
@@ -247,12 +252,15 @@ def handle_telemetry(
     """
     if not telemetry_client.is_frame_available():
         return None
+    telemetry: dict[str, Any] = json.loads(telemetry_client.recv())
+    car_context = extract_trace_context(telemetry)
     with tracer.start_as_current_span(
         "streamer.handle_telemetry",
+        context=car_context,
         record_exception=False,
         set_status_on_exception=False,
     ) as span:
-        telemetry: dict[str, Any] = json.loads(telemetry_client.recv())
+        span.set_attribute("network.protocol.name", "websocket")
         p = prepare_telemetry_packet(telemetry)
         try:
             websocket.send(json.dumps(p))
@@ -281,6 +289,7 @@ def handle_drive_command(
     command_packet = drive_car(frame, telemetry)
     if command_packet is not None:
         with tracer.start_as_current_span("streamer.handle_drive_command") as span:
+            span.set_attribute("network.protocol.name", "websocket")
             span.set_attribute("distance_ahead", telemetry["distance_ahead"])
             p = prepare_command_packet(command_packet)
             controller_client.send(json.dumps(p))

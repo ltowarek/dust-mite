@@ -5,9 +5,11 @@ idf_component_register(SRCS "web_server.cpp"
                     esp_http_server
                     nvs_flash
                     json
+                    mbedtls
                     camera
                     motor
                     telemetry
+                    tracing
                     )
 
 target_compile_definitions(

@@ -58,6 +58,7 @@ window.addEventListener("DOMContentLoaded", () => {
       {
         kind: SpanKind.CLIENT,
         attributes: {
+          "network.protocol.name": "websocket",
           "ws.message.type": event_data.type,
           "ws.message.size": event.data.length,
         },
