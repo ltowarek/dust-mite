@@ -2,8 +2,11 @@ FROM espressif/idf:release-v5.3
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
+    ccache \
     curl \
     locales
+
+ENV IDF_CCACHE_ENABLE=1
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen
