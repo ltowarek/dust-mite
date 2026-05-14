@@ -6,7 +6,8 @@
     "service": "app",
     "workspaceFolder": "/workspaces/dust-mite",
     "mounts": [
-        "source=claude-code-config,target=/home/vscode/.claude,type=volume"
+        "source=claude-code-config,target=/home/vscode/.claude,type=volume",
+        "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,consistency=cached"
     ],
     "containerEnv": {
         "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/web/scripts/pre-commit.sh",
