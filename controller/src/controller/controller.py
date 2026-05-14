@@ -45,6 +45,7 @@ def send_command(
 ) -> None:
     """Send a command to the car."""
     span = trace.get_current_span()
+    span.set_attribute("network.protocol.name", "websocket")
     span.set_attribute("command_name", command.name)
     if value is not None:
         span.set_attribute("command_value", value)

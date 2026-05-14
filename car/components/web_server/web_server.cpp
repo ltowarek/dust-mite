@@ -1,5 +1,6 @@
 #include "web_server.hpp"
 #include "freertos/FreeRTOS.h"
+#include "esp_heap_caps.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -15,7 +16,10 @@
 #include "motor.hpp"
 #include "camera.hpp"
 #include "telemetry.hpp"
+#include "tracing.hpp"
 #include <cJSON.h>
+#include "mbedtls/base64.h"
+#include "opentelemetry/trace/context.h"
 
 static const char* TAG = "web_server";
 
@@ -45,6 +49,13 @@ static QueueHandle_t g_telemetry_req_queue = NULL;
 static TaskHandle_t g_telemetry_task_handle = NULL;
 
 static int g_wifi_retry_number = 0;
+
+
+// Connection-level spans live across task/queue boundaries, so stash them
+// in file-scope shared_ptrs guarded by the single-producer/single-consumer
+// lifecycle of the stream/telemetry handlers.
+static opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> g_stream_connection_span;
+static opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> g_telemetry_connection_span;
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
   esp_err_t ret = ESP_OK;
@@ -84,6 +95,21 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
       char command = (char)cJSON_GetNumberValue(command_obj);
       int value = (int)cJSON_GetNumberValue(value_obj);
       ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", command, value);
+
+      auto parent_ctx = tracing_extract(*root);
+      opentelemetry::trace::StartSpanOptions start_opts;
+      start_opts.kind   = opentelemetry::trace::SpanKind::kServer;
+      start_opts.parent = opentelemetry::trace::GetSpan(parent_ctx)->GetContext();
+      auto span = esp_opentelemetry_tracer()->StartSpan(
+          "ws.command.receive",
+          {{"ws.url", "/"},
+           {"network.protocol.name", "websocket"},
+           {"ws.message.type", "command"},
+           {"ws.message.size", static_cast<int64_t>(ws_pkt.len)},
+           {"command.name", static_cast<int64_t>(command)},
+           {"command.value", static_cast<int64_t>(value)}},
+          start_opts);
+      auto scope = opentelemetry::trace::Scope(span);
       cJSON_Delete(root);
 
       command_packet_t packet = {
@@ -92,10 +118,18 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
       };
       if (xQueueSendToBack(g_command_queue, &packet, portMAX_DELAY) != pdPASS) {
         ESP_LOGE(TAG, "xQueueSendToBack failed");
+        span->SetStatus(opentelemetry::trace::StatusCode::kError, "queue send failed");
+        span->End();
+        free(buf);
         return ESP_FAIL;
       }
+      span->End();
   } else {
     ESP_LOGW(TAG, "Failed to parse JSON: %s", ws_pkt.payload);
+    auto span = esp_opentelemetry_tracer()->StartSpan("ws.command.receive");
+    span->SetStatus(opentelemetry::trace::StatusCode::kError, "json parse failed");
+    span->SetAttribute("ws.message.size", static_cast<int64_t>(ws_pkt.len));
+    span->End();
   }
 
   free(buf);
@@ -114,10 +148,20 @@ static const httpd_uri_t root = {
 
 static esp_err_t stream_handle_handshake(httpd_req_t *req) {
   ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+  opentelemetry::trace::StartSpanOptions stream_opts;
+  stream_opts.kind = opentelemetry::trace::SpanKind::kServer;
+  g_stream_connection_span = esp_opentelemetry_tracer()->StartSpan(
+      "ws.stream.connection",
+      {{"ws.url", "/stream"},
+       {"network.protocol.name", "websocket"}},
+      stream_opts);
   httpd_req_t* copy = NULL;
   ESP_ERROR_CHECK(httpd_req_async_handler_begin(req, &copy));
   if (xQueueSendToBack(g_stream_req_queue, &copy, portMAX_DELAY) != pdPASS) {
     ESP_LOGE(TAG, "xQueueSendToBack(g_stream_req_queue) failed");
+    g_stream_connection_span->SetStatus(opentelemetry::trace::StatusCode::kError,
+                                        "queue send failed");
+    g_stream_connection_span->End();
     return ESP_FAIL;
   }
   return ESP_OK;
@@ -148,6 +192,8 @@ static esp_err_t stream_handle_websocket_frame(httpd_req_t *req) {
       ws_pkt.type = HTTPD_WS_TYPE_PONG;
     } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
       ESP_LOGI(TAG, "Got a WS CLOSE frame, Replying CLOSE");
+      g_stream_connection_span->SetAttribute(
+          "ws.close.code", static_cast<int64_t>(ws_pkt.len));
       ws_pkt.len = 0;
       ws_pkt.payload = NULL;
       xTaskNotifyGive(g_stream_task_handle);
@@ -211,22 +257,62 @@ void ws_stream_task(void* p) {
       req = NULL;
       camera_stop();
       ESP_LOGI(TAG, "Stream stopped");
+      g_stream_connection_span->End();
       xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
 
+    opentelemetry::trace::StartSpanOptions send_opts;
+    send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
+    send_opts.parent = g_stream_connection_span->GetContext();
+    auto send_span = esp_opentelemetry_tracer()->StartSpan(
+        "ws.stream.send",
+        {{"ws.url", "/stream"},
+         {"network.protocol.name", "websocket"},
+         {"ws.message.type", "stream"},
+         {"ws.frame.size", static_cast<int64_t>(frame->len)}},
+        send_opts);
+    auto send_scope = opentelemetry::trace::Scope(send_span);
+
+    size_t b64_len = 0;
+    mbedtls_base64_encode(NULL, 0, &b64_len, frame->buf, frame->len);
+    char* b64_buf = (char*)heap_caps_malloc(b64_len + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!b64_buf) {
+      ESP_LOGE(TAG, "Failed to allocate base64 buffer");
+      send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "alloc failed");
+      send_span->End();
+      esp_camera_fb_return(frame);
+      break;
+    }
+    mbedtls_base64_encode((unsigned char*)b64_buf, b64_len + 1, &b64_len, frame->buf, frame->len);
+    b64_buf[b64_len] = '\0';
+
+    cJSON* packet_json = cJSON_CreateObject();
+    cJSON_AddStringToObject(packet_json, "data", b64_buf);
+    heap_caps_free(b64_buf);
+    tracing_inject(*packet_json);
+
+    char* packet_json_str = cJSON_PrintUnformatted(packet_json);
+    cJSON_Delete(packet_json);
+
     httpd_ws_frame_t ws_pkt = {};
-    ws_pkt.type = HTTPD_WS_TYPE_BINARY;
-    ws_pkt.payload = frame->buf;
-    ws_pkt.len = frame->len;
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+    ws_pkt.payload = (uint8_t*)packet_json_str;
+    ws_pkt.len = strlen(packet_json_str);
+    send_span->SetAttribute("ws.message.size", static_cast<int64_t>(ws_pkt.len));
 
     ret = httpd_ws_send_frame(req, &ws_pkt);
     if (ret != ESP_OK) {
       ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+      send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
+      send_span->End();
+      cJSON_free(packet_json_str);
       esp_camera_fb_return(frame);
       break;
     }
 
+    send_span->End();
+    cJSON_free(packet_json_str);
     esp_camera_fb_return(frame);
   }
   ESP_LOGW(TAG, "Stream task stopped");
@@ -245,10 +331,20 @@ static const httpd_uri_t stream = {
 
 static esp_err_t telemetry_handle_handshake(httpd_req_t *req) {
   ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+  opentelemetry::trace::StartSpanOptions tel_opts;
+  tel_opts.kind = opentelemetry::trace::SpanKind::kServer;
+  g_telemetry_connection_span = esp_opentelemetry_tracer()->StartSpan(
+      "ws.telemetry.connection",
+      {{"ws.url", "/telemetry"},
+       {"network.protocol.name", "websocket"}},
+      tel_opts);
   httpd_req_t* copy = NULL;
   ESP_ERROR_CHECK(httpd_req_async_handler_begin(req, &copy));
   if (xQueueSendToBack(g_telemetry_req_queue, &copy, portMAX_DELAY) != pdPASS) {
     ESP_LOGE(TAG, "xQueueSendToBack(g_telemetry_req_queue) failed");
+    g_telemetry_connection_span->SetStatus(opentelemetry::trace::StatusCode::kError,
+                                           "queue send failed");
+    g_telemetry_connection_span->End();
     return ESP_FAIL;
   }
   return ESP_OK;
@@ -279,6 +375,8 @@ static esp_err_t telemetry_handle_websocket_frame(httpd_req_t *req) {
       ws_pkt.type = HTTPD_WS_TYPE_PONG;
     } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
       ESP_LOGI(TAG, "Got a WS CLOSE frame, Replying CLOSE");
+      g_telemetry_connection_span->SetAttribute(
+          "ws.close.code", static_cast<int64_t>(ws_pkt.len));
       ws_pkt.len = 0;
       ws_pkt.payload = NULL;
       xTaskNotifyGive(g_telemetry_task_handle);
@@ -341,26 +439,44 @@ void ws_telemetry_task(void* p) {
       req = NULL;
       telemetry_stop();
       ESP_LOGI(TAG, "Telemetry stopped");
+      g_telemetry_connection_span->End();
       xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
 
     cJSON* packet_json = convert_telemetry_packet_to_json(packet);
+
+    opentelemetry::trace::StartSpanOptions send_opts;
+    send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
+    send_opts.parent = g_telemetry_connection_span->GetContext();
+    auto send_span = esp_opentelemetry_tracer()->StartSpan(
+        "ws.telemetry.send",
+        {{"ws.url", "/telemetry"},
+         {"network.protocol.name", "websocket"},
+         {"ws.message.type", "telemetry"}},
+        send_opts);
+    auto send_scope = opentelemetry::trace::Scope(send_span);
+    tracing_inject(*packet_json);
+
     char* packet_json_str = cJSON_PrintUnformatted(packet_json);
 
     httpd_ws_frame_t ws_pkt = {};
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
     ws_pkt.payload = (uint8_t*)packet_json_str;
     ws_pkt.len = strlen(packet_json_str);
+    send_span->SetAttribute("ws.message.size", static_cast<int64_t>(ws_pkt.len));
 
     ret = httpd_ws_send_frame(req, &ws_pkt);
     if (ret != ESP_OK) {
       ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+      send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
+      send_span->End();
       cJSON_free(packet_json_str);
       cJSON_Delete(packet_json);
       break;
     }
 
+    send_span->End();
     cJSON_free(packet_json_str);
     cJSON_Delete(packet_json);
   }
@@ -383,9 +499,11 @@ static httpd_handle_t start_web_server()
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
     config.max_open_sockets = 3;
+    config.stack_size = 8192;
 
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
-    if (httpd_start(&server, &config) == ESP_OK) {
+    esp_err_t err = httpd_start(&server, &config);
+    if (err == ESP_OK) {
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &root);
         httpd_register_uri_handler(server, &stream);
@@ -393,7 +511,7 @@ static httpd_handle_t start_web_server()
         return server;
     }
 
-    ESP_LOGI(TAG, "Error starting server!");
+    ESP_LOGE(TAG, "Error starting server: %s", esp_err_to_name(err));
     return NULL;
 }
 
@@ -435,13 +553,24 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue, Qu
   g_stream_req_queue = xQueueCreate(1, sizeof(httpd_req_t*));
   g_telemetry_req_queue = xQueueCreate(1, sizeof(httpd_req_t*));
 
-  if (xTaskCreate(ws_stream_task, "ws_stream_task", 4096, (void *)0, 1, &g_stream_task_handle) != pdPASS) {
+  if (xTaskCreate(ws_stream_task, "ws_stream_task", 8192, (void *)0, 1, &g_stream_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(ws_stream_task) failed");
     return;
   }
-  if (xTaskCreate(ws_telemetry_task, "ws_telemetry_task", 4096, (void *)0, 1, &g_telemetry_task_handle) != pdPASS) {
-    ESP_LOGE(TAG, "xTaskCreate(ws_telemetry_task) failed");
-    return;
+  {
+    // Allocate ws_telemetry_task stack from PSRAM to avoid exhausting internal DRAM.
+    StackType_t *tel_stack = static_cast<StackType_t*>(
+        heap_caps_malloc(32768, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    StaticTask_t *tel_tcb = static_cast<StaticTask_t*>(
+        heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (!tel_stack || !tel_tcb) {
+      ESP_LOGE(TAG, "xTaskCreate(ws_telemetry_task) failed - no PSRAM");
+      return;
+    }
+    g_telemetry_task_handle = xTaskCreateStaticPinnedToCore(
+        ws_telemetry_task, "ws_telemetry_task",
+        32768 / sizeof(StackType_t), nullptr, 1,
+        tel_stack, tel_tcb, tskNO_AFFINITY);
   }
 
   // Start the server before registering event handlers to avoid a race where

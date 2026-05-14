@@ -4,7 +4,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     ccache \
     curl \
-    locales
+    locales \
+    protobuf-compiler
 
 ENV IDF_CCACHE_ENABLE=1
 

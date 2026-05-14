@@ -1,9 +1,9 @@
 name: C++ car
 
-on: 
+on:
   pull_request:
   push:
-    branches: 
+    branches:
       - main
 
 jobs:
@@ -56,7 +56,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: true
+        submodules: recursive
 
     - name: Cache ccache
       uses: actions/cache@v5

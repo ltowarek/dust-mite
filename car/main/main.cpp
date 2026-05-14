@@ -8,6 +8,7 @@
 #include "web_server.hpp"
 #include "motor.hpp"
 #include "telemetry.hpp"
+#include "tracing.hpp"
 
 extern "C" void app_main()
 {
@@ -16,8 +17,9 @@ extern "C" void app_main()
   QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_packet_t));
 
   motor_setup(command_queue);
-  camera_setup(frame_queue);
   wifi_setup();
+  tracing_setup();
+  camera_setup(frame_queue);
   telemetry_setup(telemetry_queue);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
 }

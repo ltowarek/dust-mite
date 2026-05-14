@@ -51,3 +51,13 @@ This file is a lightweight navigation guide for coding agents.
 - Diagram sources and generated outputs are in [docs/plantuml/](docs/plantuml/).
 - Use repository docs tooling from [scripts/](scripts/) to regenerate artifacts when needed.
 - Prefer editing source files and regenerating derived outputs; avoid manual edits to generated files unless explicitly requested.
+
+## Firmware Flashing and Serial Monitoring
+
+`idf.py monitor` requires both stdin and stdout to be a TTY. In non-interactive shells
+`ESP_IDF_MONITOR_TEST=1` is not sufficient — wrap the command with `script -q -c "..." /tmp/out.txt`
+to provide a pseudo-TTY, then read the output file.
+
+When rebuilding after a `sdkconfig.defaults` or Kconfig change, delete only
+`sdkconfig` (not the whole `build/` directory) — IDF detects the stale config
+and reconfigures automatically, avoiding a full rebuild.
