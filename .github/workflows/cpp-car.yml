@@ -61,7 +61,7 @@ jobs:
     - name: Cache ccache
       uses: actions/cache@v5
       with:
-        path: ~/.ccache
+        path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-${{ hashFiles('.devcontainer/cpp/Dockerfile') }}
         restore-keys: |
           ccache-${{ runner.os }}-idf-
@@ -72,8 +72,12 @@ jobs:
         echo "$PATH" >> $GITHUB_PATH
 
     - name: Build
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
       run: idf.py build
 
     - name: Build tests
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
       run: idf.py build
       working-directory: ./car/test
