@@ -23,6 +23,9 @@ ENV CCACHE_DIR=/home/${USERNAME}/.ccache
 RUN mkdir -p /home/$USERNAME/.claude && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
 
+RUN mkdir -p /home/$USERNAME/.ccache && \
+    chown -R $USERNAME:$USERNAME /home/$USERNAME/.ccache
+
 COPY scripts/install-gh.sh /tmp/install-gh.sh
 RUN chmod +x /tmp/install-gh.sh && /tmp/install-gh.sh
 
