@@ -9,6 +9,7 @@
 #include "motor.hpp"
 #include "telemetry.hpp"
 #include "tracing.hpp"
+#include "wifi.hpp"
 
 extern "C" void app_main()
 {
