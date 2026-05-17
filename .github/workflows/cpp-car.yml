@@ -47,6 +47,9 @@ jobs:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+
     defaults:
       run:
         shell: bash
@@ -71,13 +74,15 @@ jobs:
         source $IDF_PATH/export.sh
         echo "$PATH" >> $GITHUB_PATH
 
+    - name: Reset ccache stats
+      run: ccache --zero-stats
+
     - name: Build
-      env:
-        CCACHE_DIR: ${{ github.workspace }}/.ccache
       run: idf.py build
 
     - name: Build tests
-      env:
-        CCACHE_DIR: ${{ github.workspace }}/.ccache
       run: idf.py build
       working-directory: ./car/test
+
+    - name: Print ccache stats
+      run: ccache --show-stats
