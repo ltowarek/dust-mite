@@ -1,9 +1,9 @@
 idf_component_register(SRCS "web_server.cpp"
                     INCLUDE_DIRS "include"
                     REQUIRES
+                    wifi
                     esp_wifi
                     esp_http_server
-                    nvs_flash
                     json
                     mbedtls
                     camera
@@ -11,10 +11,3 @@ idf_component_register(SRCS "web_server.cpp"
                     telemetry
                     tracing
                     )
-
-target_compile_definitions(
-    ${COMPONENT_LIB}
-    PRIVATE
-    WIFI_SSID="$ENV{WIFI_SSID}"
-    WIFI_PASSWORD="$ENV{WIFI_PASSWORD}"
-)

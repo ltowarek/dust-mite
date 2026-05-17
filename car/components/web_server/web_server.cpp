@@ -1,4 +1,5 @@
 #include "web_server.hpp"
+#include "wifi.hpp"
 #include "freertos/FreeRTOS.h"
 #include "esp_heap_caps.h"
 #include "freertos/task.h"
@@ -11,8 +12,6 @@
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include "esp_wifi.h"
-#include "esp_camera.h"
-#include "nvs_flash.h"
 #include "motor.hpp"
 #include "camera.hpp"
 #include "telemetry.hpp"
@@ -22,15 +21,6 @@
 #include "opentelemetry/trace/context.h"
 
 static const char* TAG = "web_server";
-
-#ifndef WIFI_SSID
-#define WIFI_SSID "<SSID>"
-#endif
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "<PASSWORD>"
-#endif
-
-#define WIFI_MAXIMUM_RETRY 5
 
 #define CAMERA_STOPPED_NOTIFICATION_INDEX 0
 #define TELEMETRY_STOPPED_NOTIFICATION_INDEX 1
@@ -47,9 +37,6 @@ static TaskHandle_t g_stream_task_handle = NULL;
 static QueueHandle_t g_telemetry_packet_queue = NULL;
 static QueueHandle_t g_telemetry_req_queue = NULL;
 static TaskHandle_t g_telemetry_task_handle = NULL;
-
-static int g_wifi_retry_number = 0;
-
 
 // Connection-level spans live across task/queue boundaries, so stash them
 // in file-scope shared_ptrs guarded by the single-producer/single-consumer
@@ -582,45 +569,3 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue, Qu
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &web_server_handler_on_wifi_disconnect, &server));
 }
 
-static void wifi_event_handler(void* arg, esp_event_base_t event_base,
-                               int32_t event_id, void* event_data)
-{
-  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    esp_wifi_connect();
-  } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    if (g_wifi_retry_number < WIFI_MAXIMUM_RETRY) {
-      esp_wifi_connect();
-      g_wifi_retry_number++;
-      ESP_LOGI(TAG, "retry to connect to the AP");
-    } else {
-      ESP_LOGE(TAG, "failed to connect to the AP");
-    }
-  } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-    g_wifi_retry_number = 0;
-  }
-}
-
-void wifi_setup()
-{
-  ESP_ERROR_CHECK(nvs_flash_init());
-  ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
-  esp_netif_create_default_wifi_sta();
-
-  wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-  ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
-  ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
-
-  wifi_config_t wifi_config = {};
-  strcpy((char*)wifi_config.sta.ssid, WIFI_SSID);
-  strcpy((char*)wifi_config.sta.password, WIFI_PASSWORD);
-  wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-
-  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-  ESP_ERROR_CHECK(esp_wifi_start());
-
-  ESP_LOGI(TAG, "wifi_init_sta finished.");
-}
