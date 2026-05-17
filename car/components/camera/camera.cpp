@@ -5,6 +5,7 @@
 #include "driver/i2c.h"
 #include "esp_log.h"
 #include "DFRobot_AXP313A.h"
+#include "esp_opentelemetry.hpp"
 
 static const char* TAG = "camera";
 
@@ -95,6 +96,12 @@ void camera_init() {
 static QueueHandle_t g_frame_queue = NULL;
 static TaskHandle_t g_camera_task_handle = NULL;
 
+static bool has_jpeg_eoi(const camera_fb_t* frame) {
+  return frame->len >= 2 &&
+         frame->buf[frame->len - 2] == 0xFF &&
+         frame->buf[frame->len - 1] == 0xD9;
+}
+
 void camera_task(void* p) {
   ESP_LOGI(TAG, "Starting camera task");
   camera_fb_t* frame = NULL;
@@ -115,6 +122,17 @@ void camera_task(void* p) {
 
     frame = esp_camera_fb_get();
     if (frame) {
+      if (!has_jpeg_eoi(frame)) {
+        ESP_LOGW(TAG, "NO-EOI detected (size=%zu)", frame->len);
+        auto span = esp_opentelemetry_tracer()->StartSpan(
+            "camera.frame.capture",
+            {{"camera.frame.size", static_cast<int64_t>(frame->len)}});
+        span->SetStatus(opentelemetry::trace::StatusCode::kError, "NO-EOI");
+        span->End();
+        esp_camera_fb_return(frame);
+        continue;
+      }
+
       if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
         ESP_LOGE(TAG, "xQueueSendToBack failed");
         break;
