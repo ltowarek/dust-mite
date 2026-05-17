@@ -241,6 +241,10 @@ cd test
 idf.py build
 ```
 
+### Car examples
+
+Examples are implemented under [car/examples/](car/examples/).
+
 ## Documentation
 
 Use the `Docs` devcontainer for documentation updates that require PlantUML/Graphviz/ImageMagick tooling.
