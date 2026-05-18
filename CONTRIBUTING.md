@@ -247,7 +247,7 @@ Examples are implemented under [car/examples/](car/examples/).
 
 ## Documentation
 
-Use the `Docs` devcontainer for documentation updates that require PlantUML/Graphviz/ImageMagick tooling.
+Use the `Docs` devcontainer for documentation updates that require Graphviz/ImageMagick tooling.
 
 Open repository root in the `Docs` devcontainer and run documentation scripts from repository root.
 
@@ -255,15 +255,7 @@ Documentation content should use formal technical language and avoid conversatio
 
 ### Diagrams
 
-Documentation diagrams are generated from PlantUML sources.
-
-Generate all diagrams from repository root:
-
-```bash
-./scripts/generate_plantuml_diagrams.sh
-```
-
-The script reads `.puml` files from [docs/plantuml/](docs/plantuml/) and regenerates `.svg` outputs in the same directory.
+Documentation diagrams are written in Mermaid and embedded directly in the relevant markdown files. GitHub renders them natively.
 
 ### Images
 
