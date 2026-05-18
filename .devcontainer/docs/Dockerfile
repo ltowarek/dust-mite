@@ -3,12 +3,10 @@ FROM debian:bookworm
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     curl \
-    default-jre \
     git \
     graphviz \
     imagemagick \
-    locales \
-    plantuml
+    locales
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen
