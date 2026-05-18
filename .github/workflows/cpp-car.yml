@@ -87,7 +87,7 @@ jobs:
       run: idf.py build
       working-directory: ${{ matrix.path }}
 
-  ci-status:
+  ci-status-cpp-car:
     needs: [build-docker, build]
     if: always()
     runs-on: ubuntu-latest

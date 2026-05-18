@@ -76,7 +76,7 @@ jobs:
     - name: Run tests
       run: ./scripts/run_tests.sh
 
-  ci-status:
+  ci-status-python-controller:
     needs: [build-docker, run-checks]
     if: always()
     runs-on: ubuntu-latest
