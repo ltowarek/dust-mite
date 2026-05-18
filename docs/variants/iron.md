@@ -52,4 +52,39 @@ No variant images are available yet.
 
 ### Components
 
-![Components](../plantuml/iron-components.svg)
+```mermaid
+graph LR
+    subgraph DualSense
+        DS_BT[Bluetooth]
+    end
+
+    subgraph RaspberryPi2[Raspberry Pi 2]
+        subgraph Streamer
+            RPI_WS["WebSocket Server [/]"]
+            RPI_SERIAL["Serial [telemetry]"]
+            RPI_CAM[Camera]
+        end
+        subgraph Controller
+            RPI_BT[Bluetooth]
+            RPI_CTRL_SERIAL["Serial [control]"]
+        end
+        RPI_WEB[Web page]
+    end
+
+    subgraph ESP32S3[ESP32-S3]
+        ESP_MOTOR[Motor]
+        ESP_TEL[Telemetry]
+        ESP_SERIAL_CTRL["Serial [control]"]
+        ESP_SERIAL_TEL["Serial [telemetry]"]
+    end
+
+    DS_BT --> RPI_BT
+    RPI_BT --> RPI_CTRL_SERIAL
+    RPI_CTRL_SERIAL --> ESP_SERIAL_CTRL
+    ESP_SERIAL_TEL --> RPI_SERIAL
+    RPI_CAM --> RPI_WS
+    RPI_SERIAL --> RPI_WS
+    RPI_WS --> RPI_WEB
+    ESP_SERIAL_CTRL --> ESP_MOTOR
+    ESP_TEL --> ESP_SERIAL_TEL
+```

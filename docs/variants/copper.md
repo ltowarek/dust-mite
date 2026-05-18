@@ -70,5 +70,45 @@
 
 ### Components
 
-![Components](../plantuml/copper-components.svg)
+```mermaid
+graph LR
+    subgraph DualSense
+        DS_BT[Bluetooth]
+    end
+
+    subgraph WiFi[Wi-Fi]
+        subgraph Linux_PC[Linux PC]
+            subgraph Controller
+                PC_BT[Bluetooth]
+                PC_CTRL_WS["WebSocket Client [/]"]
+            end
+            subgraph Streamer
+                PC_STR_WS_CTRL["WebSocket Client [/]"]
+                PC_STR_WS_STREAM["WebSocket Client [/stream]"]
+                PC_STR_WS_TEL["WebSocket Client [/telemetry]"]
+                PC_STR_WS_WEB["WebSocket Server [/]"]
+            end
+            PC_WEB[Web page]
+        end
+
+        subgraph ESP32S3[ESP32-S3]
+            ESP_MOTOR[Motor]
+            ESP_TEL[Telemetry]
+            ESP_CAM[Camera]
+            ESP_WS_CTRL["WebSocket Server [/]"]
+            ESP_WS_STREAM["WebSocket Server [/stream]"]
+            ESP_WS_TEL["WebSocket Server [/telemetry]"]
+        end
+    end
+
+    DS_BT --> PC_BT
+    PC_STR_WS_WEB --> PC_WEB
+    PC_CTRL_WS --> ESP_WS_CTRL
+    ESP_WS_STREAM --> PC_STR_WS_STREAM
+    ESP_WS_TEL --> PC_STR_WS_TEL
+    PC_STR_WS_CTRL --> ESP_WS_CTRL
+    ESP_WS_CTRL --> ESP_MOTOR
+    ESP_TEL --> ESP_WS_TEL
+    ESP_CAM --> ESP_WS_STREAM
+```
 

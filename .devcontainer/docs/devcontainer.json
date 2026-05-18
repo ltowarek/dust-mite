@@ -12,8 +12,7 @@
     "customizations": {
         "vscode": {
             "extensions": [
-                "streetsidesoftware.code-spell-checker",
-                "jebbs.plantuml"
+                "streetsidesoftware.code-spell-checker"
             ]
         }
     },

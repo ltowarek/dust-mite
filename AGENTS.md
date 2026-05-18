@@ -48,8 +48,8 @@ This file is a lightweight navigation guide for coding agents.
 ## Docs and Generated Artifacts
 
 - Documentation sources live under [docs/](docs/).
-- Diagram sources and generated outputs are in [docs/plantuml/](docs/plantuml/).
-- Use repository docs tooling from [scripts/](scripts/) to regenerate artifacts when needed.
+- Diagrams are written in Mermaid and embedded directly in the relevant documentation files; no separate generation step is needed.
+- Use repository docs tooling from [scripts/](scripts/) to regenerate image artifacts (logos, optimized images) when needed.
 - Prefer editing source files and regenerating derived outputs; avoid manual edits to generated files unless explicitly requested.
 
 ## Firmware Flashing and Serial Monitoring
