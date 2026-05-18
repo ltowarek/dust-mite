@@ -68,3 +68,12 @@ jobs:
       env:
         HOME: /root
       run: ./scripts/run_tests.sh
+
+  ci-status:
+    needs: [build-docker, run-checks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fail if any needed job did not succeed
+      if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+      run: exit 1
