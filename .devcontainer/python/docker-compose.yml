@@ -3,7 +3,7 @@ networks:
     name: dust-mite-observability
 
 services:
-  app:
+  python:
     build:
       context: ../..
       dockerfile: .devcontainer/python/Dockerfile
@@ -15,6 +15,8 @@ services:
     # Run ./controller/scripts/find_dualsense.sh on the host to find the hidraw path.
     # devices:
     #   - /dev/hidraw4:/dev/hidraw4
+    ports:
+      - "8765:8765"
     command: sleep infinity
     networks:
       - dust-mite-observability

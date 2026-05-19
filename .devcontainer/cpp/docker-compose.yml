@@ -3,7 +3,7 @@ networks:
     name: dust-mite-observability
 
 services:
-  app:
+  cpp:
     build:
       context: ../..
       dockerfile: .devcontainer/cpp/Dockerfile

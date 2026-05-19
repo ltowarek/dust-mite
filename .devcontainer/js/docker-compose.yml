@@ -3,7 +3,7 @@ networks:
     name: dust-mite-observability
 
 services:
-  app:
+  js:
     build:
       context: ../..
       dockerfile: .devcontainer/js/Dockerfile
@@ -11,6 +11,8 @@ services:
       - ../..:/workspaces/dust-mite:cached
     env_file:
       - path: ../../.env
+    ports:
+      - "5173:5173"
     command: sleep infinity
     networks:
       - dust-mite-observability

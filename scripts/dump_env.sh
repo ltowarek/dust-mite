@@ -23,6 +23,9 @@ ENV_MAP[OTEL_EXPORTER_OTLP_ENDPOINT]=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaege
 
 ENV_MAP[GH_TOKEN]=${GH_TOKEN:-}
 
+ENV_MAP[UID]=$(id -u)
+ENV_MAP[GID]=$(id -g)
+
 # Iterate all env entries by sorted key so .env output is deterministic.
 while IFS= read -r key; do
 	printf '%s=%s\n' "$key" "${ENV_MAP[$key]}" >> .env.tmp
