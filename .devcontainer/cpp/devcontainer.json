@@ -3,11 +3,12 @@
     "dockerComposeFile": [
         "./docker-compose.yml"
     ],
-    "service": "app",
+    "service": "cpp",
     "workspaceFolder": "/workspaces/dust-mite",
     "mounts": [
         "source=claude-code-config,target=/home/vscode/.claude,type=volume",
-        "source=ccache,target=/home/vscode/.ccache,type=volume"
+        "source=cpp-ccache-devcontainer,target=/home/vscode/.ccache,type=volume",
+        "source=cpp-build-devcontainer,target=/home/vscode/build,type=volume"
     ],
     "containerEnv": {
         "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/car/scripts/pre-commit.sh",
@@ -17,6 +18,7 @@
         "vscode": {
             "settings": {
                 "idf.showOnboardingOnInit": false,
+                "idf.buildPath": "/home/vscode/build",
                 "idf.toolsPath": "${containerEnv:IDF_TOOLS_PATH}",
                 "idf.espIdfPath": "${containerEnv:IDF_PATH}",
                 "idf.pythonBinPath": "${containerEnv:IDF_TOOLS_PATH}/python_env/idf5.3_py3.10_env/bin/python",

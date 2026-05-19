@@ -72,6 +72,37 @@ The container image includes project dependencies and VS Code extensions require
 - Using [cpp.code-workspace](cpp.code-workspace) keeps [car/](car/) as the active project while still exposing the repository root in the same VS Code session.
 - Keep workspace files (for example [cpp.code-workspace](cpp.code-workspace) and [python.code-workspace](python.code-workspace)) at repository root. If a `.code-workspace` file is stored in a subfolder, Dev Containers cannot resolve that subfolder's parent as the shared directory.
 
+## Full stack development session
+
+[docker-compose.yml](docker-compose.yml) at the repository root combines all devcontainer and observability services into a single compose project using [extends](https://docs.docker.com/compose/how-tos/multiple-compose-files/extends/).
+
+### Byobu session
+
+[scripts/start_byobu.sh](scripts/start_byobu.sh) starts all containers and opens a terminal session with four panes in a 2×2 grid:
+
+| C++ firmware (`idf.py build/flash/monitor`) | Python streamer |
+|---|---|
+| JS dev server (`http://localhost:5173`) | Jaeger logs |
+
+From the repository root:
+
+```bash
+./scripts/start_byobu.sh
+```
+
+Each pane runs its workload in the corresponding container via `docker compose exec`. Press `Ctrl-C` to cancel a running command; the pane drops into an interactive shell in the same container. The C++ pane is an exception: `idf.py monitor` runs in raw terminal mode and forwards `Ctrl-C` to the ESP32 as a break signal. Use `Ctrl-]` to exit the monitor; the pane then drops into an interactive shell.
+
+Basic byobu navigation:
+
+| Key | Action |
+|---|---|
+| `F12 :kill-session` | Kill session and stop all containers |
+| `F6` | Detach from session (containers keep running); reattach with `byobu attach-session -t dust-mite` |
+| `F12` + arrow | Move between panes |
+| `F12 z` | Zoom current pane to full screen (repeat to unzoom) |
+
+See the [byobu documentation](https://www.byobu.org/documentation) for the full key reference.
+
 ## Variants
 
 Variants use code names based on chemical elements (for example `Copper`, `Iron`).

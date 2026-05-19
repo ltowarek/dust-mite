@@ -1,0 +1,37 @@
+networks:
+  dust-mite-observability:
+    name: dust-mite-observability
+
+volumes:
+  cpp-ccache:
+  cpp-build:
+
+services:
+  cpp:
+    extends:
+      file: .devcontainer/cpp/docker-compose.yml
+      service: cpp
+    volumes:
+      - cpp-ccache:/home/vscode/.ccache
+      - cpp-build:/home/vscode/build
+    command: sleep infinity
+
+  python:
+    extends:
+      file: .devcontainer/python/docker-compose.yml
+      service: python
+    command: sleep infinity
+
+  js:
+    extends:
+      file: .devcontainer/js/docker-compose.yml
+      service: js
+    user: "${UID}:${GID}"
+    environment:
+      HOME: /tmp
+    command: sleep infinity
+
+  jaeger:
+    extends:
+      file: observability/docker-compose.yml
+      service: jaeger

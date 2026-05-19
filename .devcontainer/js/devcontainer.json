@@ -3,7 +3,7 @@
     "dockerComposeFile": [
         "./docker-compose.yml"
     ],
-    "service": "app",
+    "service": "js",
     "workspaceFolder": "/workspaces/dust-mite",
     "mounts": [
         "source=claude-code-config,target=/home/vscode/.claude,type=volume"
