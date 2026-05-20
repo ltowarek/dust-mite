@@ -486,7 +486,8 @@ static httpd_handle_t start_web_server()
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
     config.max_open_sockets = 3;
-    config.stack_size = 8192;
+    // 8 KB is insufficient for root_get_handler with tracing_extract + StartSpan.
+    config.stack_size = 16384;
 
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     esp_err_t err = httpd_start(&server, &config);
@@ -540,9 +541,21 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue, Qu
   g_stream_req_queue = xQueueCreate(1, sizeof(httpd_req_t*));
   g_telemetry_req_queue = xQueueCreate(1, sizeof(httpd_req_t*));
 
-  if (xTaskCreate(ws_stream_task, "ws_stream_task", 8192, (void *)0, 1, &g_stream_task_handle) != pdPASS) {
-    ESP_LOGE(TAG, "xTaskCreate(ws_stream_task) failed");
-    return;
+  {
+    // Allocate ws_stream_task stack from PSRAM: base64 encoding of VGA JPEG frames plus
+    // cJSON serialization and OTel span creation exhaust an 8KB DRAM stack.
+    StackType_t *stream_stack = static_cast<StackType_t*>(
+        heap_caps_malloc(32768, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    StaticTask_t *stream_tcb = static_cast<StaticTask_t*>(
+        heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (!stream_stack || !stream_tcb) {
+      ESP_LOGE(TAG, "xTaskCreate(ws_stream_task) failed - no PSRAM");
+      return;
+    }
+    g_stream_task_handle = xTaskCreateStaticPinnedToCore(
+        ws_stream_task, "ws_stream_task",
+        32768 / sizeof(StackType_t), nullptr, 1,
+        stream_stack, stream_tcb, tskNO_AFFINITY);
   }
   {
     // Allocate ws_telemetry_task stack from PSRAM to avoid exhausting internal DRAM.
