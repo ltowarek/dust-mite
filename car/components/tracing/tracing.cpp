@@ -43,8 +43,11 @@ private:
 
 void tracing_setup() {
 #ifdef CONFIG_ESP_OPENTELEMETRY_TRACING_ENABLED
-  // Route BatchSpanProcessor pthread stack to PSRAM to avoid DRAM exhaustion.
+  // Route BatchSpanProcessor pthread stack to PSRAM and increase its size.
+  // The export call chain (DoBackgroundWork → OtlpHttpExporter::Export →
+  // protobuf arena → mbedTLS) is ~15 frames deep and overflows 32 KB.
   esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
+  cfg.stack_size = 65536;
   cfg.stack_alloc_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
   esp_pthread_set_cfg(&cfg);
 #endif
