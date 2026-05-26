@@ -178,7 +178,10 @@ def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
 
                 if last_camera_frame and last_telemetry:
                     last_command = handle_drive_command(
-                        controller_client, last_camera_frame, last_telemetry, last_command
+                        controller_client,
+                        last_camera_frame,
+                        last_telemetry,
+                        last_command,
                     )
         except websockets.exceptions.ConnectionClosed:
             logger.info("Server connection closed")
