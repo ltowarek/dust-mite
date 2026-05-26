@@ -76,15 +76,12 @@ jobs:
           ccache-${{ runner.os }}-idf-${{ matrix.path }}-
           ccache-${{ runner.os }}-idf-
 
-    - name: Activate esp-idf
-      run: |
-        source $IDF_PATH/export.sh
-        echo "$PATH" >> $GITHUB_PATH
-
     - name: Build
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
-      run: idf.py build
+      run: |
+        source $IDF_PATH/export.sh
+        idf.py build
       working-directory: ${{ matrix.path }}
 
   ci-status-cpp-car:

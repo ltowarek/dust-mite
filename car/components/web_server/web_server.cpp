@@ -53,7 +53,11 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
   }
 
   httpd_ws_frame_t ws_pkt = {};
-  ESP_ERROR_CHECK(httpd_ws_recv_frame(req, &ws_pkt, 0));
+  ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to receive WS frame header: %s", esp_err_to_name(ret));
+    return ret;
+  }
   ESP_LOGI(TAG, "Frame len is %d", ws_pkt.len);
 
   if (ws_pkt.type != HTTPD_WS_TYPE_TEXT) {
@@ -80,7 +84,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
       cJSON *command_obj = cJSON_GetObjectItem(root, "command");
       cJSON *value_obj = cJSON_GetObjectItem(root, "value");
       char command = (char)cJSON_GetNumberValue(command_obj);
-      int value = (int)cJSON_GetNumberValue(value_obj);
+      int value = cJSON_IsNumber(value_obj) ? (int)cJSON_GetNumberValue(value_obj) : 0;
       ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", command, value);
 
       auto parent_ctx = tracing_extract(*root);
@@ -130,10 +134,14 @@ static const httpd_uri_t root = {
     .user_ctx  = NULL,
     .is_websocket = true,
     .handle_ws_control_frames = false,
-    .supported_subprotocol = NULL
+    .supported_subprotocol = NULL,
+    .ws_post_handshake_cb = NULL,
 };
 
 static esp_err_t stream_handle_handshake(httpd_req_t *req) {
+  if (g_server_task_handle == NULL) {
+    g_server_task_handle = xTaskGetCurrentTaskHandle();
+  }
   ESP_LOGI(TAG, "Handshake done, the new connection was opened");
   opentelemetry::trace::StartSpanOptions stream_opts;
   stream_opts.kind = opentelemetry::trace::SpanKind::kServer;
@@ -143,7 +151,14 @@ static esp_err_t stream_handle_handshake(httpd_req_t *req) {
        {"network.protocol.name", "websocket"}},
       stream_opts);
   httpd_req_t* copy = NULL;
-  ESP_ERROR_CHECK(httpd_req_async_handler_begin(req, &copy));
+  esp_err_t ret = httpd_req_async_handler_begin(req, &copy);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "httpd_req_async_handler_begin failed: %s", esp_err_to_name(ret));
+    g_stream_connection_span->SetStatus(opentelemetry::trace::StatusCode::kError,
+                                        "async begin failed");
+    g_stream_connection_span->End();
+    return ret;
+  }
   if (xQueueSendToBack(g_stream_req_queue, &copy, portMAX_DELAY) != pdPASS) {
     ESP_LOGE(TAG, "xQueueSendToBack(g_stream_req_queue) failed");
     g_stream_connection_span->SetStatus(opentelemetry::trace::StatusCode::kError,
@@ -158,7 +173,12 @@ static esp_err_t stream_handle_websocket_frame(httpd_req_t *req) {
   esp_err_t ret = ESP_OK;
 
   httpd_ws_frame_t ws_pkt = {};
-  ESP_ERROR_CHECK(httpd_ws_recv_frame(req, &ws_pkt, 0));
+  ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to receive stream WS frame header: %s", esp_err_to_name(ret));
+    xTaskNotifyGive(g_stream_task_handle);
+    return ret;
+  }
 
   unsigned char *buf = NULL;
   if (ws_pkt.len > 0) {
@@ -179,12 +199,14 @@ static esp_err_t stream_handle_websocket_frame(httpd_req_t *req) {
       ws_pkt.type = HTTPD_WS_TYPE_PONG;
     } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
       ESP_LOGI(TAG, "Got a WS CLOSE frame, Replying CLOSE");
-      g_stream_connection_span->SetAttribute(
-          "ws.close.code", static_cast<int64_t>(ws_pkt.len));
+      if (g_stream_connection_span) {
+        g_stream_connection_span->SetAttribute(
+            "ws.close.code", static_cast<int64_t>(ws_pkt.len));
+      }
       ws_pkt.len = 0;
       ws_pkt.payload = NULL;
       xTaskNotifyGive(g_stream_task_handle);
-      ulTaskNotifyTakeIndexed(CAMERA_STOPPED_NOTIFICATION_INDEX, pdTRUE, portMAX_DELAY);
+      ulTaskNotifyTakeIndexed(CAMERA_STOPPED_NOTIFICATION_INDEX, pdTRUE, pdMS_TO_TICKS(2000));
     }
 
     ESP_LOGI(TAG, "Sending control frame from stream handler");
@@ -205,14 +227,7 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
   if (g_server_task_handle == NULL) {
     g_server_task_handle = xTaskGetCurrentTaskHandle();
   }
-
-  if (req->method == HTTP_GET) {
-    ESP_ERROR_CHECK(stream_handle_handshake(req));
-  } else {
-    ESP_ERROR_CHECK(stream_handle_websocket_frame(req));
-  }
-
-  return ESP_OK;
+  return stream_handle_websocket_frame(req);
 }
 
 void ws_stream_task(void* p) {
@@ -231,9 +246,26 @@ void ws_stream_task(void* p) {
       ESP_LOGI(TAG, "Stream started");
     }
 
-    if (xQueueReceive(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
-      ESP_LOGE(TAG, "xQueueReceive(g_frame_queue) failed");
-      break;
+    bool stream_stopped = false;
+    while (xQueueReceive(g_frame_queue, &frame, pdMS_TO_TICKS(100)) != pdPASS) {
+      if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
+        stream_stopped = true;
+        break;
+      }
+    }
+    if (stream_stopped) {
+      if (httpd_req_async_handler_complete(req) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to complete async stream req");
+      }
+      req = NULL;
+      camera_stop();
+      ESP_LOGI(TAG, "Stream stopped");
+      if (g_stream_connection_span) {
+        g_stream_connection_span->End();
+        g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
+      }
+      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
+      continue;
     }
 
     if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
@@ -244,7 +276,10 @@ void ws_stream_task(void* p) {
       req = NULL;
       camera_stop();
       ESP_LOGI(TAG, "Stream stopped");
-      g_stream_connection_span->End();
+      if (g_stream_connection_span) {
+        g_stream_connection_span->End();
+        g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
+      }
       xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
@@ -269,7 +304,17 @@ void ws_stream_task(void* p) {
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "alloc failed");
       send_span->End();
       esp_camera_fb_return(frame);
-      break;
+      if (httpd_req_async_handler_complete(req) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to complete async stream req");
+      }
+      req = NULL;
+      camera_stop();
+      if (g_stream_connection_span) {
+        g_stream_connection_span->End();
+        g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
+      }
+      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
+      continue;
     }
     mbedtls_base64_encode((unsigned char*)b64_buf, b64_len + 1, &b64_len, frame->buf, frame->len);
     b64_buf[b64_len] = '\0';
@@ -290,12 +335,22 @@ void ws_stream_task(void* p) {
 
     ret = httpd_ws_send_frame(req, &ws_pkt);
     if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+      ESP_LOGE(TAG, "httpd_ws_send_frame failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
       send_span->End();
       cJSON_free(packet_json_str);
       esp_camera_fb_return(frame);
-      break;
+      if (httpd_req_async_handler_complete(req) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to complete async stream req");
+      }
+      req = NULL;
+      camera_stop();
+      if (g_stream_connection_span) {
+        g_stream_connection_span->End();
+        g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
+      }
+      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
+      continue;
     }
 
     send_span->End();
@@ -313,10 +368,14 @@ static const httpd_uri_t stream = {
     .user_ctx  = NULL,
     .is_websocket = true,
     .handle_ws_control_frames = true,
-    .supported_subprotocol = NULL
+    .supported_subprotocol = NULL,
+    .ws_post_handshake_cb = stream_handle_handshake,
 };
 
 static esp_err_t telemetry_handle_handshake(httpd_req_t *req) {
+  if (g_server_task_handle == NULL) {
+    g_server_task_handle = xTaskGetCurrentTaskHandle();
+  }
   ESP_LOGI(TAG, "Handshake done, the new connection was opened");
   opentelemetry::trace::StartSpanOptions tel_opts;
   tel_opts.kind = opentelemetry::trace::SpanKind::kServer;
@@ -326,7 +385,14 @@ static esp_err_t telemetry_handle_handshake(httpd_req_t *req) {
        {"network.protocol.name", "websocket"}},
       tel_opts);
   httpd_req_t* copy = NULL;
-  ESP_ERROR_CHECK(httpd_req_async_handler_begin(req, &copy));
+  esp_err_t ret = httpd_req_async_handler_begin(req, &copy);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "httpd_req_async_handler_begin failed: %s", esp_err_to_name(ret));
+    g_telemetry_connection_span->SetStatus(opentelemetry::trace::StatusCode::kError,
+                                           "async begin failed");
+    g_telemetry_connection_span->End();
+    return ret;
+  }
   if (xQueueSendToBack(g_telemetry_req_queue, &copy, portMAX_DELAY) != pdPASS) {
     ESP_LOGE(TAG, "xQueueSendToBack(g_telemetry_req_queue) failed");
     g_telemetry_connection_span->SetStatus(opentelemetry::trace::StatusCode::kError,
@@ -341,7 +407,12 @@ static esp_err_t telemetry_handle_websocket_frame(httpd_req_t *req) {
   esp_err_t ret = ESP_OK;
 
   httpd_ws_frame_t ws_pkt = {};
-  ESP_ERROR_CHECK(httpd_ws_recv_frame(req, &ws_pkt, 0));
+  ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to receive telemetry WS frame header: %s", esp_err_to_name(ret));
+    xTaskNotifyGive(g_telemetry_task_handle);
+    return ret;
+  }
 
   unsigned char *buf = NULL;
   if (ws_pkt.len > 0) {
@@ -362,12 +433,14 @@ static esp_err_t telemetry_handle_websocket_frame(httpd_req_t *req) {
       ws_pkt.type = HTTPD_WS_TYPE_PONG;
     } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
       ESP_LOGI(TAG, "Got a WS CLOSE frame, Replying CLOSE");
-      g_telemetry_connection_span->SetAttribute(
-          "ws.close.code", static_cast<int64_t>(ws_pkt.len));
+      if (g_telemetry_connection_span) {
+        g_telemetry_connection_span->SetAttribute(
+            "ws.close.code", static_cast<int64_t>(ws_pkt.len));
+      }
       ws_pkt.len = 0;
       ws_pkt.payload = NULL;
       xTaskNotifyGive(g_telemetry_task_handle);
-      ulTaskNotifyTakeIndexed(TELEMETRY_STOPPED_NOTIFICATION_INDEX, pdTRUE, portMAX_DELAY);
+      ulTaskNotifyTakeIndexed(TELEMETRY_STOPPED_NOTIFICATION_INDEX, pdTRUE, pdMS_TO_TICKS(2000));
     }
 
     ESP_LOGI(TAG, "Sending control frame from telemetry handler");
@@ -388,14 +461,7 @@ static esp_err_t telemetry_get_handler(httpd_req_t *req)
   if (g_server_task_handle == NULL) {
     g_server_task_handle = xTaskGetCurrentTaskHandle();
   }
-
-  if (req->method == HTTP_GET) {
-    ESP_ERROR_CHECK(telemetry_handle_handshake(req));
-  } else {
-    ESP_ERROR_CHECK(telemetry_handle_websocket_frame(req));
-  }
-
-  return ESP_OK;
+  return telemetry_handle_websocket_frame(req);
 }
 
 void ws_telemetry_task(void* p) {
@@ -414,9 +480,26 @@ void ws_telemetry_task(void* p) {
     }
 
     telemetry_packet_t packet = {};
-    if (xQueueReceive(g_telemetry_packet_queue, &packet, portMAX_DELAY) != pdPASS) {
-      ESP_LOGE(TAG, "xQueueReceive(g_telemetry_packet_queue) failed");
-      break;
+    bool telemetry_stopped = false;
+    while (xQueueReceive(g_telemetry_packet_queue, &packet, pdMS_TO_TICKS(100)) != pdPASS) {
+      if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
+        telemetry_stopped = true;
+        break;
+      }
+    }
+    if (telemetry_stopped) {
+      if (httpd_req_async_handler_complete(req) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to complete async telemetry req");
+      }
+      req = NULL;
+      telemetry_stop();
+      ESP_LOGI(TAG, "Telemetry stopped");
+      if (g_telemetry_connection_span) {
+        g_telemetry_connection_span->End();
+        g_telemetry_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
+      }
+      xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
+      continue;
     }
 
     if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
@@ -426,7 +509,10 @@ void ws_telemetry_task(void* p) {
       req = NULL;
       telemetry_stop();
       ESP_LOGI(TAG, "Telemetry stopped");
-      g_telemetry_connection_span->End();
+      if (g_telemetry_connection_span) {
+        g_telemetry_connection_span->End();
+        g_telemetry_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
+      }
       xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
@@ -460,7 +546,17 @@ void ws_telemetry_task(void* p) {
       send_span->End();
       cJSON_free(packet_json_str);
       cJSON_Delete(packet_json);
-      break;
+      if (httpd_req_async_handler_complete(req) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to complete async telemetry req");
+      }
+      req = NULL;
+      telemetry_stop();
+      if (g_telemetry_connection_span) {
+        g_telemetry_connection_span->End();
+        g_telemetry_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
+      }
+      xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
+      continue;
     }
 
     send_span->End();
@@ -478,7 +574,8 @@ static const httpd_uri_t telemetry = {
     .user_ctx  = NULL,
     .is_websocket = true,
     .handle_ws_control_frames = true,
-    .supported_subprotocol = NULL
+    .supported_subprotocol = NULL,
+    .ws_post_handshake_cb = telemetry_handle_handshake,
 };
 
 static httpd_handle_t start_web_server()

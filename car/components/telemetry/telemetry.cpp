@@ -9,10 +9,9 @@
 #include <cJSON.h>
 #include <time.h>
 #include "driver/pulse_cnt.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "driver/gpio.h"
-#include "driver/mcpwm.h"
-#include "esp_private/esp_clk.h"
+#include "driver/mcpwm_cap.h"
 
 static const char* TAG = "telemetry";
 
@@ -27,7 +26,8 @@ static pcnt_unit_handle_t g_pcnt_unit = NULL;
 
 static uint64_t g_previous_timestamp = 0;
 
-static i2c_port_t g_i2c_port = I2C_NUM_1;
+static i2c_master_dev_handle_t g_imu_xm_dev = NULL;
+static i2c_master_dev_handle_t g_imu_g_dev  = NULL;
 
 // Based on:
 // https://github.com/adafruit/Adafruit_LSM9DS0_Library/
@@ -179,31 +179,40 @@ float get_speed() {
   return velocity_kph;
 }
 
-void i2c_init() {
-  i2c_config_t conf = {};
-  conf.mode = I2C_MODE_MASTER;
-  conf.sda_io_num = 1;
-  conf.scl_io_num = 2;
-  conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-  conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-  conf.master.clk_speed = 400000;
-  ESP_ERROR_CHECK(i2c_param_config(g_i2c_port, &conf));
-  ESP_ERROR_CHECK(i2c_driver_install(g_i2c_port, conf.mode, 0, 0, 0));
+static i2c_master_dev_handle_t imu_dev_handle(uint8_t device_address) {
+  if (device_address == LSM9DS0_XM_ADDRESS) return g_imu_xm_dev;
+  if (device_address == LSM9DS0_G_ADDRESS)  return g_imu_g_dev;
+  return NULL;
 }
 
 void imu_read_register(uint8_t device_address, uint8_t reg_address, uint8_t* read_buf, size_t read_size) {
+  i2c_master_dev_handle_t dev = imu_dev_handle(device_address);
+  if (!dev) return;
   uint8_t write_buf = reg_address | 0x80;  // Enable reading multiple bytes
-  ESP_ERROR_CHECK(i2c_master_write_read_device(g_i2c_port, device_address, &write_buf, 1, read_buf, read_size, 1000 / portTICK_PERIOD_MS));
+  ESP_ERROR_CHECK(i2c_master_transmit_receive(dev, &write_buf, 1, read_buf, read_size, 1000));
 }
 
 void imu_write_register(uint8_t device_address, uint8_t reg_address, uint8_t data) {
+  i2c_master_dev_handle_t dev = imu_dev_handle(device_address);
+  if (!dev) return;
   uint8_t write_buf[2] = {reg_address, data};
-  ESP_ERROR_CHECK(i2c_master_write_to_device(g_i2c_port, device_address, write_buf, sizeof(write_buf), 1000 / portTICK_PERIOD_MS));
+  ESP_ERROR_CHECK(i2c_master_transmit(dev, write_buf, sizeof(write_buf), 1000));
 }
 
 void imu_init() {
-  // I2C driver is installed by camera
-  // i2c_init();
+  // esp_camera_init's sccb-ng creates I2C_NUM_1 on GPIO 1+2 (same as IMU); share that bus.
+  i2c_master_bus_handle_t bus_handle = NULL;
+  ESP_ERROR_CHECK(i2c_master_get_bus_handle(I2C_NUM_1, &bus_handle));
+
+  i2c_device_config_t dev_cfg = {};
+  dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  dev_cfg.scl_speed_hz = 400000;
+
+  dev_cfg.device_address = LSM9DS0_XM_ADDRESS;
+  ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &g_imu_xm_dev));
+
+  dev_cfg.device_address = LSM9DS0_G_ADDRESS;
+  ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &g_imu_g_dev));
 
   uint8_t g_id = 0;
   imu_read_register(LSM9DS0_G_ADDRESS, LSM9DS0_REGISTER_WHO_AM_I_G, &g_id, 1);
@@ -267,12 +276,15 @@ vector3_t read_gyroscope() {
   return out;
 }
 
-static bool urm_echo_isr_handler(mcpwm_unit_t mpcwm, mcpwm_capture_channel_id_t cap_channel, const cap_event_data_t *edata, void *user_data) {
+static uint32_t g_cap_resolution_hz = 0;
+static mcpwm_cap_channel_handle_t g_cap_channel = NULL;
+
+static bool urm_echo_isr_handler(mcpwm_cap_channel_handle_t cap_channel, const mcpwm_capture_event_data_t *edata, void *user_data) {
   static uint32_t begin_of_sample = 0;
   static uint32_t end_of_sample = 0;
 
   BaseType_t high_task_wakeup = pdFALSE;
-  if (edata->cap_edge == MCPWM_NEG_EDGE) {
+  if (edata->cap_edge == MCPWM_CAP_EDGE_NEG) {
     begin_of_sample = edata->cap_value;
     end_of_sample = begin_of_sample;
   } else {
@@ -288,23 +300,45 @@ void urm_init() {
   ESP_ERROR_CHECK(gpio_pulldown_en(URM_TRIG_PIN));
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
 
-  ESP_ERROR_CHECK(mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM_CAP_0, URM_ECHO_PIN));
-  mcpwm_capture_config_t conf = {};
-  conf.cap_edge = MCPWM_BOTH_EDGE;
-  conf.cap_prescale = 1;
-  conf.capture_cb = urm_echo_isr_handler;
-  conf.user_data = NULL;
-  ESP_ERROR_CHECK(mcpwm_capture_enable_channel(MCPWM_UNIT_0, MCPWM_SELECT_CAP0, &conf));
+  mcpwm_cap_timer_handle_t cap_timer = NULL;
+  mcpwm_capture_timer_config_t cap_timer_cfg = {};
+  cap_timer_cfg.group_id = 0;
+  cap_timer_cfg.clk_src = MCPWM_CAPTURE_CLK_SRC_DEFAULT;
+  ESP_ERROR_CHECK(mcpwm_new_capture_timer(&cap_timer_cfg, &cap_timer));
+  ESP_ERROR_CHECK(mcpwm_capture_timer_get_resolution(cap_timer, &g_cap_resolution_hz));
+
+  mcpwm_capture_channel_config_t cap_ch_cfg = {};
+  cap_ch_cfg.gpio_num = URM_ECHO_PIN;
+  cap_ch_cfg.prescale = 1;
+  cap_ch_cfg.flags.neg_edge = true;
+  cap_ch_cfg.flags.pos_edge = true;
+  ESP_ERROR_CHECK(mcpwm_new_capture_channel(cap_timer, &cap_ch_cfg, &g_cap_channel));
+
+  mcpwm_capture_event_callbacks_t cbs = {};
+  cbs.on_cap = urm_echo_isr_handler;
+  ESP_ERROR_CHECK(mcpwm_capture_channel_register_event_callbacks(g_cap_channel, &cbs, NULL));
+  ESP_ERROR_CHECK(mcpwm_capture_channel_enable(g_cap_channel));
+  ESP_ERROR_CHECK(mcpwm_capture_timer_enable(cap_timer));
+  ESP_ERROR_CHECK(mcpwm_capture_timer_start(cap_timer));
+
+  // ESP-IDF v6 no longer configures GPIO pulls inside mcpwm_new_capture_channel
+  // (commit cb097aeb54 removed gpio_config() call). Without an explicit pull-up
+  // on the active-LOW echo pin, the floating input picks up trigger-pulse EMI and
+  // fires rapid NEG+POS pairs yielding near-zero pulse widths (distance_ahead=0).
+  // The HC-SR04 example in v6 likewise requires gpio_set_pull_mode(GPIO_PULLUP_ONLY).
+  gpio_pullup_en(URM_ECHO_PIN);
+  gpio_pulldown_dis(URM_ECHO_PIN);
 }
 
 int get_distance_ahead() {
+  xTaskNotifyStateClearIndexed(NULL, TELEMETRY_URM_ISR_INDEX);
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 0));
   esp_rom_delay_us(10);
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
 
   uint32_t pulse_count = 0;
   if (xTaskNotifyWaitIndexed(TELEMETRY_URM_ISR_INDEX, 0x00, ULONG_MAX, &pulse_count, pdMS_TO_TICKS(1000)) == pdTRUE) {
-    uint32_t pulse_width_us = pulse_count * (1000000.0 / esp_clk_apb_freq());
+    uint32_t pulse_width_us = (uint32_t)((uint64_t)pulse_count * 1000000ULL / g_cap_resolution_hz);
     if (pulse_width_us >= 50000) {
       ESP_LOGW(TAG, "Invalid URM pulse width");
       return -1;
@@ -318,13 +352,13 @@ int get_distance_ahead() {
 }
 
 void telemetry_init() {
-  sync_time();
   pcnt_init();
   imu_init();
   urm_init();
 }
 
 void telemetry_task(void* p) {
+  sync_time();
   ESP_LOGI(TAG, "Starting telemetry task");
   bool started = false;
   while (true) {

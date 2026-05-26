@@ -5,64 +5,37 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
-#include "driver/mcpwm.h"
-#include "soc/mcpwm_struct.h" 
-#include "soc/mcpwm_reg.h"
+#include "driver/mcpwm_prelude.h"
 
 static const char* TAG = "motor";
 
 #define MOTOR_DEAD_ZONE 40
+#define MOTOR_PWM_RESOLUTION_HZ 1000000
+#define MOTOR_PWM_FREQ_HZ       1000
+#define MOTOR_PWM_PERIOD_TICKS  (MOTOR_PWM_RESOLUTION_HZ / MOTOR_PWM_FREQ_HZ)
 
 typedef struct {
   int gpio_in1;
   int gpio_in2;
-  mcpwm_unit_t pwm_unit;
-  mcpwm_timer_t pwm_timer;
-  mcpwm_io_signals_t pwm_io_signal_in1;
-  mcpwm_io_signals_t pwm_io_signal_in2;
-} motor_pins_t;
+  int group_id;
+  mcpwm_timer_handle_t timer;
+  mcpwm_oper_handle_t oper;
+  mcpwm_cmpr_handle_t cmpr_a;
+  mcpwm_cmpr_handle_t cmpr_b;
+  mcpwm_gen_handle_t gen_a;
+  mcpwm_gen_handle_t gen_b;
+} motor_t;
 
 // Front left
-const motor_pins_t m1 = {
-  .gpio_in1 = 12,
-  .gpio_in2 = 13,
-  .pwm_unit = MCPWM_UNIT_0,
-  .pwm_timer = MCPWM_TIMER_0,
-  .pwm_io_signal_in1 = MCPWM0A,
-  .pwm_io_signal_in2 = MCPWM0B,
-};
-
+static motor_t m1 = {12, 13, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 // Front right
-const motor_pins_t m2 = {
-  .gpio_in1 = 14,
-  .gpio_in2 = 21,
-  .pwm_unit = MCPWM_UNIT_0,
-  .pwm_timer = MCPWM_TIMER_1,
-  .pwm_io_signal_in1 = MCPWM1A,
-  .pwm_io_signal_in2 = MCPWM1B,
-};
-
+static motor_t m2 = {14, 21, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 // Rear left
-const motor_pins_t m3 = {
-  .gpio_in1 = 9,
-  .gpio_in2 = 10,
-  .pwm_unit = MCPWM_UNIT_1,
-  .pwm_timer = MCPWM_TIMER_0,
-  .pwm_io_signal_in1 = MCPWM0A,
-  .pwm_io_signal_in2 = MCPWM0B,
-};
-
+static motor_t m3 = {9,  10, 1, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 // Rear right
-const motor_pins_t m4 = {
-  .gpio_in1 = 47,
-  .gpio_in2 = 11,
-  .pwm_unit = MCPWM_UNIT_1,
-  .pwm_timer = MCPWM_TIMER_1,
-  .pwm_io_signal_in1 = MCPWM1A,
-  .pwm_io_signal_in2 = MCPWM1B,
-};
+static motor_t m4 = {47, 11, 1, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
-const motor_pins_t motors[4] = {m1, m2, m3, m4};
+static motor_t* motors[4] = {&m1, &m2, &m3, &m4};
 
 static QueueHandle_t g_command_queue = NULL;
 static TaskHandle_t g_command_task_handle = NULL;
@@ -115,19 +88,54 @@ void command_task(void *p) {
   }
 }
 
-void motor_init() {
-  mcpwm_config_t pwm_config;
-  pwm_config.frequency = 1000;
-  pwm_config.cmpr_a = 0;
-  pwm_config.cmpr_b = 0;
-  pwm_config.counter_mode = MCPWM_UP_COUNTER;
-  pwm_config.duty_mode = MCPWM_DUTY_MODE_0;
+static void motor_mcpwm_init(motor_t* m) {
+  mcpwm_timer_config_t timer_cfg = {};
+  timer_cfg.group_id = m->group_id;
+  timer_cfg.clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT;
+  timer_cfg.resolution_hz = MOTOR_PWM_RESOLUTION_HZ;
+  timer_cfg.count_mode = MCPWM_TIMER_COUNT_MODE_UP;
+  timer_cfg.period_ticks = MOTOR_PWM_PERIOD_TICKS;
+  ESP_ERROR_CHECK(mcpwm_new_timer(&timer_cfg, &m->timer));
 
-  for (int i=0; i < 4; i++) {
-    const motor_pins_t &m = motors[i];
-    mcpwm_gpio_init(m.pwm_unit,m.pwm_io_signal_in1,m.gpio_in1);
-    mcpwm_gpio_init(m.pwm_unit,m.pwm_io_signal_in2,m.gpio_in2);
-    mcpwm_init(m.pwm_unit,m.pwm_timer,&pwm_config);
+  mcpwm_operator_config_t oper_cfg = {};
+  oper_cfg.group_id = m->group_id;
+  ESP_ERROR_CHECK(mcpwm_new_operator(&oper_cfg, &m->oper));
+  ESP_ERROR_CHECK(mcpwm_operator_connect_timer(m->oper, m->timer));
+
+  mcpwm_comparator_config_t cmpr_cfg = {};
+  cmpr_cfg.flags.update_cmp_on_tez = true;
+  ESP_ERROR_CHECK(mcpwm_new_comparator(m->oper, &cmpr_cfg, &m->cmpr_a));
+  ESP_ERROR_CHECK(mcpwm_new_comparator(m->oper, &cmpr_cfg, &m->cmpr_b));
+  ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(m->cmpr_a, 0));
+  ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(m->cmpr_b, 0));
+
+  mcpwm_generator_config_t gen_cfg = {};
+  gen_cfg.gen_gpio_num = m->gpio_in1;
+  ESP_ERROR_CHECK(mcpwm_new_generator(m->oper, &gen_cfg, &m->gen_a));
+  gen_cfg.gen_gpio_num = m->gpio_in2;
+  ESP_ERROR_CHECK(mcpwm_new_generator(m->oper, &gen_cfg, &m->gen_b));
+
+  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_timer_event(m->gen_a,
+      MCPWM_GEN_TIMER_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, MCPWM_TIMER_EVENT_EMPTY, MCPWM_GEN_ACTION_HIGH)));
+  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_compare_event(m->gen_a,
+      MCPWM_GEN_COMPARE_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, m->cmpr_a, MCPWM_GEN_ACTION_LOW)));
+
+  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_timer_event(m->gen_b,
+      MCPWM_GEN_TIMER_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, MCPWM_TIMER_EVENT_EMPTY, MCPWM_GEN_ACTION_HIGH)));
+  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_compare_event(m->gen_b,
+      MCPWM_GEN_COMPARE_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, m->cmpr_b, MCPWM_GEN_ACTION_LOW)));
+
+  // Start with both outputs forced low
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(m->gen_a, 0, true));
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(m->gen_b, 0, true));
+
+  ESP_ERROR_CHECK(mcpwm_timer_enable(m->timer));
+  ESP_ERROR_CHECK(mcpwm_timer_start_stop(m->timer, MCPWM_TIMER_START_NO_STOP));
+}
+
+void motor_init() {
+  for (int i = 0; i < 4; i++) {
+    motor_mcpwm_init(motors[i]);
   }
 }
 
@@ -142,64 +150,63 @@ void motor_setup(QueueHandle_t command_queue) {
   }
 }
 
-void motor_advance(const motor_pins_t &motor, uint8_t speed)
+static void motor_advance(motor_t* motor, uint8_t speed)
 {
   speed = (uint8_t)interpolate(speed, 0, 100, MOTOR_DEAD_ZONE, 100);
-  mcpwm_set_duty_type(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_A,MCPWM_DUTY_MODE_0);
-  mcpwm_set_signal_low(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_B);
-  mcpwm_set_duty(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_A,speed);
+  uint32_t cmp = (uint32_t)speed * MOTOR_PWM_PERIOD_TICKS / 100;
+  ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(motor->cmpr_a, cmp));
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(motor->gen_b, 0, true));
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(motor->gen_a, -1, false));
 }
 
-void motor_retreat(const motor_pins_t &motor, uint8_t speed)
+static void motor_retreat(motor_t* motor, uint8_t speed)
 {
   speed = (uint8_t)interpolate(speed, 0, 100, MOTOR_DEAD_ZONE, 100);
-  mcpwm_set_duty_type(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_B,MCPWM_DUTY_MODE_0);
-  mcpwm_set_signal_low(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_A);
-  mcpwm_set_duty(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_B,speed);
+  uint32_t cmp = (uint32_t)speed * MOTOR_PWM_PERIOD_TICKS / 100;
+  ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(motor->cmpr_b, cmp));
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(motor->gen_a, 0, true));
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(motor->gen_b, -1, false));
 }
 
-void motor_brake(const motor_pins_t &motor)
+static void motor_brake(motor_t* motor)
 {
-  mcpwm_set_signal_high(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_A);
-  mcpwm_set_signal_high(motor.pwm_unit,motor.pwm_timer,MCPWM_GEN_B);
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(motor->gen_a, 1, true));
+  ESP_ERROR_CHECK(mcpwm_generator_set_force_level(motor->gen_b, 1, true));
 }
 
 void car_advance(uint8_t speed)
 {
-  for (int i=0; i < 4; i++) {
-    const motor_pins_t &m = motors[i];
-    motor_advance(m, speed);
+  for (int i = 0; i < 4; i++) {
+    motor_advance(motors[i], speed);
   }
 }
 
 void car_retreat(uint8_t speed)
 {
-  for (int i=0; i < 4; i++) {
-    const motor_pins_t &m = motors[i];
-    motor_retreat(m, speed);
+  for (int i = 0; i < 4; i++) {
+    motor_retreat(motors[i], speed);
   }
 }
 
 void car_turn_left(uint8_t speed)
 {
-  motor_advance(m2, speed);
-  motor_advance(m4, speed);
-  motor_retreat(m1, speed);
-  motor_retreat(m3, speed);
+  motor_advance(&m2, speed);
+  motor_advance(&m4, speed);
+  motor_retreat(&m1, speed);
+  motor_retreat(&m3, speed);
 }
 
 void car_turn_right(uint8_t speed)
 {
-  motor_advance(m1, speed);
-  motor_advance(m3, speed);
-  motor_retreat(m2, speed);
-  motor_retreat(m4, speed);
+  motor_advance(&m1, speed);
+  motor_advance(&m3, speed);
+  motor_retreat(&m2, speed);
+  motor_retreat(&m4, speed);
 }
 
 void car_brake()
 {
-  for (int i=0; i < 4; i++) {
-    const motor_pins_t &m = motors[i];
-    motor_brake(m);
+  for (int i = 0; i < 4; i++) {
+    motor_brake(motors[i]);
   }
 }
