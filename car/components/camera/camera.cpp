@@ -2,7 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_camera.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "DFRobot_AXP313A.h"
 #include "esp_opentelemetry.hpp"
@@ -63,24 +63,18 @@ static camera_config_t camera_config = {
 };
 
 void camera_init() {
-  i2c_port_t i2c_master_port = I2C_NUM_0;
+  i2c_master_bus_config_t bus_cfg = {};
+  bus_cfg.i2c_port = I2C_NUM_0;
+  bus_cfg.sda_io_num = GPIO_NUM_1;
+  bus_cfg.scl_io_num = GPIO_NUM_2;
+  bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
+  bus_cfg.glitch_ignore_cnt = 7;
+  bus_cfg.flags.enable_internal_pullup = true;
 
-  i2c_config_t conf = {
-      .mode = I2C_MODE_MASTER,
-      .sda_io_num = 1,
-      .scl_io_num = 2,
-      .sda_pullup_en = GPIO_PULLUP_ENABLE,
-      .scl_pullup_en = GPIO_PULLUP_ENABLE,
-      .master = {
-        .clk_speed = 0,
-      },
-      .clk_flags = 0,
-  };
-  conf.master.clk_speed = 400000;
-  i2c_param_config(i2c_master_port, &conf);
-  i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
+  i2c_master_bus_handle_t bus_handle;
+  ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus_handle));
 
-  begin(I2C_NUM_0, 0x36);
+  begin(bus_handle, 0x36);
   enableCameraPower(OV2640);
 
   esp_err_t err = esp_camera_init(&camera_config);
@@ -121,22 +115,26 @@ void camera_task(void* p) {
     }
 
     frame = esp_camera_fb_get();
-    if (frame) {
-      if (!has_jpeg_eoi(frame)) {
-        ESP_LOGW(TAG, "NO-EOI detected (size=%zu)", frame->len);
-        auto span = esp_opentelemetry_tracer()->StartSpan(
-            "camera.frame.capture",
-            {{"camera.frame.size", static_cast<int64_t>(frame->len)}});
-        span->SetStatus(opentelemetry::trace::StatusCode::kError, "NO-EOI");
-        span->End();
-        esp_camera_fb_return(frame);
-        continue;
-      }
+    if (!frame) {
+      ESP_LOGW(TAG, "esp_camera_fb_get() returned NULL");
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
 
-      if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
-        ESP_LOGE(TAG, "xQueueSendToBack failed");
-        break;
-      }
+    if (!has_jpeg_eoi(frame)) {
+      ESP_LOGW(TAG, "NO-EOI detected (size=%zu)", frame->len);
+      auto span = esp_opentelemetry_tracer()->StartSpan(
+          "camera.frame.capture",
+          {{"camera.frame.size", static_cast<int64_t>(frame->len)}});
+      span->SetStatus(opentelemetry::trace::StatusCode::kError, "NO-EOI");
+      span->End();
+      esp_camera_fb_return(frame);
+      continue;
+    }
+
+    if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
+      ESP_LOGE(TAG, "xQueueSendToBack failed");
+      break;
     }
   }
   ESP_LOGW(TAG, "Camera task stopped");

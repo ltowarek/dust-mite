@@ -99,7 +99,7 @@ class ClientConnection:
 
     def _recv_frame(self, client: websockets.sync.client.ClientConnection) -> None:
         recv_frame = client.recv(
-            timeout=datetime.timedelta(seconds=2).total_seconds(),
+            timeout=datetime.timedelta(seconds=5).total_seconds(),
         )
         with contextlib.suppress(queue.Full):
             self._recv_queue.put_nowait(recv_frame)
@@ -165,6 +165,7 @@ def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
     ):
         last_camera_frame: bytes = b""
         last_telemetry: dict[str, Any] = {}
+        last_command: dict[str, Any] | None = None
         try:
             while True:
                 frame = handle_camera_frame(stream_client, websocket)
@@ -176,8 +177,11 @@ def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
                     last_telemetry = telemetry
 
                 if last_camera_frame and last_telemetry:
-                    handle_drive_command(
-                        controller_client, last_camera_frame, last_telemetry
+                    last_command = handle_drive_command(
+                        controller_client,
+                        last_camera_frame,
+                        last_telemetry,
+                        last_command,
                     )
         except websockets.exceptions.ConnectionClosed:
             logger.info("Server connection closed")
@@ -283,16 +287,20 @@ def handle_drive_command(
     controller_client: ClientConnection,
     frame: bytes,
     telemetry: dict[str, Any],
-) -> None:
-    """Compute a drive command and send it to the controller if one is produced."""
+    last_command: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Compute a drive command and send it to the controller if the command changed."""
     # TODO: Make it opt-in, so user can drive as he wants
     command_packet = drive_car(frame, telemetry)
+    if command_packet == last_command:
+        return last_command
     if command_packet is not None:
         with tracer.start_as_current_span("streamer.handle_drive_command") as span:
             span.set_attribute("network.protocol.name", "websocket")
             span.set_attribute("distance_ahead", telemetry["distance_ahead"])
             p = prepare_command_packet(command_packet)
             controller_client.send(json.dumps(p))
+    return command_packet
 
 
 def drive_car(_frame: bytes, telemetry: dict[str, Any]) -> dict[str, Any] | None:
@@ -303,7 +311,7 @@ def drive_car(_frame: bytes, telemetry: dict[str, Any]) -> dict[str, Any] | None
     # Maybe CONTROLLER_CLIENT_URI should send new state after receiving commands
 
     min_distance = 5
-    if telemetry["distance_ahead"] < min_distance:
+    if telemetry["distance_ahead"] >= 0 and telemetry["distance_ahead"] < min_distance:
         # TODO: Integrate with controller.py
         return {"command": 3, "value": None}
 

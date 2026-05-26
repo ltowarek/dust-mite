@@ -3,9 +3,10 @@ idf_component_register(SRCS "telemetry.cpp"
                     REQUIRES
                     esp_netif
                     esp_wifi
-                    json
+                    cjson
                     esp_driver_pcnt
                     esp_timer
-                    driver
+                    esp_driver_i2c
                     esp_driver_gpio
+                    esp_driver_mcpwm
                     )

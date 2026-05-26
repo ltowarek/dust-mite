@@ -21,7 +21,7 @@
                 "idf.buildPath": "/home/vscode/build",
                 "idf.toolsPath": "${containerEnv:IDF_TOOLS_PATH}",
                 "idf.espIdfPath": "${containerEnv:IDF_PATH}",
-                "idf.pythonBinPath": "${containerEnv:IDF_TOOLS_PATH}/python_env/idf5.3_py3.10_env/bin/python",
+                "idf.pythonBinPath": "${containerEnv:IDF_TOOLS_PATH}/python_env/idf6.0_py3.12_env/bin/python",
                 "idf.port": "${containerEnv:ESP32_DEVICE}",
                 "idf.flashType": "UART",
                 "idf.adapterTargetName": "esp32s3",

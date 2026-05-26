@@ -3,5 +3,5 @@ idf_component_register(SRCS "utils.cpp" "servo.cpp" "motor.cpp"
                     INCLUDE_DIRS "include"
                     REQUIRES
                     esp_driver_gpio
-                    driver # deprecated
+                    esp_driver_mcpwm
                     )
