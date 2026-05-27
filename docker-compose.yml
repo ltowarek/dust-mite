@@ -2,34 +2,43 @@ networks:
   dust-mite-observability:
     name: dust-mite-observability
 
-volumes:
-  cpp-ccache:
-  cpp-build:
-
 services:
   cpp:
-    extends:
-      file: .devcontainer/cpp/docker-compose.yml
-      service: cpp
-    volumes:
-      - cpp-ccache:/home/vscode/.ccache
-      - cpp-build:/home/vscode/build
+    build:
+      context: ./car
+    env_file:
+      - path: .env
+    # devices:
+    #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
+    networks:
+      - dust-mite-observability
 
   python:
-    extends:
-      file: .devcontainer/python/docker-compose.yml
-      service: python
+    build:
+      context: ./controller
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+    # devices:
+    #   - /dev/hidraw4:/dev/hidraw4
+    ports:
+      - "8765:8765"
     command: sleep infinity
+    networks:
+      - dust-mite-observability
+      - default
 
   js:
-    extends:
-      file: .devcontainer/js/docker-compose.yml
-      service: js
-    user: "${UID}:${GID}"
-    environment:
-      HOME: /tmp
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
     command: sleep infinity
+    networks:
+      - dust-mite-observability
+      - default
 
   jaeger:
     extends:

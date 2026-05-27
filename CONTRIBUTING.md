@@ -80,7 +80,7 @@ The container image includes project dependencies and VS Code extensions require
 
 [scripts/start_byobu.sh](scripts/start_byobu.sh) starts all containers and opens a terminal session with four panes in a 2×2 grid:
 
-| C++ firmware (`idf.py build/flash/monitor`) | Python streamer |
+| C++ serial monitor | Python streamer |
 |---|---|
 | JS dev server (`http://localhost:5173`) | Jaeger logs |
 
@@ -90,7 +90,9 @@ From the repository root:
 ./scripts/start_byobu.sh
 ```
 
-Each pane runs its workload in the corresponding container via `docker compose exec`. Press `Ctrl-C` to cancel a running command; the pane drops into an interactive shell in the same container. The C++ pane is an exception: `idf.py monitor` runs in raw terminal mode and forwards `Ctrl-C` to the ESP32 as a break signal. Use `Ctrl-]` to exit the monitor; the pane then drops into an interactive shell.
+Each pane runs its workload in the corresponding container via `docker compose exec`. Press `Ctrl-C` to cancel a running command; the pane drops into an interactive shell in the same container. The C++ pane is an exception: `idf_monitor.py` runs in raw terminal mode and forwards `Ctrl-C` to the ESP32 as a break signal. Use `Ctrl-]` to exit the monitor; the pane then drops into an interactive shell.
+
+Build and flash are performed separately in the C++ devcontainer. Use the byobu C++ pane to observe ESP32 serial output during a full-stack session.
 
 Basic byobu navigation:
 
@@ -323,8 +325,23 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
   - Runs firmware build for [car/](car/) and test build for [car/test/](car/test/)
+- [docker.yml](.github/workflows/docker.yml)
+  - Triggers on pull requests and pushes to `main`
+  - Builds production images for all three components in parallel
+  - Validates the build on pull requests; publishes to GHCR on push to `main`
+  - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
+
+### Production images
+
+Production Dockerfiles are located at the root of each component directory and are separate from the devcontainer images used for development:
+
+- [car/Dockerfile](car/Dockerfile) — ESP-IDF image with a serial monitor script. Build and flash are performed in the C++ devcontainer; this image runs `idf_monitor.py` directly against the connected ESP32.
+- [controller/Dockerfile](controller/Dockerfile) — Python streamer image with the controller package installed.
+- [web/Dockerfile](web/Dockerfile) — Node.js image with the frontend dependencies installed.
+
+All production images run as user `dustmite` (uid=1040). This is distinct from the `vscode` user (uid=1050) in devcontainer images, making any file ownership cross-contamination immediately visible.
 
 ## Pull request checklist
 
