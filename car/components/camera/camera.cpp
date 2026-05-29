@@ -12,8 +12,6 @@ static const char* TAG = "camera";
 #define CAM_PIN_PWDN  -1
 #define CAM_PIN_RESET -1
 #define CAM_PIN_XCLK  45
-#define CAM_PIN_SIOD  1
-#define CAM_PIN_SIOC  2
 
 #define CAM_PIN_D7    48
 #define CAM_PIN_D6    46
@@ -31,8 +29,8 @@ static camera_config_t camera_config = {
   .pin_pwdn = CAM_PIN_PWDN,
   .pin_reset = CAM_PIN_RESET,
   .pin_xclk = CAM_PIN_XCLK,
-  .pin_sccb_sda = CAM_PIN_SIOD,
-  .pin_sccb_scl = CAM_PIN_SIOC,
+  .pin_sccb_sda = -1,
+  .pin_sccb_scl = -1,
 
   .pin_d7 = CAM_PIN_D7,
   .pin_d6 = CAM_PIN_D6,
@@ -62,19 +60,8 @@ static camera_config_t camera_config = {
   .sccb_i2c_port = 0,
 };
 
-void camera_init() {
-  i2c_master_bus_config_t bus_cfg = {};
-  bus_cfg.i2c_port = I2C_NUM_0;
-  bus_cfg.sda_io_num = GPIO_NUM_1;
-  bus_cfg.scl_io_num = GPIO_NUM_2;
-  bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
-  bus_cfg.glitch_ignore_cnt = 7;
-  bus_cfg.flags.enable_internal_pullup = true;
-
-  i2c_master_bus_handle_t bus_handle;
-  ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus_handle));
-
-  begin(bus_handle, 0x36);
+void camera_init(i2c_master_bus_handle_t i2c_bus) {
+  begin(i2c_bus, 0x36);
   enableCameraPower(OV2640);
 
   esp_err_t err = esp_camera_init(&camera_config);
@@ -141,10 +128,10 @@ void camera_task(void* p) {
   vTaskDelete(NULL);
 }
 
-void camera_setup(QueueHandle_t frame_queue) {
+void camera_setup(QueueHandle_t frame_queue, i2c_master_bus_handle_t i2c_bus) {
   g_frame_queue = frame_queue;
 
-  camera_init();
+  camera_init(i2c_bus);
 
   if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 5, &g_camera_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");

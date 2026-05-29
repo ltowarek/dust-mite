@@ -11,21 +11,19 @@
 #include "opentelemetry/trace/span_context.h"
 #include "opentelemetry/trace/trace_flags.h"
 
+extern "C" void app_main(void)
+{
+    opentelemetry::context::propagation::GlobalTextMapPropagator::SetGlobalPropagator(
+        opentelemetry::nostd::shared_ptr<opentelemetry::context::propagation::TextMapPropagator>(
+            new opentelemetry::trace::propagation::HttpTraceContext()));
+
+    UNITY_BEGIN();
+    unity_run_all_tests();
+    UNITY_END();
+}
+
 const char traceparent[] =
     "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
-
-// void setUp() {
-//     namespace prop = opentelemetry::context::propagation;
-//     prop::GlobalTextMapPropagator::SetGlobalPropagator(
-//         opentelemetry::nostd::shared_ptr<prop::TextMapPropagator>(
-//             new opentelemetry::trace::propagation::HttpTraceContext()));
-// }
-
-// void tearDown() {
-//     namespace prop = opentelemetry::context::propagation;
-//     prop::GlobalTextMapPropagator::SetGlobalPropagator(
-//         opentelemetry::nostd::shared_ptr<prop::TextMapPropagator>(nullptr));
-// }
 
 TEST_CASE("extract valid traceparent", "[tracing]") {
     cJSON *obj = cJSON_CreateObject();

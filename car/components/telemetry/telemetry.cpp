@@ -21,6 +21,7 @@ static const char* TAG = "telemetry";
 
 static QueueHandle_t g_telemetry_queue = NULL;
 static TaskHandle_t g_telemetry_task_handle = NULL;
+static TaskHandle_t g_urm_waiting_task = NULL;
 
 static pcnt_unit_handle_t g_pcnt_unit = NULL;
 
@@ -199,11 +200,7 @@ void imu_write_register(uint8_t device_address, uint8_t reg_address, uint8_t dat
   ESP_ERROR_CHECK(i2c_master_transmit(dev, write_buf, sizeof(write_buf), 1000));
 }
 
-void imu_init() {
-  // esp_camera_init's sccb-ng creates I2C_NUM_1 on GPIO 1+2 (same as IMU); share that bus.
-  i2c_master_bus_handle_t bus_handle = NULL;
-  ESP_ERROR_CHECK(i2c_master_get_bus_handle(I2C_NUM_1, &bus_handle));
-
+void imu_init(i2c_master_bus_handle_t bus_handle) {
   i2c_device_config_t dev_cfg = {};
   dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
   dev_cfg.scl_speed_hz = 400000;
@@ -290,7 +287,9 @@ static bool urm_echo_isr_handler(mcpwm_cap_channel_handle_t cap_channel, const m
   } else {
     end_of_sample = edata->cap_value;
     uint32_t pulse_count = end_of_sample - begin_of_sample;
-    xTaskNotifyIndexedFromISR(g_telemetry_task_handle, TELEMETRY_URM_ISR_INDEX, pulse_count, eSetValueWithOverwrite, &high_task_wakeup);
+    if (g_urm_waiting_task != NULL) {
+      xTaskNotifyIndexedFromISR(g_urm_waiting_task, TELEMETRY_URM_ISR_INDEX, pulse_count, eSetValueWithOverwrite, &high_task_wakeup);
+    }
   }
   return high_task_wakeup == pdTRUE;
 }
@@ -331,6 +330,7 @@ void urm_init() {
 }
 
 int get_distance_ahead() {
+  g_urm_waiting_task = xTaskGetCurrentTaskHandle();
   xTaskNotifyStateClearIndexed(NULL, TELEMETRY_URM_ISR_INDEX);
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 0));
   esp_rom_delay_us(10);
@@ -351,9 +351,9 @@ int get_distance_ahead() {
   return -1;
 }
 
-void telemetry_init() {
+void telemetry_init(i2c_master_bus_handle_t i2c_bus) {
   pcnt_init();
-  imu_init();
+  imu_init(i2c_bus);
   urm_init();
 }
 
@@ -390,10 +390,10 @@ void telemetry_task(void* p) {
   vTaskDelete(NULL);
 }
 
-void telemetry_setup(QueueHandle_t telemetry_queue) {
+void telemetry_setup(QueueHandle_t telemetry_queue, i2c_master_bus_handle_t i2c_bus) {
   g_telemetry_queue = telemetry_queue;
 
-  telemetry_init();
+  telemetry_init(i2c_bus);
 
   if (xTaskCreate(telemetry_task, "telemetry_task", 4096, (void *)0, 1, &g_telemetry_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(telemetry_task) failed");
