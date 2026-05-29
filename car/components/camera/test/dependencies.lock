@@ -41,6 +41,6 @@ direct_dependencies:
 - espressif/cjson
 - espressif/esp32-camera
 - idf
-manifest_hash: 85e2738b10433346c80da4afdf5a2fbeee0b4b6db75c0dbf63bccace46a7b0c5
+manifest_hash: 911421cdce94da1ed2bc6de5b3e378be9793a680401c558085611d3a71cad054
 target: esp32s3
 version: 3.0.0

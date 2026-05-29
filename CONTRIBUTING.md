@@ -258,25 +258,20 @@ idf.py monitor
 
 ### Car test types
 
-- Component tests: Unity-based tests focused on a single firmware component API/behavior, implemented in each component `test/` directory and run through the ESP-IDF test app, for example:
+- Component tests: focused on a single firmware component API/behavior. Each component has a standalone ESP-IDF test application under its `test/` directory:
+  - [car/components/tracing/test/](car/components/tracing/test/)
   - [car/components/camera/test/](car/components/camera/test/)
   - [car/components/motor/test/](car/components/motor/test/)
   - [car/components/telemetry/test/](car/components/telemetry/test/)
   - [car/components/web_server/test/](car/components/web_server/test/)
-- Test runner app: [car/test/](car/test/) is a dedicated ESP-IDF test project that collects and runs selected component tests.
 - Integration tests: validate interactions between multiple car components (for example command handling, telemetry, and web server behavior together) on target-like runtime conditions; not implemented yet.
 - E2E tests: validate complete end-to-end driving flows (input/control path to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
 
-Build test firmware:
+Build, flash, and run all component test apps in sequence:
 
 ```bash
-cd test
-idf.py build
+./scripts/run_tests.sh
 ```
-
-### Car examples
-
-Examples are implemented under [car/examples/](car/examples/).
 
 ## Documentation
 
@@ -324,7 +319,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
 - [cpp-car.yml](.github/workflows/cpp-car.yml)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
-  - Runs firmware build for [car/](car/) and test build for [car/test/](car/test/)
+  - Runs firmware build for [car/](car/) and build-only checks for each component test app
 - [docker.yml](.github/workflows/docker.yml)
   - Triggers on pull requests and pushes to `main`
   - Builds production images for all three components in parallel

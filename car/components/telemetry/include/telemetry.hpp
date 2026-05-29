@@ -7,6 +7,7 @@ extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include <cJSON.h>
+#include "driver/i2c_master.h"
 
 typedef struct {
   float x;
@@ -24,8 +25,8 @@ typedef struct {
   int distance_ahead;
 } telemetry_packet_t;
 
-void telemetry_init();
-void telemetry_setup(QueueHandle_t telemetry_queue);
+void telemetry_init(i2c_master_bus_handle_t i2c_bus);
+void telemetry_setup(QueueHandle_t telemetry_queue, i2c_master_bus_handle_t i2c_bus);
 void telemetry_start();
 void telemetry_stop();
 

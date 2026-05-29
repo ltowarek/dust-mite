@@ -45,10 +45,16 @@ jobs:
         include:
           - name: main
             path: car
-          - name: tests
-            path: car/test
-          - name: examples
-            path: car/examples/headless_camera
+          - name: test-tracing
+            path: car/components/tracing/test
+          - name: test-camera
+            path: car/components/camera/test
+          - name: test-motor
+            path: car/components/motor/test
+          - name: test-telemetry
+            path: car/components/telemetry/test
+          - name: test-web_server
+            path: car/components/web_server/test
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
