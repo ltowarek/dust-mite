@@ -93,32 +93,6 @@ void get_telemetry_packet(telemetry_packet_t *p) {
   p->distance_ahead = get_distance_ahead();
 }
 
-cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p) {
-  cJSON* root=cJSON_CreateObject();
-  cJSON_AddStringToObject(root, "timestamp", p.timestamp);
-  cJSON_AddNumberToObject(root, "rssi", p.rssi);
-  cJSON_AddNumberToObject(root, "speed", p.speed);
-
-  cJSON* accelerometer=cJSON_AddObjectToObject(root, "accelerometer");
-  cJSON_AddNumberToObject(accelerometer, "x", p.accelerometer.x);
-  cJSON_AddNumberToObject(accelerometer, "y", p.accelerometer.y);
-  cJSON_AddNumberToObject(accelerometer, "z", p.accelerometer.z);
-
-  cJSON* magnetometer=cJSON_AddObjectToObject(root, "magnetometer");
-  cJSON_AddNumberToObject(magnetometer, "x", p.magnetometer.x);
-  cJSON_AddNumberToObject(magnetometer, "y", p.magnetometer.y);
-  cJSON_AddNumberToObject(magnetometer, "z", p.magnetometer.z);
-
-  cJSON* gyroscope=cJSON_AddObjectToObject(root, "gyroscope");
-  cJSON_AddNumberToObject(gyroscope, "x", p.gyroscope.x);
-  cJSON_AddNumberToObject(gyroscope, "y", p.gyroscope.y);
-  cJSON_AddNumberToObject(gyroscope, "z", p.gyroscope.z);
-
-  cJSON_AddNumberToObject(root, "distance_ahead", p.distance_ahead);
-
-  return root;
-}
-
 void pcnt_init() {
   const int pcnt_limit = 20;
 
@@ -337,7 +311,10 @@ int get_distance_ahead() {
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
 
   uint32_t pulse_count = 0;
-  if (xTaskNotifyWaitIndexed(TELEMETRY_URM_ISR_INDEX, 0x00, ULONG_MAX, &pulse_count, pdMS_TO_TICKS(1000)) == pdTRUE) {
+  bool notified = xTaskNotifyWaitIndexed(TELEMETRY_URM_ISR_INDEX, 0x00, ULONG_MAX, &pulse_count, pdMS_TO_TICKS(1000)) == pdTRUE;
+  g_urm_waiting_task = NULL;
+
+  if (notified) {
     uint32_t pulse_width_us = (uint32_t)((uint64_t)pulse_count * 1000000ULL / g_cap_resolution_hz);
     if (pulse_width_us >= 50000) {
       ESP_LOGW(TAG, "Invalid URM pulse width");
@@ -402,9 +379,17 @@ void telemetry_setup(QueueHandle_t telemetry_queue, i2c_master_bus_handle_t i2c_
 }
 
 void telemetry_start() {
+  if (!g_telemetry_task_handle) {
+    ESP_LOGE(TAG, "telemetry_start called before telemetry_setup");
+    return;
+  }
   xTaskNotifyGiveIndexed(g_telemetry_task_handle, TELEMETRY_START_NOTIFICATION_INDEX);
 }
 
 void telemetry_stop() {
+  if (!g_telemetry_task_handle) {
+    ESP_LOGE(TAG, "telemetry_stop called before telemetry_setup");
+    return;
+  }
   xTaskNotifyGiveIndexed(g_telemetry_task_handle, TELEMETRY_STOP_NOTIFICATION_INDEX);
 }

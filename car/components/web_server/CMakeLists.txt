@@ -1,4 +1,4 @@
-idf_component_register(SRCS "web_server.cpp"
+idf_component_register(SRCS "web_server.cpp" "command_parser.cpp"
                     INCLUDE_DIRS "include"
                     REQUIRES
                     wifi

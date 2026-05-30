@@ -4,26 +4,10 @@
 extern "C" {
 #endif
 
+#include "telemetry_types.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
-#include <cJSON.h>
 #include "driver/i2c_master.h"
-
-typedef struct {
-  float x;
-  float y;
-  float z;
-} vector3_t;
-
-typedef struct {
-  char timestamp[20+1];
-  int rssi;
-  float speed;
-  vector3_t accelerometer;
-  vector3_t magnetometer;
-  vector3_t gyroscope;
-  int distance_ahead;
-} telemetry_packet_t;
 
 void telemetry_init(i2c_master_bus_handle_t i2c_bus);
 void telemetry_setup(QueueHandle_t telemetry_queue, i2c_master_bus_handle_t i2c_bus);
@@ -37,8 +21,6 @@ vector3_t read_magnetometer();
 vector3_t read_gyroscope();
 // TODO: Compute roll/pitch/yaw - https://github.com/adafruit/Adafruit_AHRS
 int get_distance_ahead();
-
-cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p);
 
 #ifdef __cplusplus
 }

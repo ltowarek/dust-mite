@@ -268,8 +268,8 @@ Test scope and execution environment are independent choices. Scope determines w
   - [car/components/motor/test_apps/](car/components/motor/test_apps/)
   - [car/components/telemetry/test_apps/](car/components/telemetry/test_apps/)
   - [car/components/web_server/test_apps/](car/components/web_server/test_apps/)
-- **Integration tests**: validate interactions between multiple car components (for example command handling, telemetry pipeline, and web server) in target-like runtime conditions; not implemented yet. Place integration test apps under [car/test_apps/](car/test_apps/).
-- **E2E tests**: validate complete end-to-end driving flows (input/control path to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
+- **Integration tests**: validate interactions between multiple car components (for example command handling, telemetry pipeline, and web server) in target-like runtime conditions. Integration test apps live under [car/test_apps/integration/](car/test_apps/integration/).
+- **E2E tests**: validate complete end-to-end driving flows (input/control path to observable car behavior and outputs) in realistic deployment conditions. E2E tests are Python-only and run against the production firmware binary; they live under [car/test_apps/e2e/](car/test_apps/e2e/).
 
 Directory naming follows the upstream ESP-IDF convention:
 
@@ -318,6 +318,22 @@ Each test scope can target a different execution environment. Choose based on wh
 | Inter-component interactions or full system flows | Target (hardware) |
 
 Target testing is the authoritative environment. Host and QEMU environments accelerate iteration and expand CI coverage; they do not replace on-target validation.
+
+#### Excluding test files in QEMU mode
+
+When a test app supports both QEMU and hardware, prefer excluding hardware-only test files at the CMake level over scattering `#ifdef` guards inside test cases. Use a Kconfig boolean (for example `CONFIG_FOO_TEST_QEMU_MODE`) defined in `main/Kconfig.projbuild`, set it in `sdkconfig.defaults.qemu`, and conditionalize the file list in `main/CMakeLists.txt`:
+
+```cmake
+set(srcs "main.cpp" "test_foo_pure_logic.cpp")
+if(NOT CONFIG_FOO_TEST_QEMU_MODE)
+    list(APPEND srcs "test_foo_hardware.cpp")
+endif()
+idf_component_register(SRCS ${srcs} ...)
+```
+
+This keeps each test file clean (no environment-awareness) and makes the QEMU vs hardware split explicit in one place.
+
+`app_main` may still need a single `#ifndef CONFIG_FOO_TEST_QEMU_MODE` guard to skip hardware peripheral initialisation that would abort on QEMU.
 
 Build, flash, and run all component test apps in sequence:
 

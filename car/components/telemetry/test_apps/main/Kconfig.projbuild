@@ -1,0 +1,11 @@
+menu "Telemetry test configuration"
+
+config TELEMETRY_TEST_QEMU_MODE
+    bool "Skip hardware peripheral init (QEMU mode)"
+    default n
+    help
+        When enabled, skips I2C bus and sensor initialization so the test
+        binary runs under QEMU. Hardware-dependent test cases report
+        TEST_IGNORE instead of crashing on missing peripherals.
+
+endmenu

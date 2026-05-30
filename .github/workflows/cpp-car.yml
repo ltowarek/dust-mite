@@ -53,8 +53,12 @@ jobs:
             path: car/components/motor/test_apps
           - name: test-telemetry
             path: car/components/telemetry/test_apps
+            qemu: true
+            pytest_pattern: pytest_telemetry_qemu.py
           - name: test-web_server
             path: car/components/web_server/test_apps
+            qemu: true
+            pytest_pattern: pytest_web_server_qemu.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -85,9 +89,17 @@ jobs:
     - name: Build
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
+        SDKCONFIG_DEFAULTS: ${{ matrix.qemu && 'sdkconfig.defaults;sdkconfig.defaults.qemu' || '' }}
       run: |
         source $IDF_PATH/export.sh
         idf.py build
+      working-directory: ${{ matrix.path }}
+
+    - name: Run QEMU tests
+      if: matrix.qemu
+      run: |
+        source $IDF_PATH/export.sh
+        pytest ${{ matrix.pytest_pattern }} --embedded-services idf,qemu -v
       working-directory: ${{ matrix.path }}
 
   ci-status-cpp-car:
