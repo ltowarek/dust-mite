@@ -258,14 +258,66 @@ idf.py monitor
 
 ### Car test types
 
-- Component tests: focused on a single firmware component API/behavior. Each component has a standalone ESP-IDF test application under its `test/` directory:
-  - [car/components/tracing/test/](car/components/tracing/test/)
-  - [car/components/camera/test/](car/components/camera/test/)
-  - [car/components/motor/test/](car/components/motor/test/)
-  - [car/components/telemetry/test/](car/components/telemetry/test/)
-  - [car/components/web_server/test/](car/components/web_server/test/)
-- Integration tests: validate interactions between multiple car components (for example command handling, telemetry, and web server behavior together) on target-like runtime conditions; not implemented yet.
-- E2E tests: validate complete end-to-end driving flows (input/control path to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
+Test scope and execution environment are independent choices. Scope determines what is under test; environment determines where it runs.
+
+#### Scope
+
+- **Component tests**: validate a single component's public API and behavior in isolation. Each component has a standalone ESP-IDF test application under its `test_apps/` directory:
+  - [car/components/tracing/test_apps/](car/components/tracing/test_apps/)
+  - [car/components/camera/test_apps/](car/components/camera/test_apps/)
+  - [car/components/motor/test_apps/](car/components/motor/test_apps/)
+  - [car/components/telemetry/test_apps/](car/components/telemetry/test_apps/)
+  - [car/components/web_server/test_apps/](car/components/web_server/test_apps/)
+- **Integration tests**: validate interactions between multiple car components (for example command handling, telemetry pipeline, and web server) in target-like runtime conditions; not implemented yet. Place integration test apps under [car/test_apps/](car/test_apps/).
+- **E2E tests**: validate complete end-to-end driving flows (input/control path to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
+
+Directory naming follows the upstream ESP-IDF convention:
+
+- `test_apps/` — standalone ESP-IDF test application with a project-level `CMakeLists.txt`, a `main/` subdirectory containing Unity test cases, and a co-located `pytest_*.py` for pytest-embedded orchestration. This is what dust-mite uses.
+- `test/` — C-only Unity test case files compiled into a central test app; no standalone project or `pytest_*.py`. Not currently used in dust-mite.
+
+Test cases use the [Unity](https://www.throwtheswitch.org/unity) framework (`TEST_CASE` macros in C). Each `test_apps/` application includes a `pytest_*.py` script using [pytest-embedded](https://github.com/espressif/pytest-embedded) to automate build, flash, and serial output parsing on target and QEMU. Host-based tests run directly without pytest-embedded.
+
+#### Execution environment
+
+Each test scope can target a different execution environment. Choose based on what the test exercises and whether hardware is available.
+
+**Target (hardware)**: the authoritative environment. Runs the firmware binary on a physical ESP32; orchestrated by pytest-embedded.
+
+- Use for: components that exercise real hardware peripherals (I2C, PWM, UART, camera); integration and E2E validation.
+- Pros: real hardware behavior, accurate timing, catches peripheral-specific bugs.
+- Cons: requires a connected device; incompatible with standard CI runners without hardware; slower iteration (build, flash, run).
+
+**QEMU**: runs the firmware binary in Espressif's ESP32 emulator via `idf.py qemu`; orchestrated by pytest-embedded.
+
+- Use for: logic-heavy components that do not exercise real peripherals; boot sequence validation; security feature experimentation (eFuse, secure boot — irreversible on real hardware).
+- Pros: no device required; runs the actual firmware binary; supports GDB debugging via `idf.py qemu gdb`; safe for irreversible hardware operations.
+- Cons: incomplete peripheral emulation; does not replace target testing for hardware-dependent components; requires the Espressif QEMU fork.
+
+**Host — CMock**: compiles the component for Linux with CMock-generated stubs replacing hardware dependencies; run directly without pytest-embedded.
+
+- Use for: pure logic with no hardware or FreeRTOS dependency (data structures, algorithms, protocol handling).
+- Pros: fastest execution; runs in standard CI; supports host-side tools (Valgrind, sanitizers).
+- Cons: stubs must be generated and maintained; cannot validate hardware interactions or FreeRTOS task behavior.
+
+**Host — POSIX/Linux simulator**: runs the component under the FreeRTOS POSIX/Linux simulator, which maps FreeRTOS tasks to pthreads and uses POSIX signals for scheduling; run directly without pytest-embedded.
+
+- Use for: code that uses FreeRTOS primitives (tasks, queues, semaphores) but has no real hardware dependency.
+- Pros: exercises actual FreeRTOS task interactions without hardware or emulator; runs in standard CI.
+- Cons: async-signal-safe constraint prohibits many standard C library calls (including `printf`) from arbitrary task contexts; FreeRTOS primitives cannot be called from non-FreeRTOS threads; does not replicate real-time or interrupt timing behavior.
+
+#### Choosing an environment
+
+| Validation target | Environment |
+|---|---|
+| Pure logic, no hardware or FreeRTOS dependency | Host — CMock |
+| FreeRTOS task interactions, no hardware dependency | Host — POSIX/Linux simulator |
+| Firmware behavior without real peripherals | QEMU |
+| Security features (eFuse, secure boot) | QEMU |
+| Component with hardware peripheral interactions | Target (hardware) |
+| Inter-component interactions or full system flows | Target (hardware) |
+
+Target testing is the authoritative environment. Host and QEMU environments accelerate iteration and expand CI coverage; they do not replace on-target validation.
 
 Build, flash, and run all component test apps in sequence:
 
