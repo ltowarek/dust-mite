@@ -6,11 +6,11 @@ PORT="${PORT:-/dev/ttyACM0}"
 CAR_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 TEST_PROJECTS=(
-    "components/tracing/test"
-    "components/camera/test"
-    "components/motor/test"
-    "components/telemetry/test"
-    "components/web_server/test"
+    "components/tracing/test_apps"
+    "components/camera/test_apps"
+    "components/motor/test_apps"
+    "components/telemetry/test_apps"
+    "components/web_server/test_apps"
 )
 
 FAILED=0

@@ -46,15 +46,15 @@ jobs:
           - name: main
             path: car
           - name: test-tracing
-            path: car/components/tracing/test
+            path: car/components/tracing/test_apps
           - name: test-camera
-            path: car/components/camera/test
+            path: car/components/camera/test_apps
           - name: test-motor
-            path: car/components/motor/test
+            path: car/components/motor/test_apps
           - name: test-telemetry
-            path: car/components/telemetry/test
+            path: car/components/telemetry/test_apps
           - name: test-web_server
-            path: car/components/web_server/test
+            path: car/components/web_server/test_apps
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
