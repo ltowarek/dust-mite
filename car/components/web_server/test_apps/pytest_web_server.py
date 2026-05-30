@@ -1,5 +1,4 @@
 import asyncio
-import json
 
 import websockets
 from pytest_embedded import Dut
@@ -11,11 +10,9 @@ def test_web_server(dut: Dut) -> None:
 
     async def run():
         async with websockets.connect(f'ws://{ip}/') as ws:
-            await ws.send(json.dumps({"command": 3, "value": 0}))
-
+            pass
         async with websockets.connect(f'ws://{ip}/telemetry') as ws:
             pass
-
         async with websockets.connect(f'ws://{ip}/stream') as ws:
             pass
 

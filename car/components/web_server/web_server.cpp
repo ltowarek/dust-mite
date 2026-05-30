@@ -79,15 +79,14 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
     return ret;
   }
 
-  cJSON *root = cJSON_Parse((const char*)ws_pkt.payload);
-  if (root) {
-      cJSON *command_obj = cJSON_GetObjectItem(root, "command");
-      cJSON *value_obj = cJSON_GetObjectItem(root, "value");
-      char command = (char)cJSON_GetNumberValue(command_obj);
-      int value = cJSON_IsNumber(value_obj) ? (int)cJSON_GetNumberValue(value_obj) : 0;
-      ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", command, value);
+  command_packet_t packet = {};
+  if (parse_command_packet((const char*)ws_pkt.payload, &packet)) {
+      ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", packet.command, packet.value);
 
+      cJSON *root = cJSON_Parse((const char*)ws_pkt.payload);
       auto parent_ctx = tracing_extract(*root);
+      cJSON_Delete(root);
+
       opentelemetry::trace::StartSpanOptions start_opts;
       start_opts.kind   = opentelemetry::trace::SpanKind::kServer;
       start_opts.parent = opentelemetry::trace::GetSpan(parent_ctx)->GetContext();
@@ -97,16 +96,11 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
            {"network.protocol.name", "websocket"},
            {"ws.message.type", "command"},
            {"ws.message.size", static_cast<int64_t>(ws_pkt.len)},
-           {"command.name", static_cast<int64_t>(command)},
-           {"command.value", static_cast<int64_t>(value)}},
+           {"command.name", static_cast<int64_t>(packet.command)},
+           {"command.value", static_cast<int64_t>(packet.value)}},
           start_opts);
       auto scope = opentelemetry::trace::Scope(span);
-      cJSON_Delete(root);
 
-      command_packet_t packet = {
-        .command = command,
-        .value = value,
-      };
       if (xQueueSendToBack(g_command_queue, &packet, portMAX_DELAY) != pdPASS) {
         ESP_LOGE(TAG, "xQueueSendToBack failed");
         span->SetStatus(opentelemetry::trace::StatusCode::kError, "queue send failed");

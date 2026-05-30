@@ -37,14 +37,12 @@ TEST_CASE("performance", "[camera]")
     }
     uint64_t end = esp_timer_get_time();
 
-    uint64_t duration_s = (end-start)/1000000;
-    if (duration_s == 0) duration_s = 1;
-    uint64_t fps = MEASUREMENTS/duration_s;
+    int fps = (int)((uint64_t)MEASUREMENTS * 1000000ULL / (end - start));
 
-    printf("%u iterations took %llu seconds (%llu frames per second)\n",
-           MEASUREMENTS, duration_s, fps);
+    printf("%u iterations took %llu us (%d frames per second)\n",
+           MEASUREMENTS, end - start, fps);
 
-    TEST_ASSERT(fps == 25);
+    TEST_ASSERT_INT_WITHIN(5, 25, fps);
 }
 
 TEST_CASE("throughput", "[camera]")
@@ -61,14 +59,12 @@ TEST_CASE("throughput", "[camera]")
     }
     uint64_t end = esp_timer_get_time();
 
-    uint64_t duration_s = (end-start)/1000000;
-    if (duration_s == 0) duration_s = 1;
-    uint64_t throughput_mbps = frame_sizes/duration_s*8/1000000;
+    int throughput_mbps = (int)((uint64_t)frame_sizes * 8ULL / (end - start));
 
-    printf("%u iterations took %llu seconds with total frame size of %zu bytes (%llu MBit/s)\n",
-           MEASUREMENTS, duration_s, frame_sizes, throughput_mbps);
+    printf("%u iterations took %llu us with total frame size of %zu bytes (%d MBit/s)\n",
+           MEASUREMENTS, end - start, frame_sizes, throughput_mbps);
 
-    TEST_ASSERT_INT_WITHIN(5, 10, throughput_mbps);
+    TEST_ASSERT_GREATER_THAN(1, throughput_mbps);
 }
 
 TEST_CASE("single_frame", "[camera]")

@@ -140,9 +140,17 @@ void camera_setup(QueueHandle_t frame_queue, i2c_master_bus_handle_t i2c_bus) {
 }
 
 void camera_start() {
+  if (!g_camera_task_handle) {
+    ESP_LOGE(TAG, "camera_start called before camera_setup");
+    return;
+  }
   xTaskNotifyGiveIndexed(g_camera_task_handle, CAMERA_START_NOTIFICATION_INDEX);
 }
 
 void camera_stop() {
+  if (!g_camera_task_handle) {
+    ESP_LOGE(TAG, "camera_stop called before camera_setup");
+    return;
+  }
   xTaskNotifyGiveIndexed(g_camera_task_handle, CAMERA_STOP_NOTIFICATION_INDEX);
 }

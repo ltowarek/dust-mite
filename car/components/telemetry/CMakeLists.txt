@@ -1,4 +1,4 @@
-idf_component_register(SRCS "telemetry.cpp"
+idf_component_register(SRCS "telemetry.cpp" "telemetry_json.cpp"
                     INCLUDE_DIRS "include"
                     REQUIRES
                     esp_netif

@@ -1,0 +1,11 @@
+menu "Web server test configuration"
+
+config WEB_SERVER_TEST_QEMU_MODE
+    bool "Skip hardware and network init (QEMU mode)"
+    default n
+    help
+        When enabled, skips WiFi, motor, tracing, and web server setup so the
+        test binary runs under QEMU. Hardware-dependent test cases report
+        TEST_IGNORE instead of blocking on missing peripherals.
+
+endmenu
