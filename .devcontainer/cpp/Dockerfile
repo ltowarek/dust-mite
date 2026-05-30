@@ -17,8 +17,10 @@ ARG USER_GID=$USER_UID
 COPY car/requirements-test.txt /tmp/requirements-test.txt
 RUN /opt/esp/python_env/idf6.0_py3.12_env/bin/pip install -r /tmp/requirements-test.txt
 
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME
+RUN userdel -r ubuntu \
+    && groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME \
+    && usermod -aG dialout $USERNAME
 
 ENV IDF_CCACHE_ENABLE=1
 ENV CCACHE_DIR=/home/${USERNAME}/.ccache
