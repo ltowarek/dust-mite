@@ -206,9 +206,12 @@ static esp_err_t stream_handle_websocket_frame(httpd_req_t *req) {
     ESP_LOGI(TAG, "Sending control frame from stream handler");
     ret = httpd_ws_send_frame(req, &ws_pkt);
     if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+      // CLOSE reply failure is not an error: the peer may have already closed
+      // the TCP connection (ENOTCONN/ECONNRESET) which is what triggered CLOSE
+      // in the first place. Log at warn level and treat the handler as done.
+      ESP_LOGW(TAG, "httpd_ws_send_frame failed with %d", ret);
       free(buf);
-      return ret;
+      return ESP_OK;
     }
   }
 
@@ -248,6 +251,9 @@ void ws_stream_task(void* p) {
       }
     }
     if (stream_stopped) {
+      // Signal the CLOSE handler before releasing the async handle so it can
+      // still send the CLOSE reply while the socket is in a valid async state.
+      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to complete async stream req");
       }
@@ -258,12 +264,14 @@ void ws_stream_task(void* p) {
         g_stream_connection_span->End();
         g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
       }
-      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
 
     if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
       esp_camera_fb_return(frame);
+      // Signal the CLOSE handler before releasing the async handle so it can
+      // still send the CLOSE reply while the socket is in a valid async state.
+      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to complete async stream req");
       }
@@ -274,7 +282,6 @@ void ws_stream_task(void* p) {
         g_stream_connection_span->End();
         g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
       }
-      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
 
@@ -307,7 +314,7 @@ void ws_stream_task(void* p) {
         g_stream_connection_span->End();
         g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
       }
-      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
+      // No notification: same rationale as the send-error path below.
       continue;
     }
     mbedtls_base64_encode((unsigned char*)b64_buf, b64_len + 1, &b64_len, frame->buf, frame->len);
@@ -343,7 +350,9 @@ void ws_stream_task(void* p) {
         g_stream_connection_span->End();
         g_stream_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
       }
-      xTaskNotifyGiveIndexed(g_server_task_handle, CAMERA_STOPPED_NOTIFICATION_INDEX);
+      // Do NOT notify g_server_task_handle here: no CLOSE handler is waiting,
+      // and a spurious notification would be consumed as a stale one by the next
+      // CLOSE handler, causing it to skip its wait and send on a dead socket.
       continue;
     }
 
@@ -440,9 +449,12 @@ static esp_err_t telemetry_handle_websocket_frame(httpd_req_t *req) {
     ESP_LOGI(TAG, "Sending control frame from telemetry handler");
     ret = httpd_ws_send_frame(req, &ws_pkt);
     if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+      // CLOSE reply failure is not an error: the peer may have already closed
+      // the TCP connection (ENOTCONN/ECONNRESET) which is what triggered CLOSE
+      // in the first place. Log at warn level and treat the handler as done.
+      ESP_LOGW(TAG, "httpd_ws_send_frame failed with %d", ret);
       free(buf);
-      return ret;
+      return ESP_OK;
     }
   }
 
@@ -482,6 +494,9 @@ void ws_telemetry_task(void* p) {
       }
     }
     if (telemetry_stopped) {
+      // Signal the CLOSE handler before releasing the async handle so it can
+      // still send the CLOSE reply while the socket is in a valid async state.
+      xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to complete async telemetry req");
       }
@@ -492,11 +507,13 @@ void ws_telemetry_task(void* p) {
         g_telemetry_connection_span->End();
         g_telemetry_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
       }
-      xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
 
     if (ulTaskNotifyTake(pdTRUE, 0) == 1) {
+      // Signal the CLOSE handler before releasing the async handle so it can
+      // still send the CLOSE reply while the socket is in a valid async state.
+      xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
       if (httpd_req_async_handler_complete(req) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to complete async telemetry req");
       }
@@ -507,7 +524,6 @@ void ws_telemetry_task(void* p) {
         g_telemetry_connection_span->End();
         g_telemetry_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
       }
-      xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
       continue;
     }
 
@@ -549,7 +565,9 @@ void ws_telemetry_task(void* p) {
         g_telemetry_connection_span->End();
         g_telemetry_connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
       }
-      xTaskNotifyGiveIndexed(g_server_task_handle, TELEMETRY_STOPPED_NOTIFICATION_INDEX);
+      // Do NOT notify g_server_task_handle here: no CLOSE handler is waiting,
+      // and a spurious notification would be consumed as a stale one by the next
+      // CLOSE handler, causing it to skip its wait and send on a dead socket.
       continue;
     }
 
