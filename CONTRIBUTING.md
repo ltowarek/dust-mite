@@ -82,7 +82,7 @@ The container image includes project dependencies and VS Code extensions require
 
 | C++ serial monitor | Python streamer |
 |---|---|
-| JS dev server (`http://localhost:5173`) | Jaeger logs |
+| JS dev server (`http://localhost:5173`) | OTel Collector logs |
 
 From the repository root:
 
@@ -104,6 +104,119 @@ Basic byobu navigation:
 | `F12 z` | Zoom current pane to full screen (repeat to unzoom) |
 
 See the [byobu documentation](https://www.byobu.org/documentation) for the full key reference.
+
+## Observability
+
+```mermaid
+flowchart LR
+    subgraph car ["ESP32"]
+        FW["dust-mite-car"]
+    end
+    subgraph python ["Python"]
+        STR["dust-mite-streamer"]
+    end
+    subgraph browser ["Browser"]
+        WEB["dust-mite-web"]
+    end
+    subgraph observability ["Observability"]
+        OC["OTel Collector\n4317 gRPC / 4318 HTTP"]
+        TEMPO["Tempo"]
+        GRAF["Grafana\nlocalhost:3000"]
+    end
+
+    FW -- "WebSocket + traceparent" --> STR
+    STR -- "WebSocket + traceparent" --> WEB
+    FW -- "OTLP/HTTP" --> OC
+    STR -- "OTLP/HTTP" --> OC
+    WEB -- "OTLP/HTTP" --> OC
+    OC -- "OTLP/gRPC" --> TEMPO
+    GRAF -- "TraceQL" --> TEMPO
+```
+
+The observability stack is purpose-built for distributed tracing and designed to extend to metrics and logs. It comprises three tiers:
+
+- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP); routes signals to backends. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
+- **Grafana Tempo** — trace storage and query backend. Configuration: [observability/tempo.yml](observability/tempo.yml).
+- **Grafana** — visualization UI at `http://localhost:3000`. Tempo is auto-provisioned as the default datasource. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
+
+### Instrumented services
+
+All three services export traces via OTLP/HTTP:
+
+| Service | Name in Tempo | Exporter endpoint |
+|---|---|---|
+| ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) |
+| Python streamer | `dust-mite-streamer` | `http://otel-collector:4318` (from `OTEL_EXPORTER_OTLP_ENDPOINT`) |
+| Web browser | `dust-mite-web` | `http://localhost:4318/v1/traces` (hardcoded in [web/src/index.js](web/src/index.js)) |
+
+### Cross-service trace propagation
+
+W3C `traceparent` is embedded as a field in every WebSocket JSON packet, linking spans across the firmware → streamer → browser path:
+
+- Firmware: `tracing_inject()` / `tracing_extract()` in [car/components/tracing/tracing.hpp](car/components/tracing/tracing.hpp).
+- Streamer: `inject_trace_context()` / `extract_trace_context()` in [controller/src/controller/tracing.py](controller/src/controller/tracing.py).
+- Browser: `@opentelemetry/api` propagation via W3C `TraceContextPropagator` in [web/src/index.js](web/src/index.js).
+
+### Adding spans
+
+**ESP32 firmware (C++)** — use `esp_opentelemetry_tracer()` from `car/components/tracing/tracing.hpp`:
+
+```cpp
+// Simple span
+auto span = esp_opentelemetry_tracer()->StartSpan("my.operation");
+span->SetAttribute("key", "value");
+span->End();
+
+// Span linked to a parent extracted from an incoming JSON message
+auto parent_ctx = tracing_extract(*json_obj);
+opentelemetry::trace::StartSpanOptions opts;
+opts.parent = opentelemetry::trace::GetSpan(parent_ctx)->GetContext();
+auto span = esp_opentelemetry_tracer()->StartSpan(
+    "my.operation", {{"attr", value}}, opts);
+auto scope = opentelemetry::trace::Scope(span);
+// ... work ...
+span->End();
+```
+
+**Python streamer** — use the module-level `tracer` and helpers from `controller/src/controller/streamer.py` and `controller/src/controller/tracing.py`:
+
+```python
+# Decorator — span wraps the entire function
+@tracer.start_as_current_span("my.operation")
+def my_function():
+    span = trace.get_current_span()
+    span.set_attribute("key", "value")
+
+# Span linked to a parent extracted from an incoming WebSocket JSON packet
+packet: dict = json.loads(raw_message)
+parent_ctx = extract_trace_context(packet)  # reads W3C traceparent from the dict
+with tracer.start_as_current_span("my.operation", context=parent_ctx) as span:
+    span.set_attribute("key", "value")
+```
+
+**Web browser (JavaScript)** — use the module-level `tracer` and `propagation` from `web/src/index.js`:
+
+```js
+// Span linked to a parent extracted from an incoming WebSocket JSON message
+const carrier = { traceparent: event_data.traceparent, tracestate: event_data.tracestate };
+const parentContext = propagation.extract(context.active(), carrier);
+const span = tracer.startSpan("my.operation", {
+    attributes: { "key": "value" },
+}, parentContext);
+try {
+    // ... work ...
+} finally {
+    span.end();
+}
+```
+
+### Viewing traces
+
+Open Grafana at `http://localhost:3000` → **Explore** → select the **Tempo** datasource → run a TraceQL query:
+
+- `{}` — all traces
+- `{resource.service.name="dust-mite-car"}` — firmware spans only
+- `{resource.service.name="dust-mite-streamer"}` — streamer spans only
 
 ## Variants
 

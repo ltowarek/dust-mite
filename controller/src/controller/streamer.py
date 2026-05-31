@@ -82,7 +82,7 @@ class ClientConnection:
                             keep_client_connection = False
                         except TimeoutError:
                             logger.warning("%s timed out", self._uri)
-                            keep_client_connection = False
+                            continue
 
         logger.debug("Client worker finished")
 

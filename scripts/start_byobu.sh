@@ -23,9 +23,9 @@ byobu send-keys -t 'dust-mite:0.{top-right}' \
 byobu send-keys -t 'dust-mite:0.{bottom-left}' \
   'docker compose exec js /home/dustmite/workspace/web/scripts/run_dev_server.sh --port 5173 --host; exec bash' Enter
 
-# Bottom-right: Jaeger logs
+# Bottom-right: OTel Collector logs
 byobu send-keys -t 'dust-mite:0.{bottom-right}' \
-  'docker compose logs -f jaeger' Enter
+  'docker compose logs -f otel-collector' Enter
 
 byobu select-pane -t 'dust-mite:0.{top-left}'
 
