@@ -28,6 +28,7 @@ This file is a lightweight navigation guide for coding agents.
 - Web frontend code: [web/](web/)
 - Documentation and variant material: [docs/](docs/)
 - Repo-level automation and helper scripts: [scripts/](scripts/)
+- Observability stack, tracing architecture, and service names: [CONTRIBUTING.md](CONTRIBUTING.md#observability)
 
 ## Running the Full Stack (Headless)
 
