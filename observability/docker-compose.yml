@@ -3,17 +3,36 @@ networks:
     name: dust-mite-observability
 
 services:
-  jaeger:
-    image: cr.jaegertracing.io/jaegertracing/jaeger:2.16.0
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.127.0
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4317:4317"     # OTLP gRPC
-      - "4318:4318"     # OTLP HTTP
-      - "5778:5778"     # Serve configurations
-      - "9411:9411"     # Zipkin collector
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
     volumes:
-      - ./config.yml:/config.yml:ro
-    command:
-      - --config=/config.yml
+      - ./otelcol.yml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      - tempo
+    networks:
+      - dust-mite-observability
+
+  tempo:
+    image: grafana/tempo:3.0.0
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./tempo.yml:/etc/tempo.yml:ro
+    networks:
+      - dust-mite-observability
+
+  grafana:
+    image: grafana/grafana:13.0.1-security-01
+    ports:
+      - "3000:3000"   # Grafana UI
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - tempo
     networks:
       - dust-mite-observability

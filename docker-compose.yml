@@ -40,7 +40,17 @@ services:
       - dust-mite-observability
       - default
 
-  jaeger:
+  otel-collector:
     extends:
       file: observability/docker-compose.yml
-      service: jaeger
+      service: otel-collector
+
+  tempo:
+    extends:
+      file: observability/docker-compose.yml
+      service: tempo
+
+  grafana:
+    extends:
+      file: observability/docker-compose.yml
+      service: grafana

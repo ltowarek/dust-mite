@@ -9,9 +9,10 @@ This file is a lightweight navigation guide for coding agents.
 
 1. [Start Here](#start-here)
 2. [Where to Find Things](#where-to-find-things)
-3. [Working Rules for Agents](#working-rules-for-agents)
-4. [Validation by Area](#validation-by-area)
-5. [Docs and Generated Artifacts](#docs-and-generated-artifacts)
+3. [Running the Full Stack (Headless)](#running-the-full-stack-headless)
+4. [Working Rules for Agents](#working-rules-for-agents)
+5. [Validation by Area](#validation-by-area)
+6. [Docs and Generated Artifacts](#docs-and-generated-artifacts)
 
 ## Start Here
 
@@ -28,6 +29,18 @@ This file is a lightweight navigation guide for coding agents.
 - Documentation and variant material: [docs/](docs/)
 - Repo-level automation and helper scripts: [scripts/](scripts/)
 
+## Running the Full Stack (Headless)
+
+Run `./scripts/start_headless.sh` to build and start all services in the background.
+Run `./scripts/stop_headless.sh` to stop and remove all containers.
+
+Docker Compose services: `cpp`, `python`, `js`, `otel-collector`, `tempo`, `grafana`. Use standard docker compose commands to manage them:
+
+- Logs: `docker compose -f docker-compose.yml -f docker-compose.headless.yml logs [-f] <service>`
+- Restart: `docker compose -f docker-compose.yml -f docker-compose.headless.yml restart <service>`
+
+Grafana is available at `http://localhost:3000` for trace exploration.
+
 ## Working Rules for Agents
 
 - Treat [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) as authoritative.
@@ -37,16 +50,6 @@ This file is a lightweight navigation guide for coding agents.
 - Keep changes focused and update relevant docs when behavior or workflow changes.
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
-
-## Running the Full Stack (Headless)
-
-Run `./scripts/start_headless.sh` to build and start all services in the background.
-
-Docker Compose services: `cpp`, `python`, `js`, `jaeger`. Use standard docker compose commands to manage them:
-
-- Logs: `docker compose -f docker-compose.yml -f docker-compose.headless.yml logs [-f] <service>`
-- Stop: `docker compose -f docker-compose.yml -f docker-compose.headless.yml down`
-- Restart: `docker compose -f docker-compose.yml -f docker-compose.headless.yml restart <service>`
 
 ## Validation by Area
 
@@ -65,9 +68,19 @@ Docker Compose services: `cpp`, `python`, `js`, `jaeger`. Use standard docker co
 
 ## Firmware Flashing and Serial Monitoring
 
+Always use `idf.py flash` and `idf.py monitor` (via ESP-IDF) for flashing and serial
+capture. Do NOT use pyserial, esptool directly, or any custom Python serial code.
+
 `idf.py monitor` requires both stdin and stdout to be a TTY. In non-interactive shells
 `ESP_IDF_MONITOR_TEST=1` is not sufficient — wrap the command with `script -q -c "..." /tmp/out.txt`
 to provide a pseudo-TTY, then read the output file.
+
+Example (inside the C++ devcontainer):
+```bash
+script -q -c "idf.py -p /dev/ttyACM0 monitor" /tmp/monitor.txt
+# wait for desired output, then Ctrl-C
+cat /tmp/monitor.txt
+```
 
 When rebuilding after a `sdkconfig.defaults` or Kconfig change, delete only
 `sdkconfig` (not the whole `build/` directory) — IDF detects the stale config

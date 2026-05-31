@@ -82,7 +82,7 @@ The container image includes project dependencies and VS Code extensions require
 
 | C++ serial monitor | Python streamer |
 |---|---|
-| JS dev server (`http://localhost:5173`) | Jaeger logs |
+| JS dev server (`http://localhost:5173`) | OTel Collector logs |
 
 From the repository root:
 
