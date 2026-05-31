@@ -38,6 +38,16 @@ This file is a lightweight navigation guide for coding agents.
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 
+## Running the Full Stack (Headless)
+
+Run `./scripts/start_headless.sh` to build and start all services in the background.
+
+Docker Compose services: `cpp`, `python`, `js`, `jaeger`. Use standard docker compose commands to manage them:
+
+- Logs: `docker compose -f docker-compose.yml -f docker-compose.headless.yml logs [-f] <service>`
+- Stop: `docker compose -f docker-compose.yml -f docker-compose.headless.yml down`
+- Restart: `docker compose -f docker-compose.yml -f docker-compose.headless.yml restart <service>`
+
 ## Validation by Area
 
 - Run minimal validation relevant to the touched area.

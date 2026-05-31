@@ -1,0 +1,12 @@
+services:
+  cpp:
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    command: script -q -c "/home/dustmite/run_cpp.sh" /dev/null
+
+  python:
+    command: /home/dustmite/workspace/controller/scripts/run_streamer.sh
+
+  js:
+    command: >
+      /home/dustmite/workspace/web/scripts/run_dev_server.sh --port 5173 --host
