@@ -471,7 +471,7 @@ static esp_err_t telemetry_get_handler(httpd_req_t *req)
 }
 
 void ws_telemetry_task(void* p) {
-  ESP_LOGI(TAG, "Starting telemetry task");
+  ESP_LOGI(TAG, "Starting telemetry WS task");
   esp_err_t ret = ESP_OK;
   httpd_req_t* req = NULL;
   while (true) {

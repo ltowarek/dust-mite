@@ -20,7 +20,7 @@ COMMAND_LOOK_VERTICALLY = 7
 def test_advance_and_brake(dut: Dut) -> None:
     """Advance at 50% for 1 s, verify speed > 0, then brake and verify speed ≈ 0."""
     ip = get_dut_ip(dut)
-    dut.expect(r'Starting telemetry task', timeout=30)
+    dut.expect(r'Registering URI handlers', timeout=70)
 
     async def run():
         async with websockets.connect(f'ws://{ip}/') as cmd_ws, \
@@ -55,7 +55,7 @@ def test_concurrent_stream_and_telemetry(dut: Dut) -> None:
     blocked the telemetry path under concurrent load.
     """
     ip = get_dut_ip(dut)
-    dut.expect(r'Starting telemetry task', timeout=30)
+    dut.expect(r'Registering URI handlers', timeout=70)
 
     async def run():
         async with websockets.connect(f'ws://{ip}/stream') as stream_ws, \
@@ -103,6 +103,7 @@ def test_concurrent_stream_and_telemetry(dut: Dut) -> None:
 def test_pan_tilt(dut: Dut) -> None:
     """Pan and tilt servo commands complete without WebSocket disconnect or error log."""
     ip = get_dut_ip(dut)
+    dut.expect(r'Registering URI handlers', timeout=70)
 
     async def run():
         async with websockets.connect(f'ws://{ip}/') as ws:

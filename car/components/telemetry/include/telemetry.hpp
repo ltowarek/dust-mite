@@ -9,6 +9,7 @@ extern "C" {
 #include "freertos/queue.h"
 #include "driver/i2c_master.h"
 
+void sync_time();
 void telemetry_init(i2c_master_bus_handle_t i2c_bus);
 void telemetry_setup(QueueHandle_t telemetry_queue, i2c_master_bus_handle_t i2c_bus);
 void telemetry_start();
