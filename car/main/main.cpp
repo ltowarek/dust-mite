@@ -35,6 +35,8 @@ extern "C" void app_main()
 
   motor_setup(command_queue);
   wifi_setup();
+  wifi_wait_for_ip();
+  sync_time();
   tracing_setup();
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);

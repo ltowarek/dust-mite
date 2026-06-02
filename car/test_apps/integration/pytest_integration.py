@@ -13,6 +13,7 @@ from helpers import get_dut_ip
 def test_command_pipeline(dut: Dut) -> None:
     """Command JSON -> web server -> command queue -> motor task."""
     ip = get_dut_ip(dut)
+    dut.expect(r'Registering URI handlers', timeout=70)
 
     async def run():
         async with websockets.connect(f'ws://{ip}/') as ws:
@@ -33,8 +34,7 @@ def test_telemetry_disconnect(dut: Dut) -> None:
     socket, logging an ERROR. After the fix it handles this gracefully.
     """
     ip = get_dut_ip(dut)
-    dut.expect(r'Set system time', timeout=60)   # wait for SNTP — this is the bottleneck
-    dut.expect(r'Starting telemetry task', timeout=5)  # follows immediately after SNTP
+    dut.expect(r'Starting telemetry task', timeout=70)
 
     async def run():
         async with websockets.connect(f'ws://{ip}/telemetry') as ws:
@@ -59,7 +59,7 @@ def test_telemetry_disconnect(dut: Dut) -> None:
 def test_telemetry_pipeline(dut: Dut) -> None:
     """Sensors -> telemetry task -> web server -> WebSocket client."""
     ip = get_dut_ip(dut)
-    dut.expect(r'Starting telemetry task', timeout=30)
+    dut.expect(r'Starting telemetry task', timeout=70)
 
     async def run():
         packets = []
@@ -86,8 +86,8 @@ def test_telemetry_pipeline(dut: Dut) -> None:
 
 def test_stream_pipeline(dut: Dut) -> None:
     """Camera -> frame queue -> web server -> Base64 JPEG WebSocket frames."""
-    dut.expect(r'Starting camera task', timeout=10)
     ip = get_dut_ip(dut)
+    dut.expect(r'Registering URI handlers', timeout=70)
     frame_count = 10
 
     async def run():

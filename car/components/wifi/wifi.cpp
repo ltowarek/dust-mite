@@ -4,9 +4,15 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 #include <string.h>
 
 static const char* TAG = "wifi";
+
+static EventGroupHandle_t s_wifi_events;
+#define WIFI_IP_READY_BIT BIT0
+#define WIFI_FAILED_BIT   BIT1
 
 #ifndef WIFI_SSID
 #define WIFI_SSID "<SSID>"
@@ -31,14 +37,26 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
       ESP_LOGI(TAG, "retry to connect to the AP");
     } else {
       ESP_LOGE(TAG, "failed to connect to the AP");
+      xEventGroupSetBits(s_wifi_events, WIFI_FAILED_BIT);
     }
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     g_wifi_retry_number = 0;
+    xEventGroupSetBits(s_wifi_events, WIFI_IP_READY_BIT);
+  }
+}
+
+void wifi_wait_for_ip() {
+  EventBits_t bits = xEventGroupWaitBits(
+      s_wifi_events, WIFI_IP_READY_BIT | WIFI_FAILED_BIT,
+      pdFALSE, pdFALSE, portMAX_DELAY);
+  if (bits & WIFI_FAILED_BIT) {
+    ESP_LOGE(TAG, "WiFi connection failed");
   }
 }
 
 void wifi_setup()
 {
+  s_wifi_events = xEventGroupCreate();
   ESP_ERROR_CHECK(nvs_flash_init());
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());

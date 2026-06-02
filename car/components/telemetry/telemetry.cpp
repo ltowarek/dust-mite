@@ -59,12 +59,10 @@ void sync_time() {
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
   esp_netif_sntp_init(&config);
 
-  time_t now = 0;
   while (esp_netif_sntp_sync_wait(2000 / portTICK_PERIOD_MS) == ESP_ERR_TIMEOUT) {
     ESP_LOGI(TAG, "Waiting for system time to be set...");
   }
   ESP_LOGI(TAG, "Set system time");
-  time(&now);
 }
 
 void get_timestamp(char *buf) {
@@ -335,7 +333,6 @@ void telemetry_init(i2c_master_bus_handle_t i2c_bus) {
 }
 
 void telemetry_task(void* p) {
-  sync_time();
   ESP_LOGI(TAG, "Starting telemetry task");
   bool started = false;
   while (true) {
