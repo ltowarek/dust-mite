@@ -12,7 +12,6 @@ static const char* TAG = "wifi";
 
 static EventGroupHandle_t s_wifi_events;
 #define WIFI_IP_READY_BIT BIT0
-#define WIFI_FAILED_BIT   BIT1
 
 #ifndef WIFI_SSID
 #define WIFI_SSID "<SSID>"
@@ -21,37 +20,21 @@ static EventGroupHandle_t s_wifi_events;
 #define WIFI_PASSWORD "<PASSWORD>"
 #endif
 
-#define WIFI_MAXIMUM_RETRY 5
-
-static int g_wifi_retry_number = 0;
-
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
 {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    if (g_wifi_retry_number < WIFI_MAXIMUM_RETRY) {
-      esp_wifi_connect();
-      g_wifi_retry_number++;
-      ESP_LOGI(TAG, "retry to connect to the AP");
-    } else {
-      ESP_LOGE(TAG, "failed to connect to the AP");
-      xEventGroupSetBits(s_wifi_events, WIFI_FAILED_BIT);
-    }
+    ESP_LOGI(TAG, "retrying connection to AP");
+    esp_wifi_connect();
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-    g_wifi_retry_number = 0;
     xEventGroupSetBits(s_wifi_events, WIFI_IP_READY_BIT);
   }
 }
 
 void wifi_wait_for_ip() {
-  EventBits_t bits = xEventGroupWaitBits(
-      s_wifi_events, WIFI_IP_READY_BIT | WIFI_FAILED_BIT,
-      pdFALSE, pdFALSE, portMAX_DELAY);
-  if (bits & WIFI_FAILED_BIT) {
-    ESP_LOGE(TAG, "WiFi connection failed");
-  }
+  xEventGroupWaitBits(s_wifi_events, WIFI_IP_READY_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
 }
 
 void wifi_setup()
