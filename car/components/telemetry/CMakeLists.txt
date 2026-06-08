@@ -1,6 +1,8 @@
-idf_component_register(SRCS "telemetry.cpp" "telemetry_json.cpp"
+idf_component_register(SRCS "telemetry_metrics.cpp" "telemetry.cpp" "telemetry_json.cpp"
                     INCLUDE_DIRS "include"
                     REQUIRES
+                    tracing
+                    esp-opentelemetry-cpp
                     esp_netif
                     esp_wifi
                     cjson

@@ -121,33 +121,53 @@ flowchart LR
     subgraph observability ["Observability"]
         OC["OTel Collector\n4317 gRPC / 4318 HTTP"]
         TEMPO["Tempo"]
+        VM["VictoriaMetrics\nlocalhost:8428"]
         GRAF["Grafana\nlocalhost:3000"]
     end
 
     FW -- "WebSocket + traceparent" --> STR
     STR -- "WebSocket + traceparent" --> WEB
-    FW -- "OTLP/HTTP" --> OC
-    STR -- "OTLP/HTTP" --> OC
+    FW -- "OTLP/HTTP traces" --> OC
+    FW -- "OTLP/HTTP metrics" --> VM
+    STR -- "OTLP/HTTP traces" --> OC
+    STR -- "OTLP/HTTP metrics" --> VM
     WEB -- "OTLP/HTTP" --> OC
     OC -- "OTLP/gRPC" --> TEMPO
+    OC -- "OTLP/HTTP metrics" --> VM
     GRAF -- "TraceQL" --> TEMPO
+    GRAF -- "PromQL" --> VM
 ```
 
-The observability stack is purpose-built for distributed tracing and designed to extend to metrics and logs. It comprises three tiers:
+The observability stack covers distributed tracing and real-time metrics. It comprises four tiers:
 
-- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP); routes signals to backends. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
+- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo and forwards browser metrics to VictoriaMetrics. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
 - **Grafana Tempo** — trace storage and query backend. Configuration: [observability/tempo.yml](observability/tempo.yml).
-- **Grafana** — visualization UI at `http://localhost:3000`. Tempo is auto-provisioned as the default datasource. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
+- **VictoriaMetrics** (`victoriametrics/victoria-metrics`) — metrics storage. Firmware and Python metrics are pushed directly via OTLP/HTTP; browser metrics arrive via the OTel Collector. Exposes a Prometheus-compatible query API at `http://localhost:8428`. Configuration: none required (all defaults).
+- **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default) and VictoriaMetrics datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
 
 ### Instrumented services
 
-All three services export traces via OTLP/HTTP:
+All three services export traces via OTLP/HTTP to the OTel Collector and metrics directly to VictoriaMetrics:
 
-| Service | Name in Tempo | Exporter endpoint |
-|---|---|---|
-| ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) |
-| Python streamer | `dust-mite-streamer` | `http://otel-collector:4318` (from `OTEL_EXPORTER_OTLP_ENDPOINT`) |
-| Web browser | `dust-mite-web` | `http://localhost:4318/v1/traces` (hardcoded in [web/src/index.js](web/src/index.js)) |
+| Service | Name in Tempo | Traces endpoint | Metrics endpoint |
+|---|---|---|---|
+| ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
+| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://victoriametrics:8428/opentelemetry/v1/metrics`) |
+| Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `http://localhost:4318`) via OTel Collector |
+
+### Metrics
+
+The set of emitted metrics is variant-specific. See the variant documentation in [docs/variants/](docs/variants/) for the full list. When adding or removing a metric, update the metrics table in the relevant variant document.
+
+To verify the metrics pipeline is working:
+
+```bash
+# Query VictoriaMetrics (populated once metrics are being emitted):
+curl -s 'http://localhost:8428/api/v1/query?query=up' | python3 -m json.tool
+
+# Check a specific firmware metric:
+curl -s 'http://localhost:8428/api/v1/query?query=dust_mite_task_cpu_usage_percent' | python3 -m json.tool
+```
 
 ### Cross-service trace propagation
 
@@ -209,6 +229,10 @@ try {
     span.end();
 }
 ```
+
+### Viewing metrics
+
+Open Grafana at `http://localhost:3000` → **Dashboards** → **dust-mite**. The dashboard shows all sensor readings and pipeline counters at 1 s resolution.
 
 ### Viewing traces
 
@@ -337,7 +361,9 @@ If checks fail, apply automatic fixes:
 
 - Unit tests: validate individual modules and functions in isolation; implemented in [web/tests/unit/](web/tests/unit/).
 - Integration tests: validate interactions across component boundaries; implemented in [web/tests/integration/](web/tests/integration/).
-- E2E tests: validate full user-level flows in realistic browser conditions; implemented in [web/tests/e2e/](web/tests/e2e/).
+- E2E tests: validate full user-level flows in a browser; implemented in [web/tests/e2e/](web/tests/e2e/). Two variants:
+  - Mock-based: uses an in-process WebSocket server; runs in CI.
+  - Full-stack (`tests/e2e/full_stack.test.js`): runs against the real running stack; on-demand only, not run in CI.
 
 Run specific suites:
 
@@ -345,9 +371,28 @@ Run specific suites:
 ./scripts/run_tests.sh tests/unit
 ./scripts/run_tests.sh tests/integration
 ./scripts/run_tests.sh tests/e2e
+./scripts/run_tests.sh tests/e2e/full_stack
 ```
 
+### Full-stack E2E tests
 
+`tests/e2e/full_stack.test.js` runs Playwright against the real running stack. The `js` service bakes Docker-network service names into the served JavaScript, so the browser connects directly to the Python streamer and VictoriaMetrics without any URL patching.
+
+Some tests require the car to be connected and active. Prerequisites: start the headless stack first.
+
+```bash
+./scripts/start_headless.sh
+```
+
+The headless stack includes the `test-runner` service (built from the JS devcontainer image, with Playwright and Firefox) running in standby. Execute tests inside it:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack
+```
+
+The test-runner connects to the `js` and `victoriametrics` containers over the Docker network; no port forwarding to the host is required.
+
+The Vite dev server on port 5173 is provided by the `js` service. For visual inspection, open `http://localhost:5173` directly in a host browser.
 
 ## Car firmware development ([car/](car/))
 

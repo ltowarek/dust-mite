@@ -19,6 +19,12 @@ import websockets.sync.client
 import websockets.sync.server
 from opentelemetry import trace
 
+from .metrics import (
+    configure_metrics,
+    record_command_sent,
+    record_frame,
+    record_telemetry_received,
+)
 from .tracing import configure_tracing, extract_trace_context, inject_trace_context
 
 logging.basicConfig()
@@ -236,6 +242,7 @@ def process_frame(frame: bytes) -> bytes:
     result = cv2.imencode(".jpg", img)[1].tobytes()
 
     span.set_attribute("output_size_bytes", len(result))
+    record_frame()
     return result
 
 
@@ -257,6 +264,7 @@ def handle_telemetry(
     if not telemetry_client.is_frame_available():
         return None
     telemetry: dict[str, Any] = json.loads(telemetry_client.recv())
+    record_telemetry_received()
     car_context = extract_trace_context(telemetry)
     with tracer.start_as_current_span(
         "streamer.handle_telemetry",
@@ -300,6 +308,7 @@ def handle_drive_command(
             span.set_attribute("distance_ahead", telemetry["distance_ahead"])
             p = prepare_command_packet(command_packet)
             controller_client.send(json.dumps(p))
+            record_command_sent()
     return command_packet
 
 
@@ -326,6 +335,7 @@ def prepare_command_packet(command: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     """Run the main entry point."""
     configure_tracing("dust-mite-streamer")
+    configure_metrics("dust-mite-streamer")
     try:
         with websockets.sync.server.serve(server_handler, "0.0.0.0", 8765) as server:  # noqa: S104 - intentional, streamer must accept connections from all interfaces
             logger.info("Starting server")

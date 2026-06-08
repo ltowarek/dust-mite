@@ -23,6 +23,13 @@ services:
     networks:
       - dust-mite-observability
 
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.110.0
+    ports:
+      - "8428:8428"   # HTTP API (Prometheus-compatible + OTLP ingestion)
+    networks:
+      - dust-mite-observability
+
   grafana:
     image: grafana/grafana:13.0.1-security-01
     ports:
@@ -34,5 +41,6 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     depends_on:
       - tempo
+      - victoriametrics
     networks:
       - dust-mite-observability

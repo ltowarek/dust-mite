@@ -6,18 +6,25 @@ import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { handleMessage } from "./messages.js";
+import { setupMetrics } from "./metrics.js";
 
 const provider = new WebTracerProvider({
   resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: "dust-mite-web" }),
   spanProcessors: [
-    new SimpleSpanProcessor(new OTLPTraceExporter({ url: "http://localhost:4318/v1/traces" })),
+    new SimpleSpanProcessor(
+      new OTLPTraceExporter({
+        url: `${import.meta.env.VITE_OTLP_ENDPOINT ?? "http://localhost:4318"}/v1/traces`,
+      }),
+    ),
   ],
 });
 provider.register({ propagator: new W3CTraceContextPropagator() });
 const tracer = provider.getTracer("dust-mite-web");
 
+setupMetrics();
+
 window.addEventListener("DOMContentLoaded", () => {
-  const socket = new WebSocket("ws://localhost:8765");
+  const socket = new WebSocket(import.meta.env.VITE_WS_URL ?? "ws://localhost:8765");
 
   const elements = {
     image: document.getElementById("image"),

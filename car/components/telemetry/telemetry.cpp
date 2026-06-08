@@ -1,4 +1,5 @@
 #include "telemetry.hpp"
+#include "telemetry_metrics.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
@@ -352,6 +353,7 @@ void telemetry_task(void* p) {
 
     telemetry_packet_t packet = {};
     get_telemetry_packet(&packet);
+    telemetry_metrics_update(packet);
 
     if (xQueueSendToBack(g_telemetry_queue, &packet, portMAX_DELAY) != pdPASS) {
       ESP_LOGE(TAG, "xQueueSendToBack failed");

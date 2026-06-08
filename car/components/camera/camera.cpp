@@ -1,4 +1,5 @@
 #include "camera.hpp"
+#include "camera_metrics.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_camera.h"
@@ -123,6 +124,7 @@ void camera_task(void* p) {
       ESP_LOGE(TAG, "xQueueSendToBack failed");
       break;
     }
+    camera_metrics_update();
   }
   ESP_LOGW(TAG, "Camera task stopped");
   vTaskDelete(NULL);
