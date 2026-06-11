@@ -68,6 +68,65 @@
 - `streamer.py` can also send automatic brake commands to `CONTROLLER_CLIENT_URI` when `distance_ahead` is below the configured threshold.
 - The web page served by the JavaScript devcontainer connects to `ws://localhost:8765` and displays the processed camera stream with live telemetry.
 
+### Metrics
+
+Sensor and pipeline-health metrics are exported via OTLP and available in Grafana via Prometheus.
+
+**Firmware metrics** (enabled by `CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED`):
+
+Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
+
+[car/components/tracing/system_metrics.cpp](../../car/components/tracing/system_metrics.cpp) — ESP32 system health:
+
+| Metric | Unit | Description |
+|---|---|---|
+| `dust_mite.free_heap_bytes` | By | ESP32 free heap |
+| `dust_mite.min_free_heap_bytes` | By | Minimum free heap since boot (watermark) |
+| `dust_mite.largest_free_block_bytes` | By | Largest contiguous free heap block (fragmentation indicator) |
+| `dust_mite.internal_free_heap_bytes` | By | Free internal SRAM heap |
+| `dust_mite.free_psram_bytes` | By | Free PSRAM (SPIRAM) |
+| `dust_mite.uptime` | s | Uptime since boot |
+| `dust_mite.temperature` | Cel | ESP32-S3 die temperature |
+| `dust_mite.task_cpu_usage` | % | Per-task CPU usage; `task` and `core` attributes identify each series |
+| `dust_mite.task_priority` | 1 | Current FreeRTOS priority per task; `task` and `core` attributes identify each series |
+
+[car/components/telemetry/telemetry_metrics.cpp](../../car/components/telemetry/telemetry_metrics.cpp) — sensor readings:
+
+| Metric | Unit | Description |
+|---|---|---|
+| `dust_mite.rssi` | dBm | WiFi RSSI |
+| `dust_mite.speed` | km/h | Car speed from encoder |
+| `dust_mite.distance_ahead` | cm | HC-SR04 ultrasonic distance |
+| `dust_mite.accelerometer.{x,y,z}` | g | LSM9DS1 accelerometer |
+| `dust_mite.magnetometer.{x,y,z}` | G | LSM9DS1 magnetometer |
+| `dust_mite.gyroscope.{x,y,z}` | deg/s | LSM9DS1 gyroscope |
+
+[car/components/camera/camera_metrics.cpp](../../car/components/camera/camera_metrics.cpp) — camera pipeline:
+
+| Metric | Unit | Description |
+|---|---|---|
+| `dust_mite.frames_captured` | {frame} | Camera frames captured (counter) |
+
+[car/components/web_server/web_server_metrics.cpp](../../car/components/web_server/web_server_metrics.cpp) — WebSocket delivery:
+
+| Metric | Unit | Description |
+|---|---|---|
+| `dust_mite.frames_sent` | {frame} | Camera frames sent over WebSocket (counter) |
+
+**Streamer pipeline metrics** (emitted by [controller/src/controller/metrics.py](../../controller/src/controller/metrics.py)):
+
+| Metric | Unit | Description |
+|---|---|---|
+| `dust_mite.frames_processed` | {frame} | Camera frames processed (counter) |
+| `dust_mite.telemetry_packets_received` | {packet} | Telemetry packets from the car (counter) |
+| `dust_mite.commands_sent` | {command} | Drive commands sent (counter) |
+
+**Web browser metrics** (emitted by [web/src/metrics.js](../../web/src/metrics.js)):
+
+| Metric | Unit | Description |
+|---|---|---|
+| `dust_mite.frames_displayed` | {frame} | JPEG frames rendered in the browser (counter) |
+
 ### Components
 
 ```mermaid

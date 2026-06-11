@@ -33,6 +33,8 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+    env_file:
+      - path: .env
     ports:
       - "5173:5173"
     command: sleep infinity
@@ -50,7 +52,29 @@ services:
       file: observability/docker-compose.yml
       service: tempo
 
+  victoriametrics:
+    extends:
+      file: observability/docker-compose.yml
+      service: victoriametrics
+
   grafana:
     extends:
       file: observability/docker-compose.yml
       service: grafana
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: .devcontainer/js/Dockerfile
+    volumes:
+      - .:/workspaces/dust-mite
+    working_dir: /workspaces/dust-mite/web
+    env_file:
+      - path: .env
+    environment:
+      BASE_URL: http://js:5173
+      VITE_WS_URL: ws://python:8765
+      PLAYWRIGHT_OUTPUT_DIR: /tmp/playwright-results
+    command: sleep infinity
+    networks:
+      - dust-mite-observability

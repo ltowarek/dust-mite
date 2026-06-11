@@ -1,0 +1,27 @@
+menu "Metrics"
+    config ESP_OPENTELEMETRY_METRICS_ENABLED
+        bool "Enable OpenTelemetry metrics"
+        depends on ESP_OPENTELEMETRY_TRACING_ENABLED
+        default n
+        help
+            Enables the PeriodicExportingMetricReader that exports sensor and
+            system metrics via OTLP/HTTP. Reuses
+            ESP_OPENTELEMETRY_EXPORTER_OTLP_ENDPOINT from the Tracing menu.
+
+    config ESP_OPENTELEMETRY_METRICS_EXPORT_INTERVAL_MS
+        int "Metrics export interval (ms)"
+        depends on ESP_OPENTELEMETRY_METRICS_ENABLED
+        default 500
+        help
+            How often the PeriodicExportingMetricReader collects and exports
+            metrics.
+
+    config ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL
+        string "Metrics OTLP base URL"
+        depends on ESP_OPENTELEMETRY_METRICS_ENABLED
+        default ""
+        help
+            Base URL for OTLP/HTTP metrics export. The path "/v1/metrics" is
+            appended automatically. Leave empty to reuse
+            ESP_OPENTELEMETRY_EXPORTER_OTLP_ENDPOINT (the tracing endpoint).
+endmenu

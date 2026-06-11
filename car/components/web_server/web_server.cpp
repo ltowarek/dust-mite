@@ -16,6 +16,7 @@
 #include "camera.hpp"
 #include "telemetry.hpp"
 #include "tracing.hpp"
+#include "web_server_metrics.hpp"
 #include <cJSON.h>
 #include "mbedtls/base64.h"
 #include "opentelemetry/trace/context.h"
@@ -357,6 +358,7 @@ void ws_stream_task(void* p) {
     }
 
     send_span->End();
+    web_server_metrics_update();
     cJSON_free(packet_json_str);
     esp_camera_fb_return(frame);
   }

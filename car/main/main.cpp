@@ -6,11 +6,16 @@
 #include "esp_camera.h"
 #include "driver/i2c_master.h"
 #include "camera.hpp"
+#include "camera_metrics.hpp"
 #include "web_server.hpp"
+#include "web_server_metrics.hpp"
 #include "motor.hpp"
 #include "telemetry.hpp"
+#include "telemetry_metrics.hpp"
 #include "tracing.hpp"
+#include "system_metrics.hpp"
 #include "wifi.hpp"
+#include "sdkconfig.h"
 
 static i2c_master_bus_handle_t i2c_bus_init() {
   i2c_master_bus_config_t bus_cfg = {};
@@ -33,12 +38,20 @@ extern "C" void app_main()
 
   i2c_master_bus_handle_t i2c_bus = i2c_bus_init();
 
-  motor_setup(command_queue);
   wifi_setup();
   wifi_wait_for_ip();
   sync_time();
-  tracing_setup();
+
+  motor_setup(command_queue);
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
+
+  tracing_setup();
+
+  metrics_setup();
+  system_metrics_setup();
+  telemetry_metrics_setup();
+  camera_metrics_setup();
+  web_server_metrics_setup();
 }

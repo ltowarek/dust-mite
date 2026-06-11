@@ -9,3 +9,5 @@
 void tracing_setup();
 void tracing_inject(cJSON& obj);
 opentelemetry::context::Context tracing_extract(const cJSON& obj);
+
+void metrics_setup();

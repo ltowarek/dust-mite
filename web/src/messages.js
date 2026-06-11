@@ -1,5 +1,8 @@
+import { recordFrameDisplayed } from "./metrics.js";
+
 export function updateStream(image, data) {
   image.src = `data:image/jpeg;base64,${data}`;
+  recordFrameDisplayed();
 }
 
 export function updateTelemetry(elements, data) {
