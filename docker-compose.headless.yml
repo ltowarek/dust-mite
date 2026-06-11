@@ -1,7 +1,8 @@
 services:
   cpp:
-    devices:
-      - /dev/ttyACM0:/dev/ttyACM0
+    # Uncomment to pass through ESP32 device.
+    # devices:
+    #   - /dev/ttyACM0:/dev/ttyACM0
     command: script -q -c "/home/dustmite/run_cpp.sh" /dev/null
 
   python:

@@ -8,6 +8,7 @@ services:
       context: ./car
     env_file:
       - path: .env
+    # Uncomment to pass through ESP32 device.
     # devices:
     #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
