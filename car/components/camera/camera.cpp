@@ -53,7 +53,9 @@ static camera_config_t camera_config = {
   .pixel_format = PIXFORMAT_JPEG,
   .frame_size = FRAMESIZE_VGA,
 
-  .jpeg_quality = 10,
+  // Keeps VGA JPEGs under the 61440 B (width*height/5) driver buffer; lower
+  // quality dropped high-detail frames as "FB-OVF"/"NO-EOI" (issue #43).
+  .jpeg_quality = 15,
   .fb_count = 2,
   .fb_location = CAMERA_FB_IN_PSRAM,
   .grab_mode = CAMERA_GRAB_LATEST,
@@ -61,6 +63,9 @@ static camera_config_t camera_config = {
   .sccb_i2c_port = 0,
 };
 
+// esp_camera_init() starts capture immediately, so the unaligned first frame
+// logs a benign, self-recovering "cam_hal: NO-SOI" at boot. Expected; the
+// driver drops it and re-syncs on the next VSYNC.
 void camera_init(i2c_master_bus_handle_t i2c_bus) {
   begin(i2c_bus, 0x36);
   enableCameraPower(OV2640);
