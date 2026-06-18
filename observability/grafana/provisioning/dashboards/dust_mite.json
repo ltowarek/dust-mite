@@ -1107,6 +1107,120 @@
           "legendFormat": "Browser"
         }
       ]
+    },
+    {
+      "id": 65,
+      "type": "timeseries",
+      "title": "Camera Frame Size",
+      "gridPos": {
+        "x": 0,
+        "y": 74,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "dust_mite.camera.frame_size_bytes{service_name=\"dust-mite-car\"}",
+          "legendFormat": "Peak frame size"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "dust_mite.camera.frame_buffer_bytes{service_name=\"dust-mite-car\"}",
+          "legendFormat": "Buffer limit"
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "type": "stat",
+      "title": "JPEG Buffer Used",
+      "gridPos": {
+        "x": 0,
+        "y": 82,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(dust_mite.camera.frame_size_bytes{service_name=\"dust-mite-car\"}) / max(dust_mite.camera.frame_buffer_bytes{service_name=\"dust-mite-car\"}) * 100",
+          "legendFormat": "Buffer used"
+        }
+      ]
     }
   ],
   "templating": {

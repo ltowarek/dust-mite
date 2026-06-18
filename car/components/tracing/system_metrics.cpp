@@ -38,8 +38,9 @@ static UBaseType_t s_task_count      = 0;
 static int64_t     s_prev_sample_time  = 0;
 static int64_t     s_last_refresh_time = 0;
 
+template <typename T>
 static void observe_task_metric(opentelemetry::metrics::ObserverResult& obs,
-                                double value, const char* task_name, const char* core) {
+                                T value, const char* task_name, const char* core) {
     using Pair = std::pair<opentelemetry::nostd::string_view,
                            opentelemetry::common::AttributeValue>;
     std::array<Pair, 2> attrs{{
@@ -47,7 +48,7 @@ static void observe_task_metric(opentelemetry::metrics::ObserverResult& obs,
         {"core", opentelemetry::nostd::string_view(core)}
     }};
     opentelemetry::nostd::get<
-        opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObserverResultT<double>>>(obs)
+        opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObserverResultT<T>>>(obs)
         ->Observe(value, opentelemetry::common::KeyValueIterableView<std::array<Pair, 2>>(attrs));
 }
 
@@ -96,19 +97,19 @@ static void refresh_task_stats() {
 }
 
 static void cb_free_heap(opentelemetry::metrics::ObserverResult obs, void*) {
-    observe_double(obs, static_cast<double>(esp_get_free_heap_size()));
+    observe_int64(obs, static_cast<int64_t>(esp_get_free_heap_size()));
 }
 static void cb_min_free_heap(opentelemetry::metrics::ObserverResult obs, void*) {
-    observe_double(obs, static_cast<double>(esp_get_minimum_free_heap_size()));
+    observe_int64(obs, static_cast<int64_t>(esp_get_minimum_free_heap_size()));
 }
 static void cb_largest_free_block(opentelemetry::metrics::ObserverResult obs, void*) {
-    observe_double(obs, static_cast<double>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+    observe_int64(obs, static_cast<int64_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
 }
 static void cb_internal_free_heap(opentelemetry::metrics::ObserverResult obs, void*) {
-    observe_double(obs, static_cast<double>(esp_get_free_internal_heap_size()));
+    observe_int64(obs, static_cast<int64_t>(esp_get_free_internal_heap_size()));
 }
 static void cb_free_psram(opentelemetry::metrics::ObserverResult obs, void*) {
-    observe_double(obs, static_cast<double>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+    observe_int64(obs, static_cast<int64_t>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 static void cb_uptime(opentelemetry::metrics::ObserverResult obs, void*) {
     observe_double(obs, static_cast<double>(esp_timer_get_time()) / 1e6);
@@ -127,7 +128,7 @@ static void cb_task_cpu_usage(opentelemetry::metrics::ObserverResult obs, void*)
 static void cb_task_priority(opentelemetry::metrics::ObserverResult obs, void*) {
     refresh_task_stats();
     for (UBaseType_t i = 0; i < s_task_count; i++)
-        observe_task_metric(obs, static_cast<double>(s_task_stats[i].priority),
+        observe_task_metric(obs, static_cast<int64_t>(s_task_stats[i].priority),
                             s_task_stats[i].name, s_task_stats[i].core);
 }
 
@@ -148,15 +149,15 @@ void system_metrics_setup() {
 
     static_assert(kNumInstruments == 9, "Update kNumInstruments when adding or removing instruments");
 
-    s_instruments[0] = meter->CreateDoubleObservableGauge("dust_mite.free_heap_bytes",          "Free heap",                          "By");
-    s_instruments[1] = meter->CreateDoubleObservableGauge("dust_mite.min_free_heap_bytes",       "Min free heap since boot",           "By");
-    s_instruments[2] = meter->CreateDoubleObservableGauge("dust_mite.largest_free_block_bytes",  "Largest contiguous free heap block",  "By");
-    s_instruments[3] = meter->CreateDoubleObservableGauge("dust_mite.internal_free_heap_bytes",  "Free internal SRAM heap",            "By");
-    s_instruments[4] = meter->CreateDoubleObservableGauge("dust_mite.free_psram_bytes",          "Free PSRAM",                         "By");
+    s_instruments[0] = meter->CreateInt64ObservableGauge("dust_mite.free_heap_bytes",          "Free heap",                          "By");
+    s_instruments[1] = meter->CreateInt64ObservableGauge("dust_mite.min_free_heap_bytes",       "Min free heap since boot",           "By");
+    s_instruments[2] = meter->CreateInt64ObservableGauge("dust_mite.largest_free_block_bytes",  "Largest contiguous free heap block",  "By");
+    s_instruments[3] = meter->CreateInt64ObservableGauge("dust_mite.internal_free_heap_bytes",  "Free internal SRAM heap",            "By");
+    s_instruments[4] = meter->CreateInt64ObservableGauge("dust_mite.free_psram_bytes",          "Free PSRAM",                         "By");
     s_instruments[5] = meter->CreateDoubleObservableGauge("dust_mite.uptime",                    "Uptime since boot",                  "s");
     s_instruments[6] = meter->CreateDoubleObservableGauge("dust_mite.temperature",               "Die temperature",                    "Cel");
     s_instruments[7] = meter->CreateDoubleObservableGauge("dust_mite.task_cpu_usage",            "Per-task CPU usage",                 "%");
-    s_instruments[8] = meter->CreateDoubleObservableGauge("dust_mite.task_priority",             "Per-task FreeRTOS priority",         "1");
+    s_instruments[8] = meter->CreateInt64ObservableGauge("dust_mite.task_priority",             "Per-task FreeRTOS priority",         "1");
 
     s_instruments[0]->AddCallback(cb_free_heap,       nullptr);
     s_instruments[1]->AddCallback(cb_min_free_heap,   nullptr);

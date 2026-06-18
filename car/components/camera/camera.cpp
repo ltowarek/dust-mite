@@ -6,7 +6,6 @@
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "DFRobot_AXP313A.h"
-#include "esp_opentelemetry.hpp"
 
 static const char* TAG = "camera";
 
@@ -53,7 +52,9 @@ static camera_config_t camera_config = {
   .pixel_format = PIXFORMAT_JPEG,
   .frame_size = FRAMESIZE_VGA,
 
-  .jpeg_quality = 10,
+  // Keeps VGA JPEGs under the 61440 B (width*height/5) driver buffer; lower
+  // quality dropped high-detail frames as "FB-OVF"/"NO-EOI" (issue #43).
+  .jpeg_quality = 15,
   .fb_count = 2,
   .fb_location = CAMERA_FB_IN_PSRAM,
   .grab_mode = CAMERA_GRAB_LATEST,
@@ -61,6 +62,9 @@ static camera_config_t camera_config = {
   .sccb_i2c_port = 0,
 };
 
+// esp_camera_init() starts capture immediately, so the unaligned first frame
+// logs a benign, self-recovering "cam_hal: NO-SOI" at boot. Expected; the
+// driver drops it and re-syncs on the next VSYNC.
 void camera_init(i2c_master_bus_handle_t i2c_bus) {
   begin(i2c_bus, 0x36);
   enableCameraPower(OV2640);
@@ -77,12 +81,6 @@ void camera_init(i2c_master_bus_handle_t i2c_bus) {
 
 static QueueHandle_t g_frame_queue = NULL;
 static TaskHandle_t g_camera_task_handle = NULL;
-
-static bool has_jpeg_eoi(const camera_fb_t* frame) {
-  return frame->len >= 2 &&
-         frame->buf[frame->len - 2] == 0xFF &&
-         frame->buf[frame->len - 1] == 0xD9;
-}
 
 void camera_task(void* p) {
   ESP_LOGI(TAG, "Starting camera task");
@@ -109,22 +107,12 @@ void camera_task(void* p) {
       continue;
     }
 
-    if (!has_jpeg_eoi(frame)) {
-      ESP_LOGW(TAG, "NO-EOI detected (size=%zu)", frame->len);
-      auto span = esp_opentelemetry_tracer()->StartSpan(
-          "camera.frame.capture",
-          {{"camera.frame.size", static_cast<int64_t>(frame->len)}});
-      span->SetStatus(opentelemetry::trace::StatusCode::kError, "NO-EOI");
-      span->End();
-      esp_camera_fb_return(frame);
-      continue;
-    }
+    camera_metrics_update(frame->len);
 
     if (xQueueSendToBack(g_frame_queue, &frame, portMAX_DELAY) != pdPASS) {
       ESP_LOGE(TAG, "xQueueSendToBack failed");
       break;
     }
-    camera_metrics_update();
   }
   ESP_LOGW(TAG, "Camera task stopped");
   vTaskDelete(NULL);

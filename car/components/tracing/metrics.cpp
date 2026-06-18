@@ -31,6 +31,14 @@ void observe_double(opentelemetry::metrics::ObserverResult& obs, double value) {
 #endif
 }
 
+void observe_int64(opentelemetry::metrics::ObserverResult& obs, int64_t value) {
+#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
+    opentelemetry::nostd::get<
+        opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObserverResultT<int64_t>>>(obs)
+        ->Observe(value);
+#endif
+}
+
 void metrics_setup() {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
     const char* metrics_base = CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL;
