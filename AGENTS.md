@@ -56,6 +56,7 @@ All environment variables used anywhere in the project must be declared in [scri
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes. When adding or removing a metric, update the metrics table in the relevant variant document under [docs/variants/](docs/variants/).
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Code comments should explain *why*, not restate *what* the code does. Do not annotate imports/includes with what they provide (e.g. no `#include "x.hpp"  // some_function`).
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 
 ## Validation by Area
