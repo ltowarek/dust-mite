@@ -4,13 +4,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     ccache \
     clang-format \
-    clang-tools-18 \
     curl \
     locales \
     protobuf-compiler
-
-# clang-apply-replacements isn't bundled with esp-clang; needed for clang-tidy -fix.
-RUN ln -s /usr/bin/clang-apply-replacements-18 /usr/bin/clang-apply-replacements
 
 # esp-clang provides an Xtensa-aware clang/clang-tidy; vanilla apt clang-tidy
 # has no Xtensa backend and fails on ESP-IDF's GCC-only compiler flags.
