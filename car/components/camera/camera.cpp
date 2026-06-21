@@ -76,23 +76,10 @@ void camera_task(void* p) {
   ESP_LOGI(TAG, "Starting camera task");
   camera_fb_t* frame = NULL;
   bool started = false;
-  bool initialized = false;
   while (true) {
     if (!started) {
       ESP_LOGI(TAG, "Waiting for notification to start the camera");
       ulTaskNotifyTakeIndexed(CAMERA_START_NOTIFICATION_INDEX, pdTRUE, portMAX_DELAY);
-      if (!initialized) {
-        // Lazy init on the first stream request so the sensor stays quiet
-        // while idle. esp_camera_init() drops one or two unaligned warmup
-        // frames ("cam_hal: NO-SOI") before locking - this is benign and
-        // self-recovers on the next VSYNC.
-        esp_err_t err = esp_camera_init(&camera_config);
-        if (err != ESP_OK) {
-          ESP_LOGE(TAG, "esp_camera_init failed: 0x%x", err);
-          continue;  // wait for the next stream request and retry
-        }
-        initialized = true;
-      }
       started = true;
       ESP_LOGI(TAG, "Camera started");
     }
@@ -125,6 +112,15 @@ void camera_setup(QueueHandle_t frame_queue, i2c_master_bus_handle_t i2c_bus) {
   g_frame_queue = frame_queue;
 
   camera_init(i2c_bus);
+
+  // esp_camera_init() drops one or two unaligned warmup frames
+  // ("cam_hal: NO-SOI") before locking - benign, self-recovers on the next
+  // VSYNC.
+  esp_err_t err = esp_camera_init(&camera_config);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_camera_init failed: 0x%x", err);
+    return;
+  }
 
   if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 5, &g_camera_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");
