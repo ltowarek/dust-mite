@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+source "$IDF_PATH/export.sh"
 
 SCRIPTPATH=$(dirname "$0")
 CAR_ROOT="$(cd "$SCRIPTPATH/.." && pwd)"

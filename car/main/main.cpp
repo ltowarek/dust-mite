@@ -25,7 +25,7 @@ static i2c_master_bus_handle_t i2c_bus_init() {
   bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
   bus_cfg.glitch_ignore_cnt = 7;
   bus_cfg.flags.enable_internal_pullup = true;
-  i2c_master_bus_handle_t bus;
+  i2c_master_bus_handle_t bus = nullptr;
   ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
   return bus;
 }
