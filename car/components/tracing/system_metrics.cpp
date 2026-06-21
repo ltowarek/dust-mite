@@ -54,12 +54,6 @@ static void observe_task_metric(opentelemetry::metrics::ObserverResult& obs,
         ->Observe(value, opentelemetry::common::KeyValueIterableView<std::array<Pair, 2>>(attrs));
 }
 
-// uxTaskGetSystemState() suspends the FreeRTOS scheduler for the whole walk
-// (cost scales with task count). FreeRTOS documents this API family as
-// debug-only, not for production use - on this board it can make the camera's
-// real-time JPEG capture miss frame boundaries during streaming (issue #43).
-// Gated behind CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED (default
-// off) for exactly that reason; enable only while actively debugging.
 static void refresh_task_stats() {
     int64_t now = esp_timer_get_time();
     if (now - s_last_refresh_time < 100000LL) return;
