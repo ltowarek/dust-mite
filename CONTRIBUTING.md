@@ -515,6 +515,13 @@ Each test scope can target a different execution environment. Choose based on wh
 
 Target testing is the authoritative environment. Host and QEMU environments accelerate iteration and expand CI coverage; they do not replace on-target validation.
 
+The `telemetry` and `web_server` QEMU test apps build their component under test with
+[UndefinedBehaviorSanitizer](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/fatal-errors.html#undefined-behavior-sanitizer-ubsan-checks)
+enabled (`-fsanitize=undefined -fno-sanitize=shift-base`, scoped to that one component via
+`idf_component_get_property`/`target_compile_options` in the test app's `CMakeLists.txt`).
+UBSan is not enabled for the production firmware build — it grows code/data size too much to
+fit on-target — so this is the only place it currently runs.
+
 #### Excluding test files in QEMU mode
 
 When a test app supports both QEMU and hardware, prefer excluding hardware-only test files at the CMake level over scattering `#ifdef` guards inside test cases. Use a Kconfig boolean (for example `CONFIG_FOO_TEST_QEMU_MODE`) defined in `main/Kconfig.projbuild`, set it in `sdkconfig.defaults.qemu`, and conditionalize the file list in `main/CMakeLists.txt`:
