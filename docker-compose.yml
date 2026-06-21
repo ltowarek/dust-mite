@@ -9,8 +9,8 @@ services:
     env_file:
       - path: .env
     # Uncomment to pass through ESP32 device.
-    devices:
-      - /dev/ttyACM0:/dev/ttyACM0
+    # devices:
+    #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
     networks:
       - dust-mite-observability
@@ -67,8 +67,6 @@ services:
     build:
       context: .
       dockerfile: .devcontainer/js/Dockerfile
-      # Bake the image user as the host UID/GID (from .env) so the bind-mounted
-      # workspace stays writable; 1050 default for portability.
       args:
         USER_UID: "${UID:-1050}"
         USER_GID: "${GID:-1050}"
