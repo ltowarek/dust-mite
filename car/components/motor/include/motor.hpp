@@ -29,7 +29,7 @@ typedef struct command_packet {
   int value;
 } command_packet_t;
 
-void command_task(void *p);
+void command_task(void* p);
 
 #ifdef __cplusplus
 }

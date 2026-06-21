@@ -9,8 +9,8 @@
 #define MAX_DUTY 2400
 
 #define SERVO_PWM_RESOLUTION_HZ 1000000
-#define SERVO_PWM_FREQ_HZ       50
-#define SERVO_PWM_PERIOD_TICKS  (SERVO_PWM_RESOLUTION_HZ / SERVO_PWM_FREQ_HZ)
+#define SERVO_PWM_FREQ_HZ 50
+#define SERVO_PWM_PERIOD_TICKS (SERVO_PWM_RESOLUTION_HZ / SERVO_PWM_FREQ_HZ)
 
 typedef struct {
   int gpio_in;
@@ -21,7 +21,7 @@ typedef struct {
   mcpwm_gen_handle_t gen;
 } servo_t;
 
-static servo_t pan_servo  = {3,  0, nullptr, nullptr, nullptr, nullptr};
+static servo_t pan_servo = {3, 0, nullptr, nullptr, nullptr, nullptr};
 static servo_t tilt_servo = {38, 1, nullptr, nullptr, nullptr, nullptr};
 
 static int map_angle_to_duty(int angle) {
@@ -52,9 +52,11 @@ static void servo_mcpwm_init(servo_t* s) {
   ESP_ERROR_CHECK(mcpwm_new_generator(s->oper, &gen_cfg, &s->gen));
 
   // High on timer empty, low on comparator match — standard servo PWM
-  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_timer_event(s->gen,
-      MCPWM_GEN_TIMER_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, MCPWM_TIMER_EVENT_EMPTY, MCPWM_GEN_ACTION_HIGH)));
-  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_compare_event(s->gen,
+  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_timer_event(
+      s->gen, MCPWM_GEN_TIMER_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, MCPWM_TIMER_EVENT_EMPTY,
+                                           MCPWM_GEN_ACTION_HIGH)));
+  ESP_ERROR_CHECK(mcpwm_generator_set_action_on_compare_event(
+      s->gen,
       MCPWM_GEN_COMPARE_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, s->cmpr, MCPWM_GEN_ACTION_LOW)));
 
   ESP_ERROR_CHECK(mcpwm_timer_enable(s->timer));

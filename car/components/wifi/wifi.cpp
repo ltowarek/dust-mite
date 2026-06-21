@@ -20,9 +20,8 @@ static EventGroupHandle_t s_wifi_events;
 #define WIFI_PASSWORD "<PASSWORD>"
 #endif
 
-static void wifi_event_handler(void* arg, esp_event_base_t event_base,
-                               int32_t event_id, void* event_data)
-{
+static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id,
+                               void* event_data) {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -37,8 +36,7 @@ void wifi_wait_for_ip() {
   xEventGroupWaitBits(s_wifi_events, WIFI_IP_READY_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
 }
 
-void wifi_setup()
-{
+void wifi_setup() {
   s_wifi_events = xEventGroupCreate();
   ESP_ERROR_CHECK(nvs_flash_init());
   ESP_ERROR_CHECK(esp_netif_init());
@@ -48,8 +46,10 @@ void wifi_setup()
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-  ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
-  ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+  ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                                      &wifi_event_handler, NULL, NULL));
+  ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                                      &wifi_event_handler, NULL, NULL));
 
   wifi_config_t wifi_config = {};
   strcpy((char*)wifi_config.sta.ssid, WIFI_SSID);
