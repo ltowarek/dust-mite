@@ -426,10 +426,20 @@ If checks fail, apply automatic fixes (only reformats lines you've already stage
 ./scripts/fix_checks.sh
 ```
 
+#### clang-format
+
+`run_checks.sh` runs `run_clang_format.sh`, which checks formatting with
+[clang-format](https://clang.llvm.org/docs/ClangFormat.html) against the style defined in
+[car/.clang-format](car/.clang-format). The `clang-format` CI job is blocking (part of
+`ci-status-cpp-car`).
+
+#### clang-tidy
+
 `run_checks.sh` also runs `run_clang_tidy.sh`, which performs static analysis with
-[clang-tidy](https://clang.llvm.org/extra/clang-tidy/) via ESP-IDF's `idf.py clang-check`,
-using the Xtensa-aware `esp-clang` toolchain bundled with ESP-IDF rather than the
-distro's `clang-tidy` package (which has no Xtensa backend). Building `car/` with
+[clang-tidy](https://clang.llvm.org/extra/clang-tidy/) against the checks defined in
+[car/.clang-tidy](car/.clang-tidy), via ESP-IDF's `idf.py clang-check`, using the
+Xtensa-aware `esp-clang` toolchain bundled with ESP-IDF rather than the distro's
+`clang-tidy` package (which has no Xtensa backend). Building `car/` with
 `IDF_TOOLCHAIN=clang` is still
 [experimental in ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/tools/idf-clang-tidy.html)
 and is known to fail at the final link step for this project due to TLS-relocation
