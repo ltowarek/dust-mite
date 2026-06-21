@@ -6,7 +6,10 @@ set(COMPONENTS main)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(telemetry_test)
 
-# Scope UBSan to the component under test (see CONTRIBUTING.md); enabling it
-# project-wide grows code/data size too much to fit on-target.
-idf_component_get_property(telemetry_lib telemetry COMPONENT_LIB)
-target_compile_options(${telemetry_lib} PRIVATE "-fsanitize=undefined" "-fno-sanitize=shift-base")
+# Opt-in via CONFIG_TELEMETRY_TEST_UBSAN (see CONTRIBUTING.md); scoped to the
+# component under test since enabling UBSan project-wide grows code/data size
+# too much to fit on-target.
+if(CONFIG_TELEMETRY_TEST_UBSAN)
+    idf_component_get_property(telemetry_lib telemetry COMPONENT_LIB)
+    target_compile_options(${telemetry_lib} PRIVATE "-fsanitize=undefined" "-fno-sanitize=shift-base")
+endif()

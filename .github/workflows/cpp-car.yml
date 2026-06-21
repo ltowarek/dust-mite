@@ -64,6 +64,16 @@ jobs:
             qemu: true
             sdkconfig_overlay: sdkconfig.defaults.qemu
             pytest_pattern: pytest_web_server_qemu.py
+          - name: test-telemetry-ubsan
+            path: car/components/telemetry/test_apps
+            qemu: true
+            sdkconfig_overlay: sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
+            pytest_pattern: pytest_telemetry_qemu.py
+          - name: test-web_server-ubsan
+            path: car/components/web_server/test_apps
+            qemu: true
+            sdkconfig_overlay: sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
+            pytest_pattern: pytest_web_server_qemu.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -86,9 +96,9 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ runner.os }}-idf-${{ matrix.path }}-${{ github.run_id }}
+        key: ccache-${{ runner.os }}-idf-${{ matrix.name }}-${{ github.run_id }}
         restore-keys: |
-          ccache-${{ runner.os }}-idf-${{ matrix.path }}-
+          ccache-${{ runner.os }}-idf-${{ matrix.name }}-
           ccache-${{ runner.os }}-idf-
 
     - name: Build

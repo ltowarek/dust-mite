@@ -515,12 +515,16 @@ Each test scope can target a different execution environment. Choose based on wh
 
 Target testing is the authoritative environment. Host and QEMU environments accelerate iteration and expand CI coverage; they do not replace on-target validation.
 
-The `telemetry` and `web_server` QEMU test apps build their component under test with
+The `telemetry` and `web_server` QEMU test apps can build their component under test with
 [UndefinedBehaviorSanitizer](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/fatal-errors.html#undefined-behavior-sanitizer-ubsan-checks)
-enabled (`-fsanitize=undefined -fno-sanitize=shift-base`, scoped to that one component via
-`idf_component_get_property`/`target_compile_options` in the test app's `CMakeLists.txt`).
-UBSan is not enabled for the production firmware build — it grows code/data size too much to
-fit on-target — so this is the only place it currently runs.
+(`-fsanitize=undefined -fno-sanitize=shift-base`, scoped to that one component via
+`idf_component_get_property`/`target_compile_options` in the test app's `CMakeLists.txt`). This
+is opt-in, gated behind a `CONFIG_<COMPONENT>_TEST_UBSAN` Kconfig boolean (default `n`) set via
+the `sdkconfig.defaults.ubsan` overlay — the default `test-telemetry`/`test-web_server` CI jobs
+build and run without it, and a separate `test-telemetry-ubsan`/`test-web_server-ubsan` CI job
+combines that overlay with `sdkconfig.defaults.qemu` to build and run the same QEMU tests with
+UBSan enabled. UBSan is not enabled for the production firmware build — it grows code/data size
+too much to fit on-target.
 
 #### Excluding test files in QEMU mode
 
