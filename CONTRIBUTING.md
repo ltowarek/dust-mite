@@ -452,7 +452,7 @@ tolerates that link failure and only requires `compile_commands.json` to be gene
 `clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
 empty, it only fails on a genuine clang-tidy tool error, not on findings.
 
-#### UBSan
+#### UndefinedBehaviorSanitizer (UBSan)
 
 A QEMU test app can opt in to building its component under test with
 [UndefinedBehaviorSanitizer](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/fatal-errors.html#undefined-behavior-sanitizer-ubsan-checks).
