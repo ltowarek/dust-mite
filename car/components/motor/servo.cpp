@@ -3,8 +3,8 @@
 #include "esp_log.h"
 #include "driver/mcpwm_prelude.h"
 
-#define MIN_ANGLE (-90) // RIGHT/UP
-#define MAX_ANGLE 90   // LEFT/DOWN
+#define MIN_ANGLE (-90)  // RIGHT/UP
+#define MAX_ANGLE 90     // LEFT/DOWN
 #define MIN_DUTY 500
 #define MAX_DUTY 2400
 

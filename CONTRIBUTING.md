@@ -430,7 +430,11 @@ If checks fail, apply automatic fixes (only reformats lines you've already stage
 
 `run_checks.sh` runs `run_clang_format.sh`, which checks formatting with
 [clang-format](https://clang.llvm.org/docs/ClangFormat.html) against the style defined in
-[car/.clang-format](car/.clang-format). The `clang-format` CI job is blocking (part of
+[car/.clang-format](car/.clang-format). Like `run_clang_tidy.sh`, it sources
+`$IDF_PATH/export.sh` itself so it always resolves to the `esp-clang`-bundled
+`clang-format`/`git-clang-format`, regardless of caller context — there is no
+separate apt `clang-format` package, which would otherwise drift in version
+from `esp-clang`'s. The `clang-format` CI job is blocking (part of
 `ci-status-cpp-car`).
 
 #### clang-tidy

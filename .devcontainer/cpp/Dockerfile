@@ -3,13 +3,14 @@ FROM espressif/idf:release-v6.0
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     ccache \
-    clang-format \
     curl \
     locales \
     protobuf-compiler
 
-# esp-clang provides an Xtensa-aware clang/clang-tidy; vanilla apt clang-tidy
-# has no Xtensa backend and fails on ESP-IDF's GCC-only compiler flags.
+# esp-clang provides an Xtensa-aware clang/clang-tidy/clang-format; vanilla apt
+# clang-tidy has no Xtensa backend, and a separate apt clang-format would drift
+# in version from this one (car/scripts use esp-clang's clang-format/clang-tidy
+# everywhere via export.sh, not whatever's on the system PATH).
 RUN python3 $IDF_PATH/tools/idf_tools.py --idf-path $IDF_PATH install esp-clang
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
