@@ -52,9 +52,8 @@ static camera_config_t camera_config = {
   .pixel_format = PIXFORMAT_JPEG,
   .frame_size = FRAMESIZE_VGA,
 
-  // Keeps VGA JPEGs under the 61440 B (width*height/5) driver buffer; lower
-  // quality dropped high-detail frames as "FB-OVF"/"NO-EOI" (issue #43).
-  .jpeg_quality = 15,
+  // Lower number = higher quality / larger JPEGs.
+  .jpeg_quality = 10,
   .fb_count = 2,
   .fb_location = CAMERA_FB_IN_PSRAM,
   .grab_mode = CAMERA_GRAB_LATEST,
@@ -62,18 +61,9 @@ static camera_config_t camera_config = {
   .sccb_i2c_port = 0,
 };
 
-// esp_camera_init() starts capture immediately, so the unaligned first frame
-// logs a benign, self-recovering "cam_hal: NO-SOI" at boot. Expected; the
-// driver drops it and re-syncs on the next VSYNC.
 void camera_init(i2c_master_bus_handle_t i2c_bus) {
   begin(i2c_bus, 0x36);
   enableCameraPower(OV2640);
-
-  esp_err_t err = esp_camera_init(&camera_config);
-  if (err != ESP_OK) {
-    ESP_LOGI(TAG, "Camera init failed with error 0x%x", err);
-    return;
-  }
 }
 
 #define CAMERA_START_NOTIFICATION_INDEX 0
@@ -122,6 +112,15 @@ void camera_setup(QueueHandle_t frame_queue, i2c_master_bus_handle_t i2c_bus) {
   g_frame_queue = frame_queue;
 
   camera_init(i2c_bus);
+
+  // esp_camera_init() drops one or two unaligned warmup frames
+  // ("cam_hal: NO-SOI") before locking - benign, self-recovers on the next
+  // VSYNC.
+  esp_err_t err = esp_camera_init(&camera_config);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_camera_init failed: 0x%x", err);
+    return;
+  }
 
   if (xTaskCreate(camera_task, "camera_task", 4096, (void *)0, 5, &g_camera_task_handle) != pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(camera_task) failed");

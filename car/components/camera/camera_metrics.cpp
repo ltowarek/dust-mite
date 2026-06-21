@@ -13,10 +13,9 @@ namespace metrics_api = opentelemetry::metrics;
 
 namespace {
 
-// JPEG frame-buffer capacity the camera driver allocates. Must match the
-// camera_config in camera.cpp: FRAMESIZE_VGA (640x480) with the
-// CAMERA_JPEG_MODE_FRAME_SIZE_AUTO buffer = width * height / 5.
-static constexpr int64_t kFrameBufferBytes = 640 * 480 / 5;  // 61440
+// JPEG frame-buffer capacity (the oversize drop limit). esp32-camera's AUTO
+// JPEG buffer mode sizes this as width*height/5; 640*480/5 = 61440 at VGA.
+static constexpr int64_t kFrameBufferBytes = 61440;
 
 static opentelemetry::nostd::shared_ptr<metrics_api::Counter<uint64_t>> s_frames_captured;
 static opentelemetry::nostd::shared_ptr<metrics_api::ObservableInstrument> s_frame_size;
