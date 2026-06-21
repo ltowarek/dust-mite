@@ -7,13 +7,19 @@ services:
     build:
       context: ../..
       dockerfile: .devcontainer/cpp/Dockerfile
+      # Bake the image user as the host UID/GID (from .env) so its home dir,
+      # ccache and the bind-mounted workspace/build are all writable; 1050 default.
+      args:
+        USER_UID: "${UID:-1050}"
+        USER_GID: "${GID:-1050}"
+    user: "${UID:-1050}:${GID:-1050}"
     volumes:
       - ../..:/workspaces/dust-mite:cached
     env_file:
       - path: ../../.env
     # Uncomment to pass through ESP32 device.
-    # devices:
-    #   - /dev/ttyACM0:/dev/ttyACM0
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
     networks:
       - dust-mite-observability
