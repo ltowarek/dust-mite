@@ -426,6 +426,17 @@ If checks fail, apply automatic fixes (only reformats lines you've already stage
 ./scripts/fix_checks.sh
 ```
 
+`run_checks.sh` also runs `run_static_analysis.sh`, which performs static analysis with
+[clang-tidy](https://clang.llvm.org/extra/clang-tidy/) via ESP-IDF's `idf.py clang-check`,
+using the Xtensa-aware `esp-clang` toolchain bundled with ESP-IDF rather than the
+distro's `clang-tidy` package (which has no Xtensa backend). Building `car/` with
+`IDF_TOOLCHAIN=clang` is still
+[experimental in ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/tools/idf-clang-tidy.html)
+and is known to fail at the final link step for this project due to TLS-relocation
+issues in vendored dependencies (protobuf/abseil/opentelemetry-cpp). `run_static_analysis.sh`
+tolerates that link failure and only requires `compile_commands.json` to be generated. The
+`clang-tidy` CI job is informational (`continue-on-error: true`) for the same reason.
+
 ### Car test types
 
 Test scope and execution environment are independent choices. Scope determines what is under test; environment determines where it runs.

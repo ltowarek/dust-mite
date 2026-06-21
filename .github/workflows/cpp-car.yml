@@ -133,6 +133,48 @@ jobs:
     - name: Run formatter
       run: ./scripts/run_formatter.sh -n --Werror
 
+  clang-tidy:
+    needs: build-docker
+    permissions:
+      contents: read
+      actions: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Cache ccache
+      uses: actions/cache@v5
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: ccache-${{ runner.os }}-idf-clang-tidy-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-idf-clang-tidy-
+
+    # Building with esp-idf's clang toolchain is still experimental
+    # (see CONTRIBUTING.md) and not gated on ci-status-cpp-car yet.
+    - name: Run clang-tidy
+      continue-on-error: true
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
+      run: ./scripts/run_static_analysis.sh
+      working-directory: car
+
   ci-status-cpp-car:
     needs: [build-docker, build, run-checks]
     if: always()

@@ -53,3 +53,6 @@ managed_components/
 
 env/
 .env
+
+# clang-tidy
+warnings.txt

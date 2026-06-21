@@ -16,4 +16,11 @@ then
     $SCRIPTPATH/fix_checks.sh
 fi
 
+trap 'STATUS=1' ERR
+
+echo 'run_static_analysis.sh'
+$SCRIPTPATH/run_static_analysis.sh
+
+trap - ERR
+
 exit $STATUS

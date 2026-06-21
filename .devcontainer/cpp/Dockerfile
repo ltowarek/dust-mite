@@ -4,9 +4,17 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     ccache \
     clang-format \
+    clang-tools-18 \
     curl \
     locales \
     protobuf-compiler
+
+# clang-apply-replacements isn't bundled with esp-clang; needed for clang-tidy -fix.
+RUN ln -s /usr/bin/clang-apply-replacements-18 /usr/bin/clang-apply-replacements
+
+# esp-clang provides an Xtensa-aware clang/clang-tidy; vanilla apt clang-tidy
+# has no Xtensa backend and fails on ESP-IDF's GCC-only compiler flags.
+RUN python3 $IDF_PATH/tools/idf_tools.py --idf-path $IDF_PATH install esp-clang
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen

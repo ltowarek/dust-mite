@@ -1,0 +1,11 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  portability-*,
+  -bugprone-easily-swappable-parameters,
+  -portability-template-virtual-member-function
+WarningsAsErrors: ''
+HeaderFilterRegex: 'car/(main|components/(camera|motor|telemetry|tracing|web_server|wifi))/.*'
+FormatStyle: file
