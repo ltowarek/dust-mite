@@ -5,8 +5,8 @@ SCRIPTPATH=$(dirname "$0")
 STATUS=0
 trap 'STATUS=1' ERR
 
-echo 'run_formatter.sh'
-$SCRIPTPATH/run_formatter.sh -n --Werror
+echo 'run_clang_format.sh'
+$SCRIPTPATH/run_clang_format.sh -n --Werror
 
 trap - ERR
 
@@ -18,8 +18,8 @@ fi
 
 trap 'STATUS=1' ERR
 
-echo 'run_static_analysis.sh'
-$SCRIPTPATH/run_static_analysis.sh
+echo 'run_clang_tidy.sh'
+$SCRIPTPATH/run_clang_tidy.sh
 
 trap - ERR
 

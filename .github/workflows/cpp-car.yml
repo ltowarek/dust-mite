@@ -107,7 +107,7 @@ jobs:
         pytest ${{ matrix.pytest_pattern }} --embedded-services idf,qemu -v
       working-directory: ${{ matrix.path }}
 
-  run-checks:
+  clang-format:
     needs: build-docker
     permissions:
       contents: read
@@ -130,8 +130,8 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Run formatter
-      run: ./scripts/run_formatter.sh -n --Werror
+    - name: Run clang-format
+      run: ./scripts/run_clang_format.sh -n --Werror
 
   clang-tidy:
     needs: build-docker
@@ -167,18 +167,18 @@ jobs:
           ccache-${{ runner.os }}-idf-clang-tidy-
 
     # Building with esp-idf's clang toolchain is still experimental
-    # (see CONTRIBUTING.md). run_static_analysis.sh tolerates the known
+    # (see CONTRIBUTING.md). run_clang_tidy.sh tolerates the known
     # link-step failure on its own; a non-zero exit here means clang-tidy
     # itself failed (tool crash) or surfaced a finding in a check that
     # WarningsAsErrors promotes, not the expected link failure.
     - name: Run clang-tidy
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
-      run: ./scripts/run_static_analysis.sh
+      run: ./scripts/run_clang_tidy.sh
       working-directory: car
 
   ci-status-cpp-car:
-    needs: [build-docker, build, run-checks, clang-tidy]
+    needs: [build-docker, build, clang-format, clang-tidy]
     if: always()
     runs-on: ubuntu-latest
     steps:

@@ -426,14 +426,14 @@ If checks fail, apply automatic fixes (only reformats lines you've already stage
 ./scripts/fix_checks.sh
 ```
 
-`run_checks.sh` also runs `run_static_analysis.sh`, which performs static analysis with
+`run_checks.sh` also runs `run_clang_tidy.sh`, which performs static analysis with
 [clang-tidy](https://clang.llvm.org/extra/clang-tidy/) via ESP-IDF's `idf.py clang-check`,
 using the Xtensa-aware `esp-clang` toolchain bundled with ESP-IDF rather than the
 distro's `clang-tidy` package (which has no Xtensa backend). Building `car/` with
 `IDF_TOOLCHAIN=clang` is still
 [experimental in ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/tools/idf-clang-tidy.html)
 and is known to fail at the final link step for this project due to TLS-relocation
-issues in vendored dependencies (protobuf/abseil/opentelemetry-cpp). `run_static_analysis.sh`
+issues in vendored dependencies (protobuf/abseil/opentelemetry-cpp). `run_clang_tidy.sh`
 tolerates that link failure and only requires `compile_commands.json` to be generated. The
 `clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
 empty, it only fails on a genuine clang-tidy tool error, not on findings.
