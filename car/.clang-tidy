@@ -1,9 +1,10 @@
 ---
 Checks: >
-  -*,
-  bugprone-*,
-  performance-*,
-  portability-*,
+  *,
+  -llvmlibc-*,
+  -altera-*,
+  -llvm-*,
+  -fuchsia-*,
   -bugprone-easily-swappable-parameters,
   -portability-template-virtual-member-function
 WarningsAsErrors: ''

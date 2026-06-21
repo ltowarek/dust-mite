@@ -3,7 +3,7 @@
 #include "esp_log.h"
 #include "driver/mcpwm_prelude.h"
 
-#define MIN_ANGLE -90  // RIGHT/UP
+#define MIN_ANGLE (-90) // RIGHT/UP
 #define MAX_ANGLE 90   // LEFT/DOWN
 #define MIN_DUTY 500
 #define MAX_DUTY 2400
@@ -12,14 +12,14 @@
 #define SERVO_PWM_FREQ_HZ 50
 #define SERVO_PWM_PERIOD_TICKS (SERVO_PWM_RESOLUTION_HZ / SERVO_PWM_FREQ_HZ)
 
-typedef struct {
+using servo_t = struct {
   int gpio_in;
   int group_id;
   mcpwm_timer_handle_t timer;
   mcpwm_oper_handle_t oper;
   mcpwm_cmpr_handle_t cmpr;
   mcpwm_gen_handle_t gen;
-} servo_t;
+};
 
 static servo_t pan_servo = {3, 0, nullptr, nullptr, nullptr, nullptr};
 static servo_t tilt_servo = {38, 1, nullptr, nullptr, nullptr, nullptr};
@@ -72,7 +72,7 @@ void servo_init() {
 }
 
 static void move_servo(servo_t* servo, int angle) {
-  uint32_t duty_us = (uint32_t)map_angle_to_duty(angle);
+  auto duty_us = static_cast<uint32_t>(map_angle_to_duty(angle));
   ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(servo->cmpr, duty_us));
   // Should we wait for servo to rotate?
   // uint32_t full_rotation_duration_ms = 150 * (180/60);
