@@ -167,16 +167,18 @@ jobs:
           ccache-${{ runner.os }}-idf-clang-tidy-
 
     # Building with esp-idf's clang toolchain is still experimental
-    # (see CONTRIBUTING.md) and not gated on ci-status-cpp-car yet.
+    # (see CONTRIBUTING.md). run_static_analysis.sh tolerates the known
+    # link-step failure on its own; a non-zero exit here means clang-tidy
+    # itself failed (tool crash) or surfaced a finding in a check that
+    # WarningsAsErrors promotes, not the expected link failure.
     - name: Run clang-tidy
-      continue-on-error: true
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
       run: ./scripts/run_static_analysis.sh
       working-directory: car
 
   ci-status-cpp-car:
-    needs: [build-docker, build, run-checks]
+    needs: [build-docker, build, run-checks, clang-tidy]
     if: always()
     runs-on: ubuntu-latest
     steps:

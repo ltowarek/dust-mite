@@ -435,7 +435,8 @@ distro's `clang-tidy` package (which has no Xtensa backend). Building `car/` wit
 and is known to fail at the final link step for this project due to TLS-relocation
 issues in vendored dependencies (protobuf/abseil/opentelemetry-cpp). `run_static_analysis.sh`
 tolerates that link failure and only requires `compile_commands.json` to be generated. The
-`clang-tidy` CI job is informational (`continue-on-error: true`) for the same reason.
+`clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
+empty, it only fails on a genuine clang-tidy tool error, not on findings.
 
 ### Car test types
 
