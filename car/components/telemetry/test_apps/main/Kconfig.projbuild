@@ -8,4 +8,12 @@ config TELEMETRY_TEST_QEMU_MODE
         binary runs under QEMU. Hardware-dependent test cases report
         TEST_IGNORE instead of crashing on missing peripherals.
 
+config TELEMETRY_TEST_UBSAN
+    bool "Build telemetry with UndefinedBehaviorSanitizer"
+    default n
+    help
+        Compiles the telemetry component under test with -fsanitize=undefined.
+        Opt-in: not part of the default build, only enabled by the dedicated
+        UBSan CI job/sdkconfig overlay.
+
 endmenu
