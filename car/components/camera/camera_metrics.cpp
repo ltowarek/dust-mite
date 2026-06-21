@@ -28,12 +28,12 @@ static opentelemetry::nostd::shared_ptr<metrics_api::ObservableInstrument> s_fra
 static size_t s_peak_frame_size = 0;
 
 static void cb_frame_size(metrics_api::ObserverResult obs, void*) {
-    size_t peak = s_peak_frame_size;
-    s_peak_frame_size = 0;
-    observe_int64(obs, static_cast<int64_t>(peak));
+  size_t peak = s_peak_frame_size;
+  s_peak_frame_size = 0;
+  observe_int64(obs, static_cast<int64_t>(peak));
 }
 static void cb_frame_buffer(metrics_api::ObserverResult obs, void*) {
-    observe_int64(obs, kFrameBufferBytes);
+  observe_int64(obs, kFrameBufferBytes);
 }
 
 }  // namespace
@@ -41,29 +41,28 @@ static void cb_frame_buffer(metrics_api::ObserverResult obs, void*) {
 
 void camera_metrics_setup() {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
-    auto meter = metrics_api::Provider::GetMeterProvider()->GetMeter(
-        CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME, "1.0.0");
+  auto meter = metrics_api::Provider::GetMeterProvider()->GetMeter(
+      CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME, "1.0.0");
 
-    s_frames_captured = meter->CreateUInt64Counter(
-        "dust_mite.frames_captured", "Camera frames captured", "{frame}");
+  s_frames_captured =
+      meter->CreateUInt64Counter("dust_mite.frames_captured", "Camera frames captured", "{frame}");
 
-    s_frame_size = meter->CreateInt64ObservableGauge(
-        "dust_mite.camera.frame_size_bytes",
-        "Peak delivered JPEG frame size since last collection", "By");
-    s_frame_size->AddCallback(cb_frame_size, nullptr);
+  s_frame_size = meter->CreateInt64ObservableGauge(
+      "dust_mite.camera.frame_size_bytes", "Peak delivered JPEG frame size since last collection",
+      "By");
+  s_frame_size->AddCallback(cb_frame_size, nullptr);
 
-    s_frame_buffer = meter->CreateInt64ObservableGauge(
-        "dust_mite.camera.frame_buffer_bytes",
-        "JPEG frame-buffer capacity (drop limit)", "By");
-    s_frame_buffer->AddCallback(cb_frame_buffer, nullptr);
+  s_frame_buffer = meter->CreateInt64ObservableGauge(
+      "dust_mite.camera.frame_buffer_bytes", "JPEG frame-buffer capacity (drop limit)", "By");
+  s_frame_buffer->AddCallback(cb_frame_buffer, nullptr);
 #endif
 }
 
 void camera_metrics_update(size_t frame_size) {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
-    if (s_frames_captured) s_frames_captured->Add(1);
-    if (frame_size > s_peak_frame_size) s_peak_frame_size = frame_size;
+  if (s_frames_captured) s_frames_captured->Add(1);
+  if (frame_size > s_peak_frame_size) s_peak_frame_size = frame_size;
 #else
-    (void)frame_size;
+  (void)frame_size;
 #endif
 }

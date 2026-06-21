@@ -29,7 +29,7 @@ static pcnt_unit_handle_t g_pcnt_unit = NULL;
 static uint64_t g_previous_timestamp = 0;
 
 static i2c_master_dev_handle_t g_imu_xm_dev = NULL;
-static i2c_master_dev_handle_t g_imu_g_dev  = NULL;
+static i2c_master_dev_handle_t g_imu_g_dev = NULL;
 
 // Based on:
 // https://github.com/adafruit/Adafruit_LSM9DS0_Library/
@@ -48,9 +48,9 @@ static i2c_master_dev_handle_t g_imu_g_dev  = NULL;
 #define LSM9DS0_REGISTER_OUT_A 0x28
 #define LSM9DS0_REGISTER_OUT_M 0x08
 #define LSM9DS0_REGISTER_OUT_G 0x28
-#define LSM9DS0_RESOLUTION_A (0.00006103515f) // scale/ADC tick -> 2g/0x8000
-#define LSM9DS0_RESOLUTION_M (0.00006103515f) // scale/ADC tick -> 2G/0x8000
-#define LSM9DS0_RESOLUTION_G (0.00747680664f) // scale/ADC tick -> 245DPS/0x8000
+#define LSM9DS0_RESOLUTION_A (0.00006103515f)  // scale/ADC tick -> 2g/0x8000
+#define LSM9DS0_RESOLUTION_M (0.00006103515f)  // scale/ADC tick -> 2G/0x8000
+#define LSM9DS0_RESOLUTION_G (0.00747680664f)  // scale/ADC tick -> 245DPS/0x8000
 
 #define URM_ECHO_PIN GPIO_NUM_17
 #define URM_TRIG_PIN GPIO_NUM_16
@@ -66,13 +66,13 @@ void sync_time() {
   ESP_LOGI(TAG, "Set system time");
 }
 
-void get_timestamp(char *buf) {
+void get_timestamp(char* buf) {
   time_t now;
   time(&now);
   tm timeinfo = {};
   gmtime_r(&now, &timeinfo);
 
-  strftime(buf, (20+1) * sizeof(char), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+  strftime(buf, (20 + 1) * sizeof(char), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
   buf[20] = '\0';
 }
 
@@ -82,7 +82,7 @@ int get_rssi() {
   return rssi;
 }
 
-void get_telemetry_packet(telemetry_packet_t *p) {
+void get_telemetry_packet(telemetry_packet_t* p) {
   get_timestamp(p->timestamp);
   p->rssi = get_rssi();
   p->speed = get_speed();
@@ -108,7 +108,8 @@ void pcnt_init() {
   pcnt_channel_handle_t pcnt_channel = NULL;
   ESP_ERROR_CHECK(pcnt_new_channel(g_pcnt_unit, &pcnt_channel_config, &pcnt_channel));
 
-  ESP_ERROR_CHECK(pcnt_channel_set_edge_action(pcnt_channel, PCNT_CHANNEL_EDGE_ACTION_HOLD, PCNT_CHANNEL_EDGE_ACTION_INCREASE));
+  ESP_ERROR_CHECK(pcnt_channel_set_edge_action(pcnt_channel, PCNT_CHANNEL_EDGE_ACTION_HOLD,
+                                               PCNT_CHANNEL_EDGE_ACTION_INCREASE));
   ESP_ERROR_CHECK(pcnt_unit_add_watch_point(g_pcnt_unit, pcnt_limit));
   ESP_ERROR_CHECK(pcnt_unit_clear_count(g_pcnt_unit));
   ESP_ERROR_CHECK(pcnt_unit_enable(g_pcnt_unit));
@@ -142,24 +143,24 @@ float get_rpm() {
   float revolutions_per_second = pulses_per_second / encoder_slots;
   float revolutions_per_minute = revolutions_per_second * 60;
   return revolutions_per_minute;
-
 }
 
 float get_speed() {
   float revolutions_per_minute = get_rpm();
   float wheel_diameter_m = 0.066f;  // 6,6 cm
   // S = RPM * DIAMETER_IN_METERS * PI * MINUTES_IN_HOUR/METERS_IN_KILOMETER
-  float velocity_kph = revolutions_per_minute * wheel_diameter_m * 3.14f * 60/1000;
+  float velocity_kph = revolutions_per_minute * wheel_diameter_m * 3.14f * 60 / 1000;
   return velocity_kph;
 }
 
 static i2c_master_dev_handle_t imu_dev_handle(uint8_t device_address) {
   if (device_address == LSM9DS0_XM_ADDRESS) return g_imu_xm_dev;
-  if (device_address == LSM9DS0_G_ADDRESS)  return g_imu_g_dev;
+  if (device_address == LSM9DS0_G_ADDRESS) return g_imu_g_dev;
   return NULL;
 }
 
-void imu_read_register(uint8_t device_address, uint8_t reg_address, uint8_t* read_buf, size_t read_size) {
+void imu_read_register(uint8_t device_address, uint8_t reg_address, uint8_t* read_buf,
+                       size_t read_size) {
   i2c_master_dev_handle_t dev = imu_dev_handle(device_address);
   if (!dev) return;
   uint8_t write_buf = reg_address | 0x80;  // Enable reading multiple bytes
@@ -192,13 +193,18 @@ void imu_init(i2c_master_bus_handle_t bus_handle) {
   imu_read_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_WHO_AM_I_XM, &xm_id, 1);
   ESP_ERROR_CHECK(xm_id == LSM9DS0_XM_ID ? ESP_OK : ESP_FAIL);
 
-  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG1_XM, 0x67); // Accelerometer 100Hz data rate, x/y/z enabled
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG1_XM,
+                     0x67);  // Accelerometer 100Hz data rate, x/y/z enabled
 
-  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG5_XM, 0x94); // Magnetometer 100Hz data rate, temperature enabled
-  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG6_XM, 0x00); // Magnetometer 2G scale
-  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG7_XM, 0x00); // Magnetometer continuous-conversion mode
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG5_XM,
+                     0x94);  // Magnetometer 100Hz data rate, temperature enabled
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG6_XM,
+                     0x00);  // Magnetometer 2G scale
+  imu_write_register(LSM9DS0_XM_ADDRESS, LSM9DS0_REGISTER_CTRL_REG7_XM,
+                     0x00);  // Magnetometer continuous-conversion mode
 
-  imu_write_register(LSM9DS0_G_ADDRESS, LSM9DS0_REGISTER_CTRL_REG1_G, 0x0F); // Gyroscope normal mode, x/y/z enabled
+  imu_write_register(LSM9DS0_G_ADDRESS, LSM9DS0_REGISTER_CTRL_REG1_G,
+                     0x0F);  // Gyroscope normal mode, x/y/z enabled
 }
 
 vector3_t read_accelerometer() {
@@ -210,9 +216,9 @@ vector3_t read_accelerometer() {
   int16_t raw_z = (buf[5] << 8) | buf[4];
 
   vector3_t out;
-  out.x = (float)(raw_x) * LSM9DS0_RESOLUTION_A;
-  out.y = (float)(raw_y) * LSM9DS0_RESOLUTION_A;
-  out.z = (float)(raw_z) * LSM9DS0_RESOLUTION_A * -1;  // Module is mounted upside down
+  out.x = (float)(raw_x)*LSM9DS0_RESOLUTION_A;
+  out.y = (float)(raw_y)*LSM9DS0_RESOLUTION_A;
+  out.z = (float)(raw_z)*LSM9DS0_RESOLUTION_A * -1;  // Module is mounted upside down
   return out;
 }
 
@@ -225,9 +231,9 @@ vector3_t read_magnetometer() {
   int16_t raw_z = (buf[5] << 8) | buf[4];
 
   vector3_t out;
-  out.x = (float)(raw_x) * LSM9DS0_RESOLUTION_M;
-  out.y = (float)(raw_y) * LSM9DS0_RESOLUTION_M;
-  out.z = (float)(raw_z) * LSM9DS0_RESOLUTION_M;
+  out.x = (float)(raw_x)*LSM9DS0_RESOLUTION_M;
+  out.y = (float)(raw_y)*LSM9DS0_RESOLUTION_M;
+  out.z = (float)(raw_z)*LSM9DS0_RESOLUTION_M;
   return out;
 }
 
@@ -240,16 +246,17 @@ vector3_t read_gyroscope() {
   int16_t raw_z = (buf[5] << 8) | buf[4];
 
   vector3_t out;
-  out.x = (float)(raw_x) * LSM9DS0_RESOLUTION_G;
-  out.y = (float)(raw_y) * LSM9DS0_RESOLUTION_G;
-  out.z = (float)(raw_z) * LSM9DS0_RESOLUTION_G;
+  out.x = (float)(raw_x)*LSM9DS0_RESOLUTION_G;
+  out.y = (float)(raw_y)*LSM9DS0_RESOLUTION_G;
+  out.z = (float)(raw_z)*LSM9DS0_RESOLUTION_G;
   return out;
 }
 
 static uint32_t g_cap_resolution_hz = 0;
 static mcpwm_cap_channel_handle_t g_cap_channel = NULL;
 
-static bool urm_echo_isr_handler(mcpwm_cap_channel_handle_t cap_channel, const mcpwm_capture_event_data_t *edata, void *user_data) {
+static bool urm_echo_isr_handler(mcpwm_cap_channel_handle_t cap_channel,
+                                 const mcpwm_capture_event_data_t* edata, void* user_data) {
   static uint32_t begin_of_sample = 0;
   static uint32_t end_of_sample = 0;
 
@@ -261,7 +268,8 @@ static bool urm_echo_isr_handler(mcpwm_cap_channel_handle_t cap_channel, const m
     end_of_sample = edata->cap_value;
     uint32_t pulse_count = end_of_sample - begin_of_sample;
     if (g_urm_waiting_task != NULL) {
-      xTaskNotifyIndexedFromISR(g_urm_waiting_task, TELEMETRY_URM_ISR_INDEX, pulse_count, eSetValueWithOverwrite, &high_task_wakeup);
+      xTaskNotifyIndexedFromISR(g_urm_waiting_task, TELEMETRY_URM_ISR_INDEX, pulse_count,
+                                eSetValueWithOverwrite, &high_task_wakeup);
     }
   }
   return high_task_wakeup == pdTRUE;
@@ -310,7 +318,8 @@ int get_distance_ahead() {
   ESP_ERROR_CHECK(gpio_set_level(URM_TRIG_PIN, 1));
 
   uint32_t pulse_count = 0;
-  bool notified = xTaskNotifyWaitIndexed(TELEMETRY_URM_ISR_INDEX, 0x00, ULONG_MAX, &pulse_count, pdMS_TO_TICKS(1000)) == pdTRUE;
+  bool notified = xTaskNotifyWaitIndexed(TELEMETRY_URM_ISR_INDEX, 0x00, ULONG_MAX, &pulse_count,
+                                         pdMS_TO_TICKS(1000)) == pdTRUE;
   g_urm_waiting_task = NULL;
 
   if (notified) {
@@ -371,7 +380,8 @@ void telemetry_setup(QueueHandle_t telemetry_queue, i2c_master_bus_handle_t i2c_
 
   telemetry_init(i2c_bus);
 
-  if (xTaskCreate(telemetry_task, "telemetry_task", 4096, (void *)0, 1, &g_telemetry_task_handle) != pdPASS) {
+  if (xTaskCreate(telemetry_task, "telemetry_task", 4096, (void*)0, 1, &g_telemetry_task_handle) !=
+      pdPASS) {
     ESP_LOGE(TAG, "xTaskCreate(telemetry_task) failed");
     return;
   }

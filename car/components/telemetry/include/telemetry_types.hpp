@@ -13,7 +13,7 @@ typedef struct {
 } vector3_t;
 
 typedef struct {
-  char timestamp[20+1];
+  char timestamp[20 + 1];
   int rssi;
   float speed;
   vector3_t accelerometer;
@@ -22,7 +22,7 @@ typedef struct {
   int distance_ahead;
 } telemetry_packet_t;
 
-cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t &p);
+cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t& p);
 
 #ifdef __cplusplus
 }

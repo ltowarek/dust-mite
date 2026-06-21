@@ -107,8 +107,34 @@ jobs:
         pytest ${{ matrix.pytest_pattern }} --embedded-services idf,qemu -v
       working-directory: ${{ matrix.path }}
 
+  run-checks:
+    needs: build-docker
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./car
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Run formatter
+      run: ./scripts/run_formatter.sh -n --Werror
+
   ci-status-cpp-car:
-    needs: [build-docker, build]
+    needs: [build-docker, build, run-checks]
     if: always()
     runs-on: ubuntu-latest
     steps:

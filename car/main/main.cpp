@@ -30,8 +30,7 @@ static i2c_master_bus_handle_t i2c_bus_init() {
   return bus;
 }
 
-extern "C" void app_main()
-{
+extern "C" void app_main() {
   QueueHandle_t command_queue = xQueueCreate(2, sizeof(command_packet_t));
   QueueHandle_t frame_queue = xQueueCreate(2, sizeof(camera_fb_t*));
   QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_packet_t));

@@ -11,17 +11,15 @@
 
 namespace {
 
-class CJsonCarrier
-    : public opentelemetry::context::propagation::TextMapCarrier {
-public:
+class CJsonCarrier : public opentelemetry::context::propagation::TextMapCarrier {
+ public:
   explicit CJsonCarrier(cJSON& obj) : obj_(obj) {}
 
   opentelemetry::nostd::string_view Get(
       opentelemetry::nostd::string_view key) const noexcept override {
     std::string k(key.data(), key.size());
     const cJSON* item = cJSON_GetObjectItemCaseSensitive(&obj_, k.c_str());
-    if (item == nullptr || !cJSON_IsString(item) ||
-        item->valuestring == nullptr) {
+    if (item == nullptr || !cJSON_IsString(item) || item->valuestring == nullptr) {
       return {};
     }
     return opentelemetry::nostd::string_view(item->valuestring);
@@ -35,7 +33,7 @@ public:
     cJSON_AddStringToObject(&obj_, k.c_str(), v.c_str());
   }
 
-private:
+ private:
   cJSON& obj_;
 };
 
@@ -62,8 +60,7 @@ void tracing_setup() {
 
 void tracing_inject(cJSON& obj) {
   auto propagator =
-      opentelemetry::context::propagation::GlobalTextMapPropagator::
-          GetGlobalPropagator();
+      opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
   if (!propagator) {
     return;
   }
@@ -75,8 +72,7 @@ void tracing_inject(cJSON& obj) {
 opentelemetry::context::Context tracing_extract(const cJSON& obj) {
   auto current = opentelemetry::context::RuntimeContext::GetCurrent();
   auto propagator =
-      opentelemetry::context::propagation::GlobalTextMapPropagator::
-          GetGlobalPropagator();
+      opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
   if (!propagator) {
     return current;
   }

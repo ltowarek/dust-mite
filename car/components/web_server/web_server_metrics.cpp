@@ -15,15 +15,15 @@ static opentelemetry::nostd::shared_ptr<metrics_api::Counter<uint64_t>> s_frames
 
 void web_server_metrics_setup() {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
-    auto meter = metrics_api::Provider::GetMeterProvider()->GetMeter(
-        CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME, "1.0.0");
-    s_frames_sent = meter->CreateUInt64Counter(
-        "dust_mite.frames_sent", "Camera frames sent to client", "{frame}");
+  auto meter = metrics_api::Provider::GetMeterProvider()->GetMeter(
+      CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME, "1.0.0");
+  s_frames_sent = meter->CreateUInt64Counter("dust_mite.frames_sent",
+                                             "Camera frames sent to client", "{frame}");
 #endif
 }
 
 void web_server_metrics_update() {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
-    if (s_frames_sent) s_frames_sent->Add(1);
+  if (s_frames_sent) s_frames_sent->Add(1);
 #endif
 }

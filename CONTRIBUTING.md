@@ -414,6 +414,18 @@ idf.py flash
 idf.py monitor
 ```
 
+### Run quality checks
+
+```bash
+./scripts/run_checks.sh
+```
+
+If checks fail, apply automatic fixes (only reformats lines you've already staged with `git add`):
+
+```bash
+./scripts/fix_checks.sh
+```
+
 ### Car test types
 
 Test scope and execution environment are independent choices. Scope determines what is under test; environment determines where it runs.
