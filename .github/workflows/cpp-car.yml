@@ -64,16 +64,6 @@ jobs:
             qemu: true
             sdkconfig_overlay: sdkconfig.defaults.qemu
             pytest_pattern: pytest_web_server_qemu.py
-          - name: test-telemetry-ubsan
-            path: car/components/telemetry/test_apps
-            qemu: true
-            sdkconfig_overlay: sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
-            pytest_pattern: pytest_telemetry_qemu.py
-          - name: test-web_server-ubsan
-            path: car/components/web_server/test_apps
-            qemu: true
-            sdkconfig_overlay: sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
-            pytest_pattern: pytest_web_server_qemu.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -96,9 +86,9 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ runner.os }}-idf-${{ matrix.name }}-${{ github.run_id }}
+        key: ccache-${{ runner.os }}-idf-${{ matrix.path }}-${{ github.run_id }}
         restore-keys: |
-          ccache-${{ runner.os }}-idf-${{ matrix.name }}-
+          ccache-${{ runner.os }}-idf-${{ matrix.path }}-
           ccache-${{ runner.os }}-idf-
 
     - name: Build
@@ -187,8 +177,67 @@ jobs:
       run: ./scripts/run_clang_tidy.sh
       working-directory: car
 
+  ubsan:
+    needs: build-docker
+    permissions:
+      contents: read
+      actions: read
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - name: telemetry
+            path: car/components/telemetry/test_apps
+            pytest_pattern: pytest_telemetry_qemu.py
+          - name: web_server
+            path: car/components/web_server/test_apps
+            pytest_pattern: pytest_web_server_qemu.py
+
+    container:
+      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Cache ccache
+      uses: actions/cache@v5
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-
+          ccache-${{ runner.os }}-idf-ubsan-
+
+    - name: Build
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
+        SDKCONFIG_DEFAULTS: sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
+      run: |
+        source $IDF_PATH/export.sh
+        idf.py build
+      working-directory: ${{ matrix.path }}
+
+    - name: Run QEMU tests
+      run: |
+        source $IDF_PATH/export.sh
+        pytest ${{ matrix.pytest_pattern }} --embedded-services idf,qemu -v
+      working-directory: ${{ matrix.path }}
+
   ci-status-cpp-car:
-    needs: [build-docker, build, clang-format, clang-tidy]
+    needs: [build-docker, build, clang-format, clang-tidy, ubsan]
     if: always()
     runs-on: ubuntu-latest
     steps:

@@ -452,6 +452,29 @@ tolerates that link failure and only requires `compile_commands.json` to be gene
 `clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
 empty, it only fails on a genuine clang-tidy tool error, not on findings.
 
+#### UBSan
+
+A QEMU test app can opt in to building its component under test with
+[UndefinedBehaviorSanitizer](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/fatal-errors.html#undefined-behavior-sanitizer-ubsan-checks).
+Enable it by adding a `CONFIG_<COMPONENT>_TEST_UBSAN` Kconfig boolean (default `n`) to the test
+app's `main/Kconfig.projbuild`, a matching `sdkconfig.defaults.ubsan` overlay that sets it to
+`y`, and guarding the sanitizer flags in the test app's `CMakeLists.txt`:
+
+```cmake
+if(CONFIG_<COMPONENT>_TEST_UBSAN)
+    idf_component_get_property(<component>_lib <component> COMPONENT_LIB)
+    target_compile_options(${<component>_lib} PRIVATE "-fsanitize=undefined" "-fno-sanitize=shift-base")
+endif()
+```
+
+Scoping the flags to just the component under test (rather than the whole app) follows ESP-IDF's
+documented pattern — enabling UBSan project-wide grows code/data size too much to fit on-target,
+which is also why it is never enabled for the production firmware build. A dedicated `ubsan` CI
+job builds and runs each opted-in test app with `sdkconfig.defaults.ubsan` layered on top of
+`sdkconfig.defaults.qemu`, using its own matrix (separate from the `build` job's matrix) so the
+default test apps keep building without the sanitizer. The `ubsan` CI job is blocking (part of
+`ci-status-cpp-car`).
+
 ### Car test types
 
 Test scope and execution environment are independent choices. Scope determines what is under test; environment determines where it runs.
@@ -514,17 +537,6 @@ Each test scope can target a different execution environment. Choose based on wh
 | Inter-component interactions or full system flows | Target (hardware) |
 
 Target testing is the authoritative environment. Host and QEMU environments accelerate iteration and expand CI coverage; they do not replace on-target validation.
-
-The `telemetry` and `web_server` QEMU test apps can build their component under test with
-[UndefinedBehaviorSanitizer](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/fatal-errors.html#undefined-behavior-sanitizer-ubsan-checks)
-(`-fsanitize=undefined -fno-sanitize=shift-base`, scoped to that one component via
-`idf_component_get_property`/`target_compile_options` in the test app's `CMakeLists.txt`). This
-is opt-in, gated behind a `CONFIG_<COMPONENT>_TEST_UBSAN` Kconfig boolean (default `n`) set via
-the `sdkconfig.defaults.ubsan` overlay — the default `test-telemetry`/`test-web_server` CI jobs
-build and run without it, and a separate `test-telemetry-ubsan`/`test-web_server-ubsan` CI job
-combines that overlay with `sdkconfig.defaults.qemu` to build and run the same QEMU tests with
-UBSan enabled. UBSan is not enabled for the production firmware build — it grows code/data size
-too much to fit on-target.
 
 #### Excluding test files in QEMU mode
 
