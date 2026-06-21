@@ -71,167 +71,6 @@
       ]
     },
     {
-      "id": 3,
-      "type": "timeseries",
-      "title": "Heap",
-      "gridPos": {
-        "x": 0,
-        "y": 7,
-        "w": 6,
-        "h": 6
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 10
-          }
-        }
-      },
-      "options": {
-        "tooltip": {
-          "mode": "single"
-        },
-        "legend": {
-          "displayMode": "list"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "dust_mite.free_heap_bytes",
-          "legendFormat": "Free heap"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "dust_mite.min_free_heap_bytes",
-          "legendFormat": "Min free (watermark)"
-        }
-      ]
-    },
-    {
-      "id": 56,
-      "type": "timeseries",
-      "title": "CPU Usage \u2014 Core 0",
-      "gridPos": {
-        "x": 0,
-        "y": 13,
-        "w": 12,
-        "h": 6
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "min": 0,
-          "max": 100,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "lineWidth": 0,
-            "fillOpacity": 80,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            },
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        }
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi"
-        },
-        "legend": {
-          "displayMode": "list"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "dust_mite.task_cpu_usage{core=\"0\",task!~\"IDLE.*\"}",
-          "legendFormat": "{{task}}"
-        }
-      ]
-    },
-    {
-      "id": 63,
-      "type": "timeseries",
-      "title": "CPU Usage \u2014 Core 1",
-      "gridPos": {
-        "x": 12,
-        "y": 13,
-        "w": 12,
-        "h": 6
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "min": 0,
-          "max": 100,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "lineWidth": 0,
-            "fillOpacity": 80,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            },
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        }
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi"
-        },
-        "legend": {
-          "displayMode": "list"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "dust_mite.task_cpu_usage{core=\"1\",task!~\"IDLE.*\"}",
-          "legendFormat": "{{task}}"
-        }
-      ]
-    },
-    {
       "id": 57,
       "type": "timeseries",
       "title": "Temperature",
@@ -326,6 +165,59 @@
           },
           "expr": "dust_mite.uptime",
           "legendFormat": "Uptime"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Heap",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 6,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "displayMode": "list"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "dust_mite.free_heap_bytes",
+          "legendFormat": "Free heap"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "dust_mite.min_free_heap_bytes",
+          "legendFormat": "Min free (watermark)"
         }
       ]
     },
@@ -465,100 +357,222 @@
       ]
     },
     {
-      "id": 62,
-      "type": "timeseries",
-      "title": "Task Priority \u2014 Core 0",
+      "id": 80,
+      "type": "row",
+      "title": "Task Diagnostics (debug, opt-in)",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 19,
-        "w": 12,
-        "h": 6
+        "y": 13,
+        "w": 24,
+        "h": 1
       },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        }
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi"
-        },
-        "legend": {
-          "displayMode": "list"
-        }
-      },
-      "targets": [
+      "panels": [
         {
+          "id": 56,
+          "type": "timeseries",
+          "title": "CPU Usage \u2014 Core 0",
+          "gridPos": {
+            "x": 0,
+            "y": 13,
+            "w": 12,
+            "h": 6
+          },
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.task_priority{core=\"0\",task!~\"IDLE.*\"}",
-          "legendFormat": "{{task}}"
-        }
-      ]
-    },
-    {
-      "id": 64,
-      "type": "timeseries",
-      "title": "Task Priority \u2014 Core 1",
-      "gridPos": {
-        "x": 12,
-        "y": 19,
-        "w": 12,
-        "h": 6
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "scaleDistribution": {
-              "type": "linear"
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 80,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
             }
-          }
-        }
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi"
+          },
+          "options": {
+            "tooltip": {
+              "mode": "multi"
+            },
+            "legend": {
+              "displayMode": "list"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "dust_mite.task_cpu_usage{core=\"0\",task!~\"IDLE.*\"}",
+              "legendFormat": "{{task}}"
+            }
+          ]
         },
-        "legend": {
-          "displayMode": "list"
-        }
-      },
-      "targets": [
         {
+          "id": 63,
+          "type": "timeseries",
+          "title": "CPU Usage \u2014 Core 1",
+          "gridPos": {
+            "x": 12,
+            "y": 13,
+            "w": 12,
+            "h": 6
+          },
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.task_priority{core=\"1\",task!~\"IDLE.*\"}",
-          "legendFormat": "{{task}}"
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 80,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            }
+          },
+          "options": {
+            "tooltip": {
+              "mode": "multi"
+            },
+            "legend": {
+              "displayMode": "list"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "dust_mite.task_cpu_usage{core=\"1\",task!~\"IDLE.*\"}",
+              "legendFormat": "{{task}}"
+            }
+          ]
+        },
+        {
+          "id": 62,
+          "type": "timeseries",
+          "title": "Task Priority \u2014 Core 0",
+          "gridPos": {
+            "x": 0,
+            "y": 19,
+            "w": 12,
+            "h": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            }
+          },
+          "options": {
+            "tooltip": {
+              "mode": "multi"
+            },
+            "legend": {
+              "displayMode": "list"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "dust_mite.task_priority{core=\"0\",task!~\"IDLE.*\"}",
+              "legendFormat": "{{task}}"
+            }
+          ]
+        },
+        {
+          "id": 64,
+          "type": "timeseries",
+          "title": "Task Priority \u2014 Core 1",
+          "gridPos": {
+            "x": 12,
+            "y": 19,
+            "w": 12,
+            "h": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            }
+          },
+          "options": {
+            "tooltip": {
+              "mode": "multi"
+            },
+            "legend": {
+              "displayMode": "list"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "dust_mite.task_priority{core=\"1\",task!~\"IDLE.*\"}",
+              "legendFormat": "{{task}}"
+            }
+          ]
         }
       ]
     },
@@ -568,7 +582,7 @@
       "title": "Drive",
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 14,
         "w": 24,
         "h": 1
       },
@@ -580,7 +594,7 @@
       "title": "Speed",
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 15,
         "w": 12,
         "h": 6
       },
@@ -625,7 +639,7 @@
       "title": "Distance Ahead",
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 15,
         "w": 12,
         "h": 6
       },
@@ -684,10 +698,10 @@
     {
       "id": 20,
       "type": "row",
-      "title": "IMU \u2014 Accelerometer",
+      "title": "IMU",
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 21,
         "w": 24,
         "h": 1
       },
@@ -699,8 +713,8 @@
       "title": "Accelerometer",
       "gridPos": {
         "x": 0,
-        "y": 33,
-        "w": 24,
+        "y": 22,
+        "w": 8,
         "h": 6
       },
       "datasource": {
@@ -755,25 +769,13 @@
       ]
     },
     {
-      "id": 30,
-      "type": "row",
-      "title": "IMU \u2014 Gyroscope",
-      "gridPos": {
-        "x": 0,
-        "y": 39,
-        "w": 24,
-        "h": 1
-      },
-      "collapsed": false
-    },
-    {
       "id": 31,
       "type": "timeseries",
       "title": "Gyroscope",
       "gridPos": {
-        "x": 0,
-        "y": 40,
-        "w": 24,
+        "x": 8,
+        "y": 22,
+        "w": 8,
         "h": 6
       },
       "datasource": {
@@ -828,25 +830,13 @@
       ]
     },
     {
-      "id": 40,
-      "type": "row",
-      "title": "IMU \u2014 Magnetometer",
-      "gridPos": {
-        "x": 0,
-        "y": 46,
-        "w": 24,
-        "h": 1
-      },
-      "collapsed": false
-    },
-    {
       "id": 41,
       "type": "timeseries",
       "title": "Magnetometer",
       "gridPos": {
-        "x": 0,
-        "y": 47,
-        "w": 24,
+        "x": 16,
+        "y": 22,
+        "w": 8,
         "h": 6
       },
       "datasource": {
@@ -906,7 +896,7 @@
       "title": "Pipeline Health",
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 28,
         "w": 24,
         "h": 1
       },
@@ -918,7 +908,7 @@
       "title": "Frame Rate",
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 29,
         "w": 8,
         "h": 6
       },
@@ -963,7 +953,7 @@
       "title": "Telemetry Rate",
       "gridPos": {
         "x": 8,
-        "y": 54,
+        "y": 29,
         "w": 8,
         "h": 6
       },
@@ -1008,7 +998,7 @@
       "title": "Command Rate",
       "gridPos": {
         "x": 16,
-        "y": 54,
+        "y": 29,
         "w": 8,
         "h": 6
       },
@@ -1053,7 +1043,7 @@
       "title": "FPS",
       "gridPos": {
         "x": 0,
-        "y": 66,
+        "y": 35,
         "w": 24,
         "h": 8
       },
@@ -1087,7 +1077,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.frames_sent{service_name=\"dust-mite-car\"}[10s])",
+          "expr": "rate(dust_mite.frames_sent[10s])",
           "legendFormat": "Firmware"
         },
         {
@@ -1095,7 +1085,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.frames_processed{service_name=\"dust-mite-streamer\"}[10s])",
+          "expr": "rate(dust_mite.frames_processed[10s])",
           "legendFormat": "Streamer"
         },
         {
@@ -1103,8 +1093,133 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.frames_displayed{service_name=\"dust-mite-web\"}[10s])",
+          "expr": "rate(dust_mite.frames_displayed[10s])",
           "legendFormat": "Browser"
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "type": "row",
+      "title": "Camera",
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 65,
+      "type": "timeseries",
+      "title": "Camera Frame Size",
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "dust_mite.camera.frame_size_bytes",
+          "legendFormat": "Peak frame size"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "dust_mite.camera.frame_buffer_bytes",
+          "legendFormat": "Buffer limit"
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "type": "stat",
+      "title": "JPEG Buffer Used",
+      "gridPos": {
+        "x": 16,
+        "y": 44,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(dust_mite.camera.frame_size_bytes) / max(dust_mite.camera.frame_buffer_bytes) * 100",
+          "legendFormat": "Buffer used"
         }
       ]
     }

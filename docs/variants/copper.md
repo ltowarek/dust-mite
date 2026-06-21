@@ -106,6 +106,8 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | Metric | Unit | Description |
 |---|---|---|
 | `dust_mite.frames_captured` | {frame} | Camera frames captured (counter) |
+| `dust_mite.camera.frame_size_bytes` | By | Peak delivered JPEG frame size since last collection (gauge) |
+| `dust_mite.camera.frame_buffer_bytes` | By | JPEG frame-buffer capacity / drop limit (gauge) |
 
 [car/components/web_server/web_server_metrics.cpp](../../car/components/web_server/web_server_metrics.cpp) — WebSocket delivery:
 

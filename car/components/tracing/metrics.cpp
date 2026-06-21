@@ -6,6 +6,7 @@
 
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
 
+#include "esp_http_client_transport.hpp"
 #include "opentelemetry/nostd/shared_ptr.h"
 #include "opentelemetry/nostd/variant.h"
 #include "opentelemetry/exporters/otlp/otlp_http_metric_exporter_factory.h"
@@ -30,6 +31,14 @@ void observe_double(opentelemetry::metrics::ObserverResult& obs, double value) {
 #endif
 }
 
+void observe_int64(opentelemetry::metrics::ObserverResult& obs, int64_t value) {
+#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
+    opentelemetry::nostd::get<
+        opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObserverResultT<int64_t>>>(obs)
+        ->Observe(value);
+#endif
+}
+
 void metrics_setup() {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
     const char* metrics_base = CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL;
@@ -38,7 +47,8 @@ void metrics_setup() {
 
     opentelemetry::exporter::otlp::OtlpHttpMetricExporterOptions opts;
     opts.url = url;
-    auto exporter = opentelemetry::exporter::otlp::OtlpHttpMetricExporterFactory::Create(opts);
+    auto exporter = opentelemetry::exporter::otlp::OtlpHttpMetricExporterFactory::Create(
+        opts, esp_opentelemetry::MakeEspHttpClient());
 
     opentelemetry::sdk::metrics::PeriodicExportingMetricReaderOptions reader_opts;
     reader_opts.export_interval_millis =

@@ -24,4 +24,34 @@ menu "Metrics"
             Base URL for OTLP/HTTP metrics export. The path "/v1/metrics" is
             appended automatically. Leave empty to reuse
             ESP_OPENTELEMETRY_EXPORTER_OTLP_ENDPOINT (the tracing endpoint).
+
+    config ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+        bool "Enable per-task CPU usage / priority metrics (debug only)"
+        depends on ESP_OPENTELEMETRY_METRICS_ENABLED
+        default n
+        help
+            Collects dust_mite.task_cpu_usage and dust_mite.task_priority via
+            FreeRTOS uxTaskGetSystemState(), which suspends the scheduler while
+            it walks every task. FreeRTOS documents this whole API family as
+            debug-only, not for production use. On this board it can disrupt
+            the camera's real-time JPEG frame capture during streaming
+            (issue #43) - leave disabled unless actively debugging task
+            scheduling/CPU usage, and disable again afterward.
+
+    config ESP_OPENTELEMETRY_METRICS_LARGEST_FREE_BLOCK_ENABLED
+        bool "Enable largest free heap block metric (debug only)"
+        depends on ESP_OPENTELEMETRY_METRICS_ENABLED
+        default n
+        help
+            Collects dust_mite.largest_free_block_bytes via
+            heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), which walks
+            every allocated and free block (via tlsf_walk_pool()) under a
+            heap lock, for both the internal SRAM heap and the PSRAM heap.
+            The PSRAM walk requires real SPI reads of PSRAM-resident TLSF
+            metadata, which competes with the camera's own PSRAM DMA traffic
+            at the hardware bus level - independent of CPU core or task
+            priority. On this board it disrupts the camera's real-time JPEG
+            frame capture during streaming (issue #43) - leave disabled
+            unless actively debugging heap fragmentation, and disable again
+            afterward.
 endmenu

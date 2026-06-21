@@ -24,27 +24,26 @@ struct State {
 static State              s_state;
 static SemaphoreHandle_t  s_mutex = NULL;
 
-#define DEFINE_GAUGE_CB(name, expr)                                                         \
-    static void cb_##name(opentelemetry::metrics::ObserverResult obs, void*) {              \
-        State snap;                                                                         \
-        xSemaphoreTake(s_mutex, portMAX_DELAY);                                             \
-        snap = s_state;                                                                     \
-        xSemaphoreGive(s_mutex);                                                            \
-        observe_double(obs, static_cast<double>(snap.expr));                                \
-    }
+static State snapshot_state() {
+    State snap;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    snap = s_state;
+    xSemaphoreGive(s_mutex);
+    return snap;
+}
 
-DEFINE_GAUGE_CB(rssi,           rssi)
-DEFINE_GAUGE_CB(speed,          speed)
-DEFINE_GAUGE_CB(distance_ahead, distance_ahead)
-DEFINE_GAUGE_CB(accel_x,        accel_x)
-DEFINE_GAUGE_CB(accel_y,        accel_y)
-DEFINE_GAUGE_CB(accel_z,        accel_z)
-DEFINE_GAUGE_CB(mag_x,          mag_x)
-DEFINE_GAUGE_CB(mag_y,          mag_y)
-DEFINE_GAUGE_CB(mag_z,          mag_z)
-DEFINE_GAUGE_CB(gyro_x,         gyro_x)
-DEFINE_GAUGE_CB(gyro_y,         gyro_y)
-DEFINE_GAUGE_CB(gyro_z,         gyro_z)
+static void cb_rssi(metrics_api::ObserverResult obs, void*)           { observe_int64(obs, snapshot_state().rssi); }
+static void cb_speed(metrics_api::ObserverResult obs, void*)          { observe_double(obs, snapshot_state().speed); }
+static void cb_distance_ahead(metrics_api::ObserverResult obs, void*) { observe_int64(obs, snapshot_state().distance_ahead); }
+static void cb_accel_x(metrics_api::ObserverResult obs, void*)        { observe_double(obs, snapshot_state().accel_x); }
+static void cb_accel_y(metrics_api::ObserverResult obs, void*)        { observe_double(obs, snapshot_state().accel_y); }
+static void cb_accel_z(metrics_api::ObserverResult obs, void*)        { observe_double(obs, snapshot_state().accel_z); }
+static void cb_mag_x(metrics_api::ObserverResult obs, void*)          { observe_double(obs, snapshot_state().mag_x); }
+static void cb_mag_y(metrics_api::ObserverResult obs, void*)          { observe_double(obs, snapshot_state().mag_y); }
+static void cb_mag_z(metrics_api::ObserverResult obs, void*)          { observe_double(obs, snapshot_state().mag_z); }
+static void cb_gyro_x(metrics_api::ObserverResult obs, void*)         { observe_double(obs, snapshot_state().gyro_x); }
+static void cb_gyro_y(metrics_api::ObserverResult obs, void*)         { observe_double(obs, snapshot_state().gyro_y); }
+static void cb_gyro_z(metrics_api::ObserverResult obs, void*)         { observe_double(obs, snapshot_state().gyro_z); }
 
 static constexpr size_t kNumInstruments = 12;
 static opentelemetry::nostd::shared_ptr<metrics_api::ObservableInstrument> s_instruments[kNumInstruments];
@@ -61,9 +60,9 @@ void telemetry_metrics_setup() {
 
     static_assert(kNumInstruments == 12, "Update kNumInstruments when adding or removing instruments");
 
-    s_instruments[0]  = meter->CreateDoubleObservableGauge("dust_mite.rssi",            "WiFi RSSI",      "dBm");
+    s_instruments[0]  = meter->CreateInt64ObservableGauge("dust_mite.rssi",            "WiFi RSSI",      "dBm");
     s_instruments[1]  = meter->CreateDoubleObservableGauge("dust_mite.speed",           "Car speed",      "km/h");
-    s_instruments[2]  = meter->CreateDoubleObservableGauge("dust_mite.distance_ahead",  "Ultrasonic distance", "cm");
+    s_instruments[2]  = meter->CreateInt64ObservableGauge("dust_mite.distance_ahead",  "Ultrasonic distance", "cm");
     s_instruments[3]  = meter->CreateDoubleObservableGauge("dust_mite.accelerometer.x", "Accelerometer X", "g");
     s_instruments[4]  = meter->CreateDoubleObservableGauge("dust_mite.accelerometer.y", "Accelerometer Y", "g");
     s_instruments[5]  = meter->CreateDoubleObservableGauge("dust_mite.accelerometer.z", "Accelerometer Z", "g");

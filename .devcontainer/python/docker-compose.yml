@@ -7,6 +7,10 @@ services:
     build:
       context: ../..
       dockerfile: .devcontainer/python/Dockerfile
+      args:
+        USER_UID: "${UID:-1050}"
+        USER_GID: "${GID:-1050}"
+    user: "${UID:-1050}:${GID:-1050}"
     volumes:
       - ../..:/workspaces/dust-mite:cached
     env_file:

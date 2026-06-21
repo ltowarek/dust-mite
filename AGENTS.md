@@ -56,6 +56,7 @@ All environment variables used anywhere in the project must be declared in [scri
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes. When adding or removing a metric, update the metrics table in the relevant variant document under [docs/variants/](docs/variants/).
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Code comments should explain *why*, not restate *what* the code does. Do not annotate imports/includes with what they provide (e.g. no `#include "x.hpp"  // some_function`).
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 
 ## Validation by Area
@@ -69,14 +70,15 @@ All environment variables used anywhere in the project must be declared in [scri
 
 ## Starting Devcontainers
 
-For VS Code Dev Container workflow see [CONTRIBUTING.md#development-environment](CONTRIBUTING.md#development-environment). For headless/agent use, the devcontainer images are not started by default. Start them on demand:
+For VS Code Dev Container workflow see [CONTRIBUTING.md#development-environment](CONTRIBUTING.md#development-environment). For headless/agent use, the devcontainer images are not started by default. Start them on demand, always passing `--env-file .env`:
 
 ```bash
-docker compose -f .devcontainer/python/docker-compose.yml up -d --build python
-docker compose -f .devcontainer/js/docker-compose.yml up -d --build js
+docker compose --env-file .env -f .devcontainer/cpp/docker-compose.yml up -d --build cpp
+docker compose --env-file .env -f .devcontainer/python/docker-compose.yml up -d --build python
+docker compose --env-file .env -f .devcontainer/js/docker-compose.yml up -d --build js
 ```
 
-The C++ devcontainer runs as `vscode` uid 1000, while Python and JS run as `vscode` uid 1050. Because all containers share the same bind-mounted workspace, files created by one container cannot be written to by another. If the Python or JS checks fail with permission errors on `.ruff_cache`, `.mypy_cache`, `node_modules`, or `dist`, fix ownership for those paths only — do not chown the whole workspace as that breaks `.git` access for the C++ container and the host: `docker exec -u root <container> bash -c "chown -R vscode:vscode /workspaces/dust-mite/controller /workspaces/dust-mite/web"`.
+`--env-file .env` supplies `UID`/`GID` (written by [scripts/dump_env.sh](scripts/dump_env.sh)) to the `build.args` and `user:` in each devcontainer compose, so the container is built and run as the **host user**. All dev/build/check containers then share the host uid and the bind-mounted workspace, `build/`, and caches stay writable — no `chown` workarounds needed. (Without `.env`, the images fall back to uid `1050` and stay portable.)
 
 ## Running Pre-commit Checks
 
