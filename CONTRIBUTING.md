@@ -499,6 +499,21 @@ Build, flash, and run all component test apps in sequence:
 ./scripts/run_tests.sh
 ```
 
+### Feature flags
+
+Off-by-default behavior is controlled by Kconfig options (`default n`) in the
+relevant component's `Kconfig.projbuild`, with help text explaining what the
+flag does and why it defaults off.
+
+Every feature flag must be built and tested in CI, regardless of its default.
+[car/sdkconfig.defaults.all](car/sdkconfig.defaults.all) is an overlay that
+enables every off-by-default feature flag; CI builds `car/` with this overlay
+applied on top of `sdkconfig.defaults` so every flag-guarded code path
+compiles even though it's never built by the default config. When adding a
+new off-by-default feature flag, also set it in this overlay. It also doubles
+as a ready-made profile for flashing real hardware while debugging (see the
+file's header comment).
+
 ## Documentation
 
 Use the `Docs` devcontainer for documentation updates that require Graphviz/ImageMagick tooling.

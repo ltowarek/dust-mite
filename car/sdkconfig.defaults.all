@@ -1,0 +1,6 @@
+# Overlay that enables every off-by-default feature flag. Used by CI to catch
+# conditional-compilation bit rot in #ifdef branches not exercised by
+# car/sdkconfig.defaults, and usable standalone for hardware debugging (e.g.
+# issue #43's task-stats/heap metrics) without hand-editing sdkconfig.defaults.
+CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED=y
+CONFIG_ESP_OPENTELEMETRY_METRICS_LARGEST_FREE_BLOCK_ENABLED=y
