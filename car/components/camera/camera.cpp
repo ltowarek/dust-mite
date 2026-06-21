@@ -73,6 +73,7 @@ static QueueHandle_t g_frame_queue = NULL;
 static TaskHandle_t g_camera_task_handle = NULL;
 
 void camera_task(void* p) {
+  // cppcheck-suppress syntaxError ; cppcheck's parser can't resolve ESP-IDF's variadic ESP_LOGx macros
   ESP_LOGI(TAG, "Starting camera task");
   camera_fb_t* frame = NULL;
   bool started = false;

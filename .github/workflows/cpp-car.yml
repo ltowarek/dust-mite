@@ -177,8 +177,49 @@ jobs:
       run: ./scripts/run_clang_tidy.sh
       working-directory: car
 
+  cppcheck:
+    needs: build-docker
+    permissions:
+      contents: read
+      actions: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Cache ccache
+      uses: actions/cache@v5
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: ccache-${{ runner.os }}-idf-cppcheck-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-idf-cppcheck-
+
+    - name: Run cppcheck
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
+      run: |
+        source $IDF_PATH/export.sh
+        ./scripts/run_cppcheck.sh
+      working-directory: car
+
   ci-status-cpp-car:
-    needs: [build-docker, build, clang-format, clang-tidy]
+    needs: [build-docker, build, clang-format, clang-tidy, cppcheck]
     if: always()
     runs-on: ubuntu-latest
     steps:

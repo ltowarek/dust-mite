@@ -56,6 +56,7 @@ static i2c_master_dev_handle_t g_imu_g_dev = NULL;
 #define URM_TRIG_PIN GPIO_NUM_16
 
 void sync_time() {
+  // cppcheck-suppress syntaxError ; cppcheck's parser can't resolve ESP-IDF's variadic ESP_LOGx macros
   ESP_LOGI(TAG, "Initializing SNTP");
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
   esp_netif_sntp_init(&config);

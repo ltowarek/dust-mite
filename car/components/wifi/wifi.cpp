@@ -25,6 +25,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    // cppcheck-suppress syntaxError ; cppcheck's parser can't resolve ESP-IDF's variadic ESP_LOGx macros
     ESP_LOGI(TAG, "retrying connection to AP");
     esp_wifi_connect();
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {

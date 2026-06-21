@@ -3,6 +3,7 @@ FROM espressif/idf:release-v6.0
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     ccache \
+    cppcheck \
     curl \
     locales \
     protobuf-compiler

@@ -1,0 +1,11 @@
+# cppcheck suppressions for car/, one per line: <id>:<path-glob>
+# See https://cppcheck.sourceforge.io/manual.html#suppressions
+
+# Findings transitively reported on vendored/SDK headers included by owned
+# sources; not actionable from owned code.
+*:*/esp-opentelemetry-cpp/*
+*:/opt/esp/idf/*
+
+# cppcheck's bundled parser can't resolve ESP-IDF's variadic ESP_LOGx macros
+# (esp_log.h). False positives are suppressed inline (cppcheck-suppress
+# comments) right above each affected call, not listed here.

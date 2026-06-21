@@ -452,6 +452,15 @@ tolerates that link failure and only requires `compile_commands.json` to be gene
 `clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
 empty, it only fails on a genuine clang-tidy tool error, not on findings.
 
+#### cppcheck
+
+`run_checks.sh` also runs `run_cppcheck.sh`, which performs static analysis with
+[cppcheck](https://cppcheck.sourceforge.io/) against `compile_commands.json` from a regular
+`idf.py build` (the production GCC toolchain, no special toolchain needed). Findings located in
+vendored dependencies or the ESP-IDF SDK itself, and a handful of confirmed cppcheck parser false
+positives on ESP-IDF's variadic `ESP_LOGx` macros, are suppressed in
+[car/.cppcheck-suppressions](car/.cppcheck-suppressions) with reasoning.
+
 ### Car test types
 
 Test scope and execution environment are independent choices. Scope determines what is under test; environment determines where it runs.

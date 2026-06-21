@@ -23,4 +23,11 @@ $SCRIPTPATH/run_clang_tidy.sh
 
 trap - ERR
 
+trap 'STATUS=1' ERR
+
+echo 'run_cppcheck.sh'
+$SCRIPTPATH/run_cppcheck.sh
+
+trap - ERR
+
 exit $STATUS

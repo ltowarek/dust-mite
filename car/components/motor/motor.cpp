@@ -44,6 +44,7 @@ void command_task(void* p) {
   command_packet_t packet = {0, 0};
   while (true) {
     if (xQueueReceive(g_command_queue, &packet, portMAX_DELAY) != pdPASS) {
+      // cppcheck-suppress syntaxError ; cppcheck's parser can't resolve ESP-IDF's variadic ESP_LOGx macros
       ESP_LOGE(TAG, "xQueueReceive failed");
       return;
     }
