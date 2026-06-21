@@ -52,9 +52,10 @@ static camera_config_t camera_config = {
   .pixel_format = PIXFORMAT_JPEG,
   .frame_size = FRAMESIZE_VGA,
 
-  // Keeps VGA JPEGs under the 61440 B (width*height/5) driver buffer; lower
-  // quality dropped high-detail frames as "FB-OVF"/"NO-EOI" (issue #43).
-  .jpeg_quality = 15,
+  // Lower number = higher quality / larger JPEGs. The enlarged custom JPEG
+  // buffer (CONFIG_CAMERA_JPEG_MODE_FRAME_SIZE in sdkconfig.defaults) gives
+  // these frames room to fit, so they are not dropped as oversize (issue #43).
+  .jpeg_quality = 10,
   .fb_count = 2,
   .fb_location = CAMERA_FB_IN_PSRAM,
   .grab_mode = CAMERA_GRAB_LATEST,
@@ -62,18 +63,43 @@ static camera_config_t camera_config = {
   .sccb_i2c_port = 0,
 };
 
-// esp_camera_init() starts capture immediately, so the unaligned first frame
-// logs a benign, self-recovering "cam_hal: NO-SOI" at boot. Expected; the
-// driver drops it and re-syncs on the next VSYNC.
 void camera_init(i2c_master_bus_handle_t i2c_bus) {
   begin(i2c_bus, 0x36);
   enableCameraPower(OV2640);
+}
 
-  esp_err_t err = esp_camera_init(&camera_config);
-  if (err != ESP_OK) {
-    ESP_LOGI(TAG, "Camera init failed with error 0x%x", err);
-    return;
+// cam_take() returns only valid SOI+EOI frames within a ~4 s timeout, so a
+// successful esp_camera_fb_get() confirms the OV2640 locked JPEG frame sync.
+static bool camera_locked() {
+  camera_fb_t* frame = esp_camera_fb_get();
+  if (frame) {
+    esp_camera_fb_return(frame);
+    return true;
   }
+  return false;
+}
+
+// Initialize the camera driver. esp_camera_init() begins continuous capture, and
+// the OV2640 normally drops one or two unaligned warmup frames ("cam_hal: NO-SOI")
+// before locking — but it occasionally never locks and then drops *every* frame,
+// spamming NO-SOI forever. Reinit on a lock timeout to recover instead of wedging.
+// Called lazily on the first stream request so the sensor stays quiet while idle.
+static esp_err_t camera_driver_init() {
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    esp_err_t err = esp_camera_init(&camera_config);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "esp_camera_init failed: 0x%x", err);
+      return err;
+    }
+    if (camera_locked()) {
+      return ESP_OK;
+    }
+    ESP_LOGW(TAG, "Camera did not lock frame sync, reinitializing (attempt %d)", attempt);
+    esp_camera_deinit();
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  ESP_LOGE(TAG, "Camera failed to lock frame sync after retries");
+  return ESP_FAIL;
 }
 
 #define CAMERA_START_NOTIFICATION_INDEX 0
@@ -86,10 +112,17 @@ void camera_task(void* p) {
   ESP_LOGI(TAG, "Starting camera task");
   camera_fb_t* frame = NULL;
   bool started = false;
+  bool initialized = false;
   while (true) {
     if (!started) {
       ESP_LOGI(TAG, "Waiting for notification to start the camera");
       ulTaskNotifyTakeIndexed(CAMERA_START_NOTIFICATION_INDEX, pdTRUE, portMAX_DELAY);
+      if (!initialized) {
+        if (camera_driver_init() != ESP_OK) {
+          continue;  // wait for the next stream request and retry
+        }
+        initialized = true;
+      }
       started = true;
       ESP_LOGI(TAG, "Camera started");
     }
