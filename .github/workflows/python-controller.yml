@@ -76,6 +76,16 @@ jobs:
     - name: Run tests
       run: ./scripts/run_tests.sh
 
+    # Non-blocking: coverage artifact is informational only.
+    - name: Upload coverage artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-python
+        path: |
+          controller/coverage.xml
+          controller/coverage/
+        if-no-files-found: warn
+
   ci-status-python-controller:
     needs: [build-docker, run-checks]
     if: always()

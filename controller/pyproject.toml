@@ -22,7 +22,7 @@ legacy_tox_ini = """
 
     [testenv]
     deps = -r requirements/dev.txt
-    commands = pytest tests/ {posargs}
+    commands = pytest tests/ --cov=src --cov-report=xml:coverage.xml --cov-report=html:coverage/ {posargs}
 """
 
 [tool.mypy]

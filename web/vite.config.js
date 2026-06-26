@@ -21,5 +21,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["tests/unit/**/*.test.js", "tests/integration/**/*.test.js"],
+    coverage: {
+      provider: "v8",
+      reporter: ["lcov", "html"],
+      include: ["src/**"],
+      reportsDirectory: "./coverage",
+    },
   },
 });

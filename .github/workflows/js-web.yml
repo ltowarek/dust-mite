@@ -69,6 +69,14 @@ jobs:
         HOME: /root
       run: ./scripts/run_tests.sh
 
+    # Non-blocking: coverage artifact is informational only.
+    - name: Upload coverage artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-js
+        path: web/coverage/
+        if-no-files-found: warn
+
   ci-status-js-web:
     needs: [build-docker, run-checks]
     if: always()

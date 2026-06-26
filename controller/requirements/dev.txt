@@ -18,6 +18,8 @@ click==8.1.7
     #   pip-tools
 colorama==0.4.6
     # via tox
+coverage[toml]==7.14.3
+    # via pytest-cov
 distlib==0.3.9
     # via virtualenv
 filelock==3.16.1
@@ -47,6 +49,7 @@ platformdirs==4.3.6
 pluggy==1.5.0
     # via
     #   pytest
+    #   pytest-cov
     #   tox
 pyproject-api==1.8.0
     # via tox
@@ -58,7 +61,10 @@ pytest==8.3.3
     # via
     #   -r requirements/dev.in
     #   pytest-asyncio
+    #   pytest-cov
 pytest-asyncio==0.24.0
+    # via -r requirements/dev.in
+pytest-cov==7.1.0
     # via -r requirements/dev.in
 ruff==0.15.2
     # via -r requirements/dev.in
