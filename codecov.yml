@@ -19,4 +19,4 @@ comment:
   require_changes: true
 
 fixes:
-  - "controller/::controller/src/controller/"
+  - "/__w/dust-mite/dust-mite/::"

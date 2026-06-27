@@ -106,12 +106,13 @@ jobs:
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() && matrix.qemu }}
-      uses: codecov/test-results-action@v1
+      uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ${{ matrix.path }}/results.xml
         flags: cpp
         fail_ci_if_error: false
+        report_type: test_results
 
   clang-format:
     needs: build-docker
