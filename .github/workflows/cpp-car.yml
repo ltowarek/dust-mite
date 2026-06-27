@@ -288,12 +288,15 @@ jobs:
     - name: Generate coverage report
       run: ./scripts/run_coverage_report.sh ${{ matrix.component_path }}
 
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
       with:
-        name: coverage-cpp-${{ matrix.name }}
-        path: car/${{ matrix.component_path }}/coverage/
-        if-no-files-found: warn
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: car/${{ matrix.component_path }}/coverage.info
+        flags: cpp
+        fail_ci_if_error: false
+
+
 
   ci-status-cpp-car:
     needs: [build-docker, build, clang-format, clang-tidy, ubsan]

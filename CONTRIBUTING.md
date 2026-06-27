@@ -486,13 +486,12 @@ app's `main/Kconfig.projbuild`, a matching `sdkconfig.defaults.coverage` overlay
 `y`, and guarding the coverage flags in the test app's `CMakeLists.txt`:
 
 ```cmake
-set(main_requires ... <other-deps>)
-if(CONFIG_<COMPONENT>_TEST_COVERAGE)
-    list(APPEND main_requires gcov_uart_vfs)
-endif()
-
-idf_component_register(SRCS ${srcs} ... PRIV_REQUIRES ${main_requires} ...)
+idf_component_register(SRCS ${srcs} ... PRIV_REQUIRES ... gcov_uart_vfs ...)
 ```
+
+`gcov_uart_vfs` is listed unconditionally — ESP-IDF's component resolution ordering does not
+reliably support Kconfig-gated `PRIV_REQUIRES` entries. The component is small and its entry point
+is never called in non-coverage builds (guarded by `#ifdef` in `main.cpp`).
 
 The `gcov_uart_vfs` component (in `car/components/gcov_uart_vfs/`) handles everything shared: the
 VFS registration, the base64-over-UART encoding, the `GCOV_PREFIX_STRIP_COUNT` computation (applied
@@ -516,7 +515,7 @@ an OpenOCD connection) and does not require a separate QEMU invocation.
 Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
 size manageable. A dedicated `coverage` CI job builds each opted-in test app with
 `sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the coverage pytest,
-and uploads an HTML report as a CI artifact. The `coverage` CI job is non-blocking (not part of
+and uploads coverage data to Codecov. The `coverage` CI job is non-blocking (not part of
 `ci-status-cpp-car`).
 
 To run locally (from the `car/` directory in the C++ devcontainer):

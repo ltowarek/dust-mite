@@ -76,15 +76,14 @@ jobs:
     - name: Run tests
       run: ./scripts/run_tests.sh
 
-    # Non-blocking: coverage artifact is informational only.
-    - name: Upload coverage artifact
-      uses: actions/upload-artifact@v4
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
       with:
-        name: coverage-python
-        path: |
-          controller/coverage.xml
-          controller/coverage/
-        if-no-files-found: warn
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: controller/coverage.xml
+        flags: python
+        fail_ci_if_error: false
+
 
   ci-status-python-controller:
     needs: [build-docker, run-checks]

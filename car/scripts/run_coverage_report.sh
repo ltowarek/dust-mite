@@ -13,7 +13,4 @@ lcov \
     --output-file coverage.info \
     --ignore-errors mismatch \
     --quiet
-genhtml coverage.info \
-    --output-directory coverage \
-    --quiet
 popd > /dev/null

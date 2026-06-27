@@ -23,7 +23,7 @@ export default defineConfig({
     include: ["tests/unit/**/*.test.js", "tests/integration/**/*.test.js"],
     coverage: {
       provider: "v8",
-      reporter: ["lcov", "html"],
+      reporter: ["cobertura"],
       include: ["src/**"],
       reportsDirectory: "./coverage",
     },
