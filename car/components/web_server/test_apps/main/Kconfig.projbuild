@@ -20,10 +20,9 @@ config WEB_SERVER_TEST_COVERAGE
     bool "Build web_server with GCC coverage instrumentation"
     default n
     help
-        Compiles the web_server component under test with --coverage.  When
-        app_main returns, ESP-IDF's task cleanup calls exit() which triggers
-        the gcov atexit handler; QEMU semihosting writes the .gcda files
-        directly to the host.  Opt-in: only enabled by the dedicated coverage
-        CI job/sdkconfig overlay.
+        Compiles the web_server component under test with --coverage.  app_main
+        calls exit(0) after the test run so the gcov atexit handler flushes
+        .gcda files before QEMU exits via semihosting.  Opt-in: only enabled
+        by the dedicated coverage CI job/sdkconfig overlay.
 
 endmenu

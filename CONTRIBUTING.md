@@ -493,12 +493,20 @@ if(CONFIG_<COMPONENT>_TEST_COVERAGE)
 endif()
 ```
 
-The `--coverage` link flag lets the compiler pick the correct `libgcov` multilib variant. No
-coverage-specific code is needed in `main.cpp`: when `app_main` returns, ESP-IDF's task cleanup
-calls `exit()` internally, which fires the gcov `atexit` handler and flushes `.gcda` files. QEMU
-is launched with `-semihosting` so those writes land directly on the host filesystem inside
-`build/`. The existing QEMU pytest script (e.g. `pytest_<component>_qemu.py`) is reused unchanged
-— no separate coverage script is needed.
+The `--coverage` link flag lets the compiler pick the correct `libgcov` multilib variant. The test
+app's `main.cpp` calls `exit(0)` after `UNITY_END()` when coverage is enabled:
+
+```cpp
+#ifdef CONFIG_<COMPONENT>_TEST_COVERAGE
+  exit(0);
+#endif
+```
+
+`exit(0)` fires the gcov `atexit` handler which flushes `.gcda` files, then triggers QEMU's
+semihosting `SYS_EXIT` for a clean shutdown. Without the explicit call, pytest-embedded may kill
+QEMU before the writes complete. QEMU is launched with `-semihosting` so the writes land directly
+on the host filesystem inside `build/`. The existing QEMU pytest script (e.g.
+`pytest_<component>_qemu.py`) is reused unchanged — no separate coverage script is needed.
 
 Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
 size manageable. A dedicated `coverage` CI job builds each opted-in test app with
