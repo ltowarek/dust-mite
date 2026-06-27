@@ -486,39 +486,44 @@ app's `main/Kconfig.projbuild`, a matching `sdkconfig.defaults.coverage` overlay
 `y`, and guarding the coverage flags in the test app's `CMakeLists.txt`:
 
 ```cmake
+set(main_requires ... <other-deps>)
 if(CONFIG_<COMPONENT>_TEST_COVERAGE)
-    idf_component_get_property(<component>_lib <component> COMPONENT_LIB)
-    target_compile_options(${<component>_lib} PRIVATE "--coverage")
-    target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE "--coverage")
+    list(APPEND main_requires gcov_uart_vfs)
 endif()
+
+idf_component_register(SRCS ${srcs} ... PRIV_REQUIRES ${main_requires} ...)
 ```
 
-The `--coverage` link flag lets the compiler pick the correct `libgcov` multilib variant. The test
-app's `main.cpp` calls `exit(0)` after `UNITY_END()` when coverage is enabled:
+The `gcov_uart_vfs` component (in `car/components/gcov_uart_vfs/`) handles everything shared: the
+VFS registration, the base64-over-UART encoding, the `GCOV_PREFIX_STRIP_COUNT` computation (applied
+at CMake time so paths are correct regardless of checkout location), and the gcov flush sequence.
+
+The test app's `main.cpp` drives the dump after `UNITY_END()` with a single call:
 
 ```cpp
 #ifdef CONFIG_<COMPONENT>_TEST_COVERAGE
-  exit(0);
+  gcov_uart_vfs_dump();
 #endif
 ```
 
-`exit(0)` fires the gcov `atexit` handler which flushes `.gcda` files, then triggers QEMU's
-semihosting `SYS_EXIT` for a clean shutdown. Without the explicit call, pytest-embedded may kill
-QEMU before the writes complete. QEMU is launched with `-semihosting` so the writes land directly
-on the host filesystem inside `build/`. The existing QEMU pytest script (e.g.
-`pytest_<component>_qemu.py`) is reused unchanged — no separate coverage script is needed.
+`gcov_uart_vfs_dump()` registers the VFS at `/gcov`, sets `GCOV_PREFIX`/`GCOV_PREFIX_STRIP`, calls
+`__gcov_dump()`, and prints `GCOV_DUMP_DONE`. The VFS intercepts gcov's file I/O and streams each
+`.gcda` file as base64 over UART, framed with `GCOV_FILE_START:`, `GCOV_B64:`, and `GCOV_FILE_END`
+sentinels. The matching `pytest_<component>_qemu_coverage.py` script decodes the UART stream and
+reconstructs `.gcda` files inside `build/`. This approach avoids semihosting (not available without
+an OpenOCD connection) and does not require a separate QEMU invocation.
 
 Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
 size manageable. A dedicated `coverage` CI job builds each opted-in test app with
-`sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the existing QEMU
-pytest with `--qemu-extra-args="-semihosting"`, and uploads an HTML report as a CI artifact. The
-`coverage` CI job is non-blocking (not part of `ci-status-cpp-car`).
+`sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the coverage pytest,
+and uploads an HTML report as a CI artifact. The `coverage` CI job is non-blocking (not part of
+`ci-status-cpp-car`).
 
 To run locally (from the `car/` directory in the C++ devcontainer):
 
 ```bash
-./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu.py
-./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu.py
+./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu_coverage.py
+./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu_coverage.py
 ```
 
 ### Car test types

@@ -16,8 +16,8 @@ services:
     env_file:
       - path: ../../.env
     # Uncomment to pass through ESP32 device.
-    devices:
-      - /dev/ttyACM0:/dev/ttyACM0
+    # devices:
+    #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
     networks:
       - dust-mite-observability

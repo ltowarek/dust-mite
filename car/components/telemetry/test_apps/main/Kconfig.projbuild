@@ -20,9 +20,12 @@ config TELEMETRY_TEST_COVERAGE
     bool "Build telemetry with GCC coverage instrumentation"
     default n
     help
-        Compiles the telemetry component under test with --coverage.  app_main
-        calls exit(0) after the test run so the gcov atexit handler flushes
-        .gcda files before QEMU exits via semihosting.  Opt-in: only enabled
-        by the dedicated coverage CI job/sdkconfig overlay.
+        Compiles the telemetry component under test with --coverage.  After
+        the test run, app_main registers a VFS at /gcov that streams gcda
+        file content as base64 over UART, calls __gcov_dump() to flush
+        coverage data, then prints GCOV_DUMP_DONE.  The coverage pytest
+        script decodes the UART stream and reconstructs .gcda files on the
+        host.  Opt-in: only enabled by the dedicated coverage CI
+        job/sdkconfig overlay.
 
 endmenu

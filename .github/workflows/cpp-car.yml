@@ -244,10 +244,10 @@ jobs:
         include:
           - name: telemetry
             component_path: components/telemetry/test_apps
-            pytest_pattern: pytest_telemetry_qemu.py
+            pytest_pattern: pytest_telemetry_qemu_coverage.py
           - name: web_server
             component_path: components/web_server/test_apps
-            pytest_pattern: pytest_web_server_qemu.py
+            pytest_pattern: pytest_web_server_qemu_coverage.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -283,7 +283,7 @@ jobs:
       run: ./scripts/run_build.sh ${{ matrix.component_path }}
 
     - name: Run QEMU coverage tests
-      run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }} --qemu-extra-args="-semihosting"
+      run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
 
     - name: Generate coverage report
       run: ./scripts/run_coverage_report.sh ${{ matrix.component_path }}
