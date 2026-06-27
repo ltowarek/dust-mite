@@ -16,4 +16,14 @@ config WEB_SERVER_TEST_UBSAN
         Opt-in: not part of the default build, only enabled by the dedicated
         UBSan CI job/sdkconfig overlay.
 
+config WEB_SERVER_TEST_COVERAGE
+    bool "Build web_server with GCC coverage instrumentation"
+    default n
+    help
+        Compiles the web_server component under test with --coverage.  When
+        app_main returns, ESP-IDF's task cleanup calls exit() which triggers
+        the gcov atexit handler; QEMU semihosting writes the .gcda files
+        directly to the host.  Opt-in: only enabled by the dedicated coverage
+        CI job/sdkconfig overlay.
+
 endmenu

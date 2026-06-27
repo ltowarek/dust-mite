@@ -450,7 +450,10 @@ and is known to fail at the final link step for this project due to TLS-relocati
 issues in vendored dependencies (protobuf/abseil/opentelemetry-cpp). `run_clang_tidy.sh`
 tolerates that link failure and only requires `compile_commands.json` to be generated. The
 `clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
-empty, it only fails on a genuine clang-tidy tool error, not on findings.
+empty, it only fails on a genuine clang-tidy tool error, not on findings. The enabled
+check set includes `misc-include-cleaner`, which flags headers included but not used
+directly and symbols sourced only through transitive includes — the Xtensa-aware
+equivalent of [IWYU](https://include-what-you-use.org/).
 
 #### UndefinedBehaviorSanitizer (UBSan)
 
@@ -474,6 +477,41 @@ job builds and runs each opted-in test app with `sdkconfig.defaults.ubsan` layer
 `sdkconfig.defaults.qemu`, using its own matrix (separate from the `build` job's matrix) so the
 default test apps keep building without the sanitizer. The `ubsan` CI job is blocking (part of
 `ci-status-cpp-car`).
+
+#### GCC Coverage (gcov)
+
+A QEMU test app can opt in to building its component under test with GCC coverage instrumentation.
+Enable it by adding a `CONFIG_<COMPONENT>_TEST_COVERAGE` Kconfig boolean (default `n`) to the test
+app's `main/Kconfig.projbuild`, a matching `sdkconfig.defaults.coverage` overlay that sets it to
+`y`, and guarding the coverage flags in the test app's `CMakeLists.txt`:
+
+```cmake
+if(CONFIG_<COMPONENT>_TEST_COVERAGE)
+    idf_component_get_property(<component>_lib <component> COMPONENT_LIB)
+    target_compile_options(${<component>_lib} PRIVATE "--coverage")
+    target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE "--coverage")
+endif()
+```
+
+The `--coverage` link flag lets the compiler pick the correct `libgcov` multilib variant. No
+coverage-specific code is needed in `main.cpp`: when `app_main` returns, ESP-IDF's task cleanup
+calls `exit()` internally, which fires the gcov `atexit` handler and flushes `.gcda` files. QEMU
+is launched with `-semihosting` so those writes land directly on the host filesystem inside
+`build/`. The existing QEMU pytest script (e.g. `pytest_<component>_qemu.py`) is reused unchanged
+— no separate coverage script is needed.
+
+Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
+size manageable. A dedicated `coverage` CI job builds each opted-in test app with
+`sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the existing QEMU
+pytest with `--qemu-extra-args="-semihosting"`, and uploads an HTML report as a CI artifact. The
+`coverage` CI job is non-blocking (not part of `ci-status-cpp-car`).
+
+To run locally (from the `car/` directory in the C++ devcontainer):
+
+```bash
+./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu.py
+./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu.py
+```
 
 ### Car test types
 
