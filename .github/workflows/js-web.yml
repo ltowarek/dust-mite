@@ -77,6 +77,15 @@ jobs:
         flags: js
         fail_ci_if_error: false
 
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: web/test-report.junit.xml
+        flags: js
+        fail_ci_if_error: false
+
 
   ci-status-js-web:
     needs: [build-docker, run-checks]

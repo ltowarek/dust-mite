@@ -20,6 +20,8 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    reporters: ['default', 'junit'],
+    outputFile: { junit: './test-report.junit.xml' },
     include: ["tests/unit/**/*.test.js", "tests/integration/**/*.test.js"],
     coverage: {
       provider: "v8",

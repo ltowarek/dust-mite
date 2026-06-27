@@ -17,3 +17,6 @@ comment:
   layout: "flags, diff"
   behavior: default
   require_changes: true
+
+fixes:
+  - "controller/::controller/src/controller/"

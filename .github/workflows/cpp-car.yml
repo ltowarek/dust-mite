@@ -102,10 +102,16 @@ jobs:
 
     - name: Run QEMU tests
       if: matrix.qemu
-      run: |
-        source $IDF_PATH/export.sh
-        pytest ${{ matrix.pytest_pattern }} --embedded-services idf,qemu -v
-      working-directory: ${{ matrix.path }}
+      run: car/scripts/run_qemu_tests.sh ${{ matrix.path }} ${{ matrix.pytest_pattern }}
+
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() && matrix.qemu }}
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ${{ matrix.path }}/results.xml
+        flags: cpp
+        fail_ci_if_error: false
 
   clang-format:
     needs: build-docker

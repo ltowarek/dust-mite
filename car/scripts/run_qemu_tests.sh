@@ -7,5 +7,5 @@ PYTEST_PATTERN="${2?Usage: run_qemu_tests.sh <component_dir> <pytest_pattern> [p
 source "$IDF_PATH/export.sh"
 
 pushd "$COMPONENT_DIR" > /dev/null
-python -m pytest "$PYTEST_PATTERN" --embedded-services idf,qemu "${@:3}" -v
+python -m pytest "$PYTEST_PATTERN" --embedded-services idf,qemu --junitxml=results.xml "${@:3}" -v
 popd > /dev/null
