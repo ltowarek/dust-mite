@@ -76,6 +76,25 @@ jobs:
     - name: Run tests
       run: ./scripts/run_tests.sh
 
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: controller/coverage.xml
+        flags: python
+        fail_ci_if_error: false
+
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: controller/results.xml
+        flags: python
+        fail_ci_if_error: false
+        report_type: test_results
+
+
   ci-status-python-controller:
     needs: [build-docker, run-checks]
     if: always()

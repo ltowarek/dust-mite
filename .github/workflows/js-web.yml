@@ -69,6 +69,25 @@ jobs:
         HOME: /root
       run: ./scripts/run_tests.sh
 
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: web/coverage/cobertura-coverage.xml
+        flags: js
+        fail_ci_if_error: false
+
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: web/test-report.junit.xml
+        flags: js
+        fail_ci_if_error: false
+        report_type: test_results
+
+
   ci-status-js-web:
     needs: [build-docker, run-checks]
     if: always()

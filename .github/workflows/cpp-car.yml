@@ -102,10 +102,17 @@ jobs:
 
     - name: Run QEMU tests
       if: matrix.qemu
-      run: |
-        source $IDF_PATH/export.sh
-        pytest ${{ matrix.pytest_pattern }} --embedded-services idf,qemu -v
-      working-directory: ${{ matrix.path }}
+      run: car/scripts/run_qemu_tests.sh ${{ matrix.path }} ${{ matrix.pytest_pattern }}
+
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() && matrix.qemu }}
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ${{ matrix.path }}/results.xml
+        flags: cpp
+        fail_ci_if_error: false
+        report_type: test_results
 
   clang-format:
     needs: build-docker
@@ -189,10 +196,10 @@ jobs:
       matrix:
         include:
           - name: telemetry
-            path: car/components/telemetry/test_apps
+            component_path: components/telemetry/test_apps
             pytest_pattern: pytest_telemetry_qemu.py
           - name: web_server
-            path: car/components/web_server/test_apps
+            component_path: components/web_server/test_apps
             pytest_pattern: pytest_web_server_qemu.py
 
     container:
@@ -205,6 +212,7 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: car
 
     steps:
     - name: Checkout
@@ -225,16 +233,77 @@ jobs:
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
         SDKCONFIG_DEFAULTS: sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
-      run: |
-        source $IDF_PATH/export.sh
-        idf.py build
-      working-directory: ${{ matrix.path }}
+      run: ./scripts/run_build.sh ${{ matrix.component_path }}
 
     - name: Run QEMU tests
-      run: |
-        source $IDF_PATH/export.sh
-        pytest ${{ matrix.pytest_pattern }} --embedded-services idf,qemu -v
-      working-directory: ${{ matrix.path }}
+      run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
+
+  coverage:
+    needs: build-docker
+    permissions:
+      contents: read
+      actions: read
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - name: telemetry
+            component_path: components/telemetry/test_apps
+            pytest_pattern: pytest_telemetry_qemu_coverage.py
+          - name: web_server
+            component_path: components/web_server/test_apps
+            pytest_pattern: pytest_web_server_qemu_coverage.py
+
+    container:
+      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: car
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Cache ccache
+      uses: actions/cache@v5
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-
+          ccache-${{ runner.os }}-idf-coverage-
+
+    - name: Build
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
+        SDKCONFIG_DEFAULTS: sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage
+      run: ./scripts/run_build.sh ${{ matrix.component_path }}
+
+    - name: Run QEMU coverage tests
+      run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
+
+    - name: Generate coverage report
+      run: ./scripts/run_coverage_report.sh ${{ matrix.component_path }}
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: car/${{ matrix.component_path }}/coverage.info
+        flags: cpp
+        fail_ci_if_error: false
+
+
 
   ci-status-cpp-car:
     needs: [build-docker, build, clang-format, clang-tidy, ubsan]

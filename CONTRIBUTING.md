@@ -450,7 +450,10 @@ and is known to fail at the final link step for this project due to TLS-relocati
 issues in vendored dependencies (protobuf/abseil/opentelemetry-cpp). `run_clang_tidy.sh`
 tolerates that link failure and only requires `compile_commands.json` to be generated. The
 `clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
-empty, it only fails on a genuine clang-tidy tool error, not on findings.
+empty, it only fails on a genuine clang-tidy tool error, not on findings. The enabled
+check set includes `misc-include-cleaner`, which flags headers included but not used
+directly and symbols sourced only through transitive includes — the Xtensa-aware
+equivalent of [IWYU](https://include-what-you-use.org/).
 
 #### UndefinedBehaviorSanitizer (UBSan)
 
@@ -474,6 +477,53 @@ job builds and runs each opted-in test app with `sdkconfig.defaults.ubsan` layer
 `sdkconfig.defaults.qemu`, using its own matrix (separate from the `build` job's matrix) so the
 default test apps keep building without the sanitizer. The `ubsan` CI job is blocking (part of
 `ci-status-cpp-car`).
+
+#### GCC Coverage (gcov)
+
+A QEMU test app can opt in to building its component under test with GCC coverage instrumentation.
+Enable it by adding a `CONFIG_<COMPONENT>_TEST_COVERAGE` Kconfig boolean (default `n`) to the test
+app's `main/Kconfig.projbuild`, a matching `sdkconfig.defaults.coverage` overlay that sets it to
+`y`, and guarding the coverage flags in the test app's `CMakeLists.txt`:
+
+```cmake
+idf_component_register(SRCS ${srcs} ... PRIV_REQUIRES ... gcov_uart_vfs ...)
+```
+
+`gcov_uart_vfs` is listed unconditionally — ESP-IDF's component resolution ordering does not
+reliably support Kconfig-gated `PRIV_REQUIRES` entries. The component is small and its entry point
+is never called in non-coverage builds (guarded by `#ifdef` in `main.cpp`).
+
+The `gcov_uart_vfs` component (in `car/components/gcov_uart_vfs/`) handles everything shared: the
+VFS registration, the base64-over-UART encoding, the `GCOV_PREFIX_STRIP_COUNT` computation (applied
+at CMake time so paths are correct regardless of checkout location), and the gcov flush sequence.
+
+The test app's `main.cpp` drives the dump after `UNITY_END()` with a single call:
+
+```cpp
+#ifdef CONFIG_<COMPONENT>_TEST_COVERAGE
+  gcov_uart_vfs_dump();
+#endif
+```
+
+`gcov_uart_vfs_dump()` registers the VFS at `/gcov`, sets `GCOV_PREFIX`/`GCOV_PREFIX_STRIP`, calls
+`__gcov_dump()`, and prints `GCOV_DUMP_DONE`. The VFS intercepts gcov's file I/O and streams each
+`.gcda` file as base64 over UART, framed with `GCOV_FILE_START:`, `GCOV_B64:`, and `GCOV_FILE_END`
+sentinels. The matching `pytest_<component>_qemu_coverage.py` script decodes the UART stream and
+reconstructs `.gcda` files inside `build/`. This approach avoids semihosting (not available without
+an OpenOCD connection) and does not require a separate QEMU invocation.
+
+Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
+size manageable. A dedicated `coverage` CI job builds each opted-in test app with
+`sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the coverage pytest,
+and uploads coverage data to Codecov. The `coverage` CI job is non-blocking (not part of
+`ci-status-cpp-car`).
+
+To run locally (from the `car/` directory in the C++ devcontainer):
+
+```bash
+./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu_coverage.py
+./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu_coverage.py
+```
 
 ### Car test types
 

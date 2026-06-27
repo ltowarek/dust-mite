@@ -7,6 +7,9 @@
 #include "telemetry.hpp"
 #include "unity.h"
 #include "sdkconfig.h"
+#ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
+#include "gcov_uart_vfs.h"
+#endif
 
 extern "C" void app_main(void) {
   QueueHandle_t command_queue = xQueueCreate(2, sizeof(command_packet_t));
@@ -23,6 +26,9 @@ extern "C" void app_main(void) {
   UNITY_BEGIN();
   unity_run_all_tests();
   UNITY_END();
+#ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
+  gcov_uart_vfs_dump();
+#endif
 }
 
 void setUp(void) {}

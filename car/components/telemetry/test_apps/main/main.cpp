@@ -2,6 +2,9 @@
 #include "unity.h"
 #include "driver/gpio.h"
 #include "sdkconfig.h"
+#ifdef CONFIG_TELEMETRY_TEST_COVERAGE
+#include "gcov_uart_vfs.h"
+#endif
 
 extern "C" void app_main(void) {
 #ifndef CONFIG_TELEMETRY_TEST_QEMU_MODE
@@ -20,6 +23,9 @@ extern "C" void app_main(void) {
   UNITY_BEGIN();
   unity_run_all_tests();
   UNITY_END();
+#ifdef CONFIG_TELEMETRY_TEST_COVERAGE
+  gcov_uart_vfs_dump();
+#endif
 }
 
 void setUp(void) {}

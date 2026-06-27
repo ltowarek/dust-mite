@@ -8,8 +8,8 @@ if [ "$1" = "tests/e2e/full_stack" ]; then
 elif [ "$1" = "tests/e2e" ]; then
     npx playwright test --project=firefox "${@:2}"
 elif [ $# -eq 0 ]; then
-    npx vp test --run
+    npx vp test run --coverage
     npx playwright test --project=firefox
 else
-    npx vp test --run "$@"
+    npx vp test run --coverage "$@"
 fi
