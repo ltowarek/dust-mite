@@ -8,5 +8,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage" \
     "$SCRIPT_DIR/run_build.sh" "$COMPONENT_DIR"
-"$SCRIPT_DIR/run_qemu_tests.sh" "$COMPONENT_DIR" "$PYTEST_PATTERN"
+
+if [[ -z "${QEMU_PROG_PATH}" ]]; then
+    echo "QEMU_PROG_PATH must be set to patched qemu-system-xtensa binary" >&2
+    exit 1
+fi
+QEMU_SHARE_DIR="$(dirname "$(dirname "$QEMU_PROG_PATH")")/share/qemu"
+[[ -d "$QEMU_SHARE_DIR" ]] || { echo "QEMU share dir not found: $QEMU_SHARE_DIR" >&2; exit 1; }
+
+test_exit=0
+COVERAGE_BUILD=1 "$SCRIPT_DIR/run_qemu_tests.sh" "$COMPONENT_DIR" "$PYTEST_PATTERN" \
+    "--qemu-prog-path=$QEMU_PROG_PATH" \
+    "--qemu-extra-args=-machine esp32s3,apptrace=file_io -L $QEMU_SHARE_DIR" || test_exit=$?
 "$SCRIPT_DIR/run_coverage_report.sh" "$COMPONENT_DIR"
+exit $test_exit
