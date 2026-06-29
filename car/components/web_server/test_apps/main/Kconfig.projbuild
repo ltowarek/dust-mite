@@ -21,11 +21,10 @@ config WEB_SERVER_TEST_COVERAGE
     default n
     help
         Compiles the web_server component under test with --coverage.  After
-        the test run, app_main registers a VFS at /gcov that streams gcda
-        file content as base64 over UART, calls __gcov_dump() to flush
-        coverage data, then prints GCOV_DUMP_DONE.  The coverage pytest
-        script decodes the UART stream and reconstructs .gcda files on the
-        host.  Opt-in: only enabled by the dedicated coverage CI
-        job/sdkconfig overlay.
+        the test run, app_main calls esp_gcov_dump() which streams .gcda
+        data to the host via the AppTrace JTAG protocol, then prints
+        GCOV_DUMP_DONE.  The patched esp-qemu emulates the AppTrace host
+        and writes .gcda files directly to the build directory.  Opt-in:
+        only enabled by the dedicated coverage CI job/sdkconfig overlay.
 
 endmenu

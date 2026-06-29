@@ -251,10 +251,10 @@ jobs:
         include:
           - name: telemetry
             component_path: components/telemetry/test_apps
-            pytest_pattern: pytest_telemetry_qemu_coverage.py
+            pytest_pattern: pytest_telemetry_qemu.py
           - name: web_server
             component_path: components/web_server/test_apps
-            pytest_pattern: pytest_web_server_qemu_coverage.py
+            pytest_pattern: pytest_web_server_qemu.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -283,17 +283,10 @@ jobs:
           ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-
           ccache-${{ runner.os }}-idf-coverage-
 
-    - name: Build
+    - name: Run coverage
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
-        SDKCONFIG_DEFAULTS: sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage
-      run: ./scripts/run_build.sh ${{ matrix.component_path }}
-
-    - name: Run QEMU coverage tests
-      run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
-
-    - name: Generate coverage report
-      run: ./scripts/run_coverage_report.sh ${{ matrix.component_path }}
+      run: ./scripts/run_coverage.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
@@ -303,10 +296,8 @@ jobs:
         flags: cpp
         fail_ci_if_error: false
 
-
-
   ci-status-cpp-car:
-    needs: [build-docker, build, clang-format, clang-tidy, ubsan]
+    needs: [build-docker, build, clang-format, clang-tidy, ubsan, coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:

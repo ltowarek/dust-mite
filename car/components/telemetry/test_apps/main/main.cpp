@@ -3,7 +3,9 @@
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 #ifdef CONFIG_TELEMETRY_TEST_COVERAGE
-#include "gcov_uart_vfs.h"
+extern "C" {
+#include "esp_gcov.h"
+}
 #endif
 
 extern "C" void app_main(void) {
@@ -24,7 +26,8 @@ extern "C" void app_main(void) {
   unity_run_all_tests();
   UNITY_END();
 #ifdef CONFIG_TELEMETRY_TEST_COVERAGE
-  gcov_uart_vfs_dump();
+  esp_gcov_dump();
+  printf("GCOV_DUMP_DONE\n");
 #endif
 }
 

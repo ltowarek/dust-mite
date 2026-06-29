@@ -22,7 +22,5 @@ if(CONFIG_TELEMETRY_TEST_COVERAGE)
 
     # --coverage on the link step lets g++ pick the right libgcov multilib
     # variant; -lgcov alone does not resolve the correct esp32s3 multilib path.
-    # --undefined=__gcov_dump forces the linker to pull the symbol from libgcov;
-    # without it the weak reference in gcov_uart_vfs.c stays NULL.
-    target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE "--coverage" "-Wl,--undefined=__gcov_dump")
+    target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE "--coverage")
 endif()

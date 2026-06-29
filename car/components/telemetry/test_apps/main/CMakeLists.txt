@@ -5,5 +5,5 @@ endif()
 
 idf_component_register(SRCS ${srcs}
                     INCLUDE_DIRS "."
-                    PRIV_REQUIRES unity telemetry gcov_uart_vfs
+                    PRIV_REQUIRES unity telemetry
                     WHOLE_ARCHIVE)

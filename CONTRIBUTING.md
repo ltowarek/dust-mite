@@ -486,43 +486,72 @@ app's `main/Kconfig.projbuild`, a matching `sdkconfig.defaults.coverage` overlay
 `y`, and guarding the coverage flags in the test app's `CMakeLists.txt`:
 
 ```cmake
-idf_component_register(SRCS ${srcs} ... PRIV_REQUIRES ... gcov_uart_vfs ...)
+if(CONFIG_<COMPONENT>_TEST_COVERAGE)
+    idf_component_get_property(<component>_lib <component> COMPONENT_LIB)
+    target_compile_options(${<component>_lib} PRIVATE "--coverage")
+    target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE "--coverage")
+endif()
 ```
 
-`gcov_uart_vfs` is listed unconditionally — ESP-IDF's component resolution ordering does not
-reliably support Kconfig-gated `PRIV_REQUIRES` entries. The component is small and its entry point
-is never called in non-coverage builds (guarded by `#ifdef` in `main.cpp`).
+The test app's `main/idf_component.yml` declares `espressif/esp_gcov` as a dependency so the
+component manager fetches it automatically:
 
-The `gcov_uart_vfs` component (in `car/components/gcov_uart_vfs/`) handles everything shared: the
-VFS registration, the base64-over-UART encoding, the `GCOV_PREFIX_STRIP_COUNT` computation (applied
-at CMake time so paths are correct regardless of checkout location), and the gcov flush sequence.
+```yaml
+dependencies:
+  idf: ">=6.0.0"
+  espressif/esp_gcov: "^1"
+```
 
-The test app's `main.cpp` drives the dump after `UNITY_END()` with a single call:
+The test app's `main.cpp` calls `esp_gcov_dump()` after `UNITY_END()`. This streams `.gcda` data to
+the host via the AppTrace JTAG protocol, which the patched esp-qemu emulates:
 
 ```cpp
 #ifdef CONFIG_<COMPONENT>_TEST_COVERAGE
-  gcov_uart_vfs_dump();
+extern "C" {
+#include "esp_gcov.h"
+}
+#endif
+...
+#ifdef CONFIG_<COMPONENT>_TEST_COVERAGE
+  esp_gcov_dump();
+  printf("GCOV_DUMP_DONE\n");
 #endif
 ```
 
-`gcov_uart_vfs_dump()` registers the VFS at `/gcov`, sets `GCOV_PREFIX`/`GCOV_PREFIX_STRIP`, calls
-`__gcov_dump()`, and prints `GCOV_DUMP_DONE`. The VFS intercepts gcov's file I/O and streams each
-`.gcda` file as base64 over UART, framed with `GCOV_FILE_START:`, `GCOV_B64:`, and `GCOV_FILE_END`
-sentinels. The matching `pytest_<component>_qemu_coverage.py` script decodes the UART stream and
-reconstructs `.gcda` files inside `build/`. This approach avoids semihosting (not available without
-an OpenOCD connection) and does not require a separate QEMU invocation.
+The `sdkconfig.defaults.coverage` overlay enables AppTrace transport and the `esp_gcov` driver in
+addition to the coverage Kconfig flag:
+
+```
+CONFIG_<COMPONENT>_TEST_COVERAGE=y
+CONFIG_ESP_TRACE_TRANSPORT_APPTRACE=y
+CONFIG_APPTRACE_DEST_JTAG=y
+CONFIG_ESP_GCOV_ENABLE=y
+```
+
+QEMU is launched with `-apptrace file_io`, which causes the patched esp-qemu to emulate the
+AppTrace JTAG host: it sets `HOST_CONNECT` so the firmware unblocks, processes each file I/O
+command block (open/write/close), and writes `.gcda` files directly to the build host filesystem.
+No OpenOCD connection or separate decode step is needed.
+
+`run_coverage.sh` sets `COVERAGE_BUILD=1` when invoking pytest. The existing QEMU pytest files
+check this variable and wait for the `GCOV_DUMP_DONE` sentinel printed by `app_main` after
+`esp_gcov_dump()` returns, ensuring QEMU is not torn down before AppTrace file I/O completes.
+
+`run_coverage.sh` requires the patched QEMU binary via the `QEMU_PROG_PATH` environment variable.
+The devcontainer image builds the patched esp-qemu (`ltowarek/espressif-qemu@apptrace`) and sets
+`QEMU_PROG_PATH` automatically, so no manual export is needed inside the devcontainer.
 
 Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
 size manageable. A dedicated `coverage` CI job builds each opted-in test app with
-`sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the coverage pytest,
-and uploads coverage data to Codecov. The `coverage` CI job is non-blocking (not part of
-`ci-status-cpp-car`).
+`sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the standard QEMU
+pytest with `COVERAGE_BUILD=1` and `-apptrace file_io`, and uploads coverage data to Codecov. The
+`coverage` CI job is blocking (part of `ci-status-cpp-car`).
 
 To run locally (from the `car/` directory in the C++ devcontainer):
 
 ```bash
-./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu_coverage.py
-./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu_coverage.py
+./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu.py
+./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu.py
 ```
 
 ### Car test types
