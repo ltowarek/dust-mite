@@ -19,6 +19,6 @@ QEMU_SHARE_DIR="$(dirname "$(dirname "$QEMU_PROG_PATH")")/share/qemu"
 test_exit=0
 COVERAGE_BUILD=1 "$SCRIPT_DIR/run_qemu_tests.sh" "$COMPONENT_DIR" "$PYTEST_PATTERN" \
     "--qemu-prog-path=$QEMU_PROG_PATH" \
-    "--qemu-extra-args=-machine esp32s3,apptrace=file_io -L $QEMU_SHARE_DIR" || test_exit=$?
+    "--qemu-extra-args=-machine esp32s3,app-trace=file_io -L $QEMU_SHARE_DIR" || test_exit=$?
 "$SCRIPT_DIR/run_coverage_report.sh" "$COMPONENT_DIR"
 exit $test_exit
