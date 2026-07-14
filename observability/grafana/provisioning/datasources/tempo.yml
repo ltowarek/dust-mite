@@ -8,3 +8,11 @@ datasources:
     url: http://tempo:3200
     isDefault: true
     editable: true
+    jsonData:
+      tracesToProfilesV2:
+        datasourceUid: pyroscope
+        profileTypeId: "samples:samples:count:samples:count"
+        customQuery: false
+        tags:
+          - key: "service.name"
+            value: "service_name"

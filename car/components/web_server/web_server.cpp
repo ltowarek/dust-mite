@@ -16,6 +16,9 @@
 #include "camera.hpp"
 #include "telemetry.hpp"
 #include "tracing.hpp"
+#include "esp_opentelemetry.hpp"
+#include "opentelemetry/trace/scope.h"
+#include "opentelemetry/trace/span_startoptions.h"
 #include "web_server_metrics.hpp"
 #include <cJSON.h>
 #include "mbedtls/base64.h"

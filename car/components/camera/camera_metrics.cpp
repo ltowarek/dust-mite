@@ -3,7 +3,7 @@
 
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
 #include <cstdint>
-#include "metrics.hpp"
+#include "esp_metrics.hpp"
 #include "opentelemetry/metrics/async_instruments.h"
 #include "opentelemetry/metrics/observer_result.h"
 #include "opentelemetry/metrics/provider.h"

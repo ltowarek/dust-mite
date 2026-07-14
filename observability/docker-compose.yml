@@ -4,7 +4,10 @@ networks:
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.127.0
+    image: otel/opentelemetry-collector-contrib:0.146.0
+    command:
+      - "--config=/etc/otelcol-contrib/config.yaml"
+      - "--feature-gates=service.profilesSupport"
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
@@ -12,6 +15,34 @@ services:
       - ./otelcol.yml:/etc/otelcol-contrib/config.yaml:ro
     depends_on:
       - tempo
+      - pyroscope
+    networks:
+      - dust-mite-observability
+
+  pyroscope:
+    image: grafana/pyroscope:1.18.1
+    command:
+      - "-config.file=/etc/pyroscope/config.yml"
+      - "-self-profiling.disable-push=true"
+    volumes:
+      - ./pyroscope.yml:/etc/pyroscope/config.yml:ro
+    ports:
+      - "4040:4040"   # HTTP API + OTLP profiles ingestion
+    networks:
+      - dust-mite-observability
+
+  profiling-symbolizer:
+    build:
+      context: ../car/components/esp-opentelemetry-cpp/tools/symbolizer
+    ports:
+      - "4319:4319"   # OTLP/HTTP JSON profiles in (device -> symbolizer)
+    environment:
+      SYMBOLIZER_LISTEN_ADDR: "0.0.0.0:4319"
+      SYMBOLIZER_FORWARD_URL: "http://otel-collector:4318/v1development/profiles"
+    volumes:
+      - ../car:/firmware:ro
+    depends_on:
+      - otel-collector
     networks:
       - dust-mite-observability
 

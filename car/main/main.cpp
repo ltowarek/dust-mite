@@ -12,9 +12,9 @@
 #include "motor.hpp"
 #include "telemetry.hpp"
 #include "telemetry_metrics.hpp"
-#include "tracing.hpp"
 #include "system_metrics.hpp"
 #include "wifi.hpp"
+#include "esp_opentelemetry.hpp"
 #include "sdkconfig.h"
 
 static i2c_master_bus_handle_t i2c_bus_init() {
@@ -41,14 +41,17 @@ extern "C" void app_main() {
   wifi_wait_for_ip();
   sync_time();
 
+  // Must run before web_server_setup() can activate a span: profiling's RuntimeContextStorage swap
+  // and tracing's provider both must be installed before the first span is created.
+  esp_opentelemetry_tracing_setup(CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME);
+  esp_opentelemetry_metrics_setup();
+  esp_opentelemetry_profiling_setup();
+
   motor_setup(command_queue);
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
 
-  tracing_setup();
-
-  metrics_setup();
   system_metrics_setup();
   telemetry_metrics_setup();
   camera_metrics_setup();

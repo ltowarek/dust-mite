@@ -1,7 +1,4 @@
 #include "tracing.hpp"
-#include "esp_pthread.h"
-#include "esp_heap_caps.h"
-#include "sdkconfig.h"
 
 #include "opentelemetry/context/runtime_context.h"
 #include "opentelemetry/context/propagation/global_propagator.h"
@@ -38,25 +35,6 @@ class CJsonCarrier : public opentelemetry::context::propagation::TextMapCarrier 
 };
 
 }  // namespace
-
-void tracing_setup() {
-#ifdef CONFIG_ESP_OPENTELEMETRY_TRACING_ENABLED
-  // Route BatchSpanProcessor pthread stack to PSRAM and increase its size.
-  // The export call chain (DoBackgroundWork → OtlpHttpExporter::Export →
-  // protobuf arena → mbedTLS) is ~15 frames deep and overflows 32 KB.
-  esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
-  cfg.stack_size = 65536;
-  cfg.stack_alloc_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
-  esp_pthread_set_cfg(&cfg);
-#endif
-
-  esp_opentelemetry_setup(CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME);
-
-#ifdef CONFIG_ESP_OPENTELEMETRY_TRACING_ENABLED
-  esp_pthread_cfg_t default_cfg = esp_pthread_get_default_config();
-  esp_pthread_set_cfg(&default_cfg);
-#endif
-}
 
 void tracing_inject(cJSON& obj) {
   auto propagator =

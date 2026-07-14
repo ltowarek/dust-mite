@@ -1,31 +1,5 @@
-menu "Metrics"
-    config ESP_OPENTELEMETRY_METRICS_ENABLED
-        bool "Enable OpenTelemetry metrics"
-        depends on ESP_OPENTELEMETRY_TRACING_ENABLED
-        default n
-        help
-            Enables the PeriodicExportingMetricReader that exports sensor and
-            system metrics via OTLP/HTTP. Reuses
-            ESP_OPENTELEMETRY_EXPORTER_OTLP_ENDPOINT from the Tracing menu.
-
-    config ESP_OPENTELEMETRY_METRICS_EXPORT_INTERVAL_MS
-        int "Metrics export interval (ms)"
-        depends on ESP_OPENTELEMETRY_METRICS_ENABLED
-        default 500
-        help
-            How often the PeriodicExportingMetricReader collects and exports
-            metrics.
-
-    config ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL
-        string "Metrics OTLP base URL"
-        depends on ESP_OPENTELEMETRY_METRICS_ENABLED
-        default ""
-        help
-            Base URL for OTLP/HTTP metrics export. The path "/v1/metrics" is
-            appended automatically. Leave empty to reuse
-            ESP_OPENTELEMETRY_EXPORTER_OTLP_ENDPOINT (the tracing endpoint).
-
-    config ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+menu "System metrics"
+    config SYSTEM_METRICS_TASK_STATS_ENABLED
         bool "Enable per-task CPU usage / priority metrics (debug only)"
         depends on ESP_OPENTELEMETRY_METRICS_ENABLED
         default n
@@ -38,7 +12,7 @@ menu "Metrics"
             (issue #43) - leave disabled unless actively debugging task
             scheduling/CPU usage, and disable again afterward.
 
-    config ESP_OPENTELEMETRY_METRICS_LARGEST_FREE_BLOCK_ENABLED
+    config SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
         bool "Enable largest free heap block metric (debug only)"
         depends on ESP_OPENTELEMETRY_METRICS_ENABLED
         default n

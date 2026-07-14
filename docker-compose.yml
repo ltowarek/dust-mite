@@ -63,6 +63,16 @@ services:
       file: observability/docker-compose.yml
       service: grafana
 
+  pyroscope:
+    extends:
+      file: observability/docker-compose.yml
+      service: pyroscope
+
+  profiling-symbolizer:
+    extends:
+      file: observability/docker-compose.yml
+      service: profiling-symbolizer
+
   test-runner:
     build:
       context: .

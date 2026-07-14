@@ -10,13 +10,19 @@ receivers:
             - "*"
 
 exporters:
-  otlp/tempo:
+  otlp_grpc/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
 
-  otlphttp/victoriametrics:
+  otlp_http/victoriametrics:
     endpoint: http://victoriametrics:8428/opentelemetry
+    tls:
+      insecure: true
+
+  otlp_http/pyroscope:
+    endpoint: http://pyroscope:4040
+    compression: none
     tls:
       insecure: true
 
@@ -24,8 +30,12 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp/tempo]
+      exporters: [otlp_grpc/tempo]
 
     metrics:
       receivers: [otlp]
-      exporters: [otlphttp/victoriametrics]
+      exporters: [otlp_http/victoriametrics]
+
+    profiles:
+      receivers: [otlp]
+      exporters: [otlp_http/pyroscope]

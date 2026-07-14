@@ -155,6 +155,8 @@ All three services export traces via OTLP/HTTP to the OTel Collector and metrics
 | Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://victoriametrics:8428/opentelemetry/v1/metrics`) |
 | Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `http://localhost:4318`) via OTel Collector |
 
+The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
+
 ### Metrics
 
 The set of emitted metrics is variant-specific. See the variant documentation in [docs/variants/](docs/variants/) for the full list. When adding or removing a metric, update the metrics table in the relevant variant document.
@@ -241,6 +243,53 @@ Open Grafana at `http://localhost:3000` → **Explore** → select the **Tempo**
 - `{}` — all traces
 - `{resource.service.name="dust-mite-car"}` — firmware spans only
 - `{resource.service.name="dust-mite-streamer"}` — streamer spans only
+
+### Profiling (firmware CPU)
+
+Spans and metrics tell you *which component* is slow; the statistical profiler tells you
+*which code* is burning CPU on the ESP32-S3, so you can decide between optimising the code,
+changing FreeRTOS scheduling (core/priority), or accepting a hardware limit. It is a sampling
+profiler exported as the OpenTelemetry **profiles** signal and viewed as Grafana **Pyroscope**
+flame graphs.
+
+For how the sampler, exporter, and symbolizer work internally, see the
+[esp-opentelemetry-cpp README](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations).
+
+To profile a build:
+
+1. Bring up the stack (`./scripts/start_headless.sh`) — it includes `pyroscope` and
+   `profiling-symbolizer`.
+2. Build/flash the firmware with the profiling overlay (enables the sampler, the
+   span→profile task slot, and the symbolizer endpoint; see
+   [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)):
+   `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.profiling" idf.py build flash`
+   Symbols need no publishing step: the symbolizer mounts `car/` and finds the
+   matching ELF by hash (the profile `build_id` equals the ELF's sha256).
+3. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
+   `{service_name="dust-mite-car"}`, optionally split by `thread_name` (FreeRTOS task). Idle
+   task dominance means the workload is not CPU-bound (hardware/scheduling limited); a specific
+   application or esp-idf frame dominating means there is code to optimise.
+
+QEMU is not used for profiling — its Xtensa core is not cycle-accurate, so durations would be
+fictional. The sampler/span-link/exporter mechanics are covered by
+[esp-opentelemetry-cpp](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations)'s
+own CI (QEMU); dust-mite's CI does not build the profiling overlay at all, so it is validated
+live on real hardware only.
+
+#### Span profiles (trace → flame graph)
+
+Profiles are linked to traces the same way Go/Python do it; see `esp_task_span_slot.cpp` in the
+[esp-opentelemetry-cpp README](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations)
+for the mechanism. No changes are needed at span call sites.
+
+In a Tempo trace view, spans carry a **Profiles for this span** link/flame-graph tab
+(provisioned via `tracesToProfilesV2` on the Tempo datasource) showing the CPU sampled while
+that exact span was active. Spans are also stamped with the `pyroscope.profile.id` attribute
+Grafana uses to enable the embedded flame graph.
+
+Expectations: at 100 Hz/core a 5 ms span catches at most one sample — per-span flame graphs
+are meaningful for spans of tens of milliseconds or when aggregated across many span
+instances. Raise `CONFIG_ESP_OPENTELEMETRY_PROFILING_SAMPLE_HZ` for a session if finer coverage is needed.
 
 ## Variants
 

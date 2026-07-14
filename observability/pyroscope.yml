@@ -1,0 +1,11 @@
+# Pyroscope derives the service_name label from the OTLP service.name resource
+# attribute, but ALSO copies it verbatim as a "service.name" label once any
+# extra attribute (e.g. thread_name for per-task split) is present. A dotted
+# label name is an invalid Prometheus metric name and gets the whole series
+# rejected. Drop exactly that duplicate; the normalized service_name and the
+# dotless attributes (thread_name) are kept. (All attribute keys we emit other
+# than service.name are already dotless, so a narrow rule is sufficient.)
+limits:
+  ingestion_relabeling_rules:
+    - action: labeldrop
+      regex: "service\\.name"

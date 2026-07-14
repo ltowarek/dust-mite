@@ -1,5 +1,5 @@
 #include "system_metrics.hpp"
-#include "metrics.hpp"
+#include "esp_metrics.hpp"
 #include "sdkconfig.h"
 
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
@@ -24,7 +24,7 @@ namespace {
 
 static temperature_sensor_handle_t s_temp_sensor = NULL;
 
-#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+#ifdef CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
 static constexpr UBaseType_t kMaxTasks = 48;
 
 struct TaskStat {
@@ -96,7 +96,7 @@ static void refresh_task_stats() {
   s_task_count = n;
   s_prev_sample_time = now;
 }
-#endif  // CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+#endif  // CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
 
 static void cb_free_heap(opentelemetry::metrics::ObserverResult obs, void*) {
   observe_int64(obs, static_cast<int64_t>(esp_get_free_heap_size()));
@@ -104,11 +104,11 @@ static void cb_free_heap(opentelemetry::metrics::ObserverResult obs, void*) {
 static void cb_min_free_heap(opentelemetry::metrics::ObserverResult obs, void*) {
   observe_int64(obs, static_cast<int64_t>(esp_get_minimum_free_heap_size()));
 }
-#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_LARGEST_FREE_BLOCK_ENABLED
+#ifdef CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
 static void cb_largest_free_block(opentelemetry::metrics::ObserverResult obs, void*) {
   observe_int64(obs, static_cast<int64_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
 }
-#endif  // CONFIG_ESP_OPENTELEMETRY_METRICS_LARGEST_FREE_BLOCK_ENABLED
+#endif  // CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
 static void cb_internal_free_heap(opentelemetry::metrics::ObserverResult obs, void*) {
   observe_int64(obs, static_cast<int64_t>(esp_get_free_internal_heap_size()));
 }
@@ -123,7 +123,7 @@ static void cb_temperature(opentelemetry::metrics::ObserverResult obs, void*) {
   if (s_temp_sensor) temperature_sensor_get_celsius(s_temp_sensor, &temp);
   observe_double(obs, static_cast<double>(temp));
 }
-#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+#ifdef CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
 static void cb_task_cpu_usage(opentelemetry::metrics::ObserverResult obs, void*) {
   refresh_task_stats();
   for (UBaseType_t i = 0; i < s_task_count; i++)
@@ -136,18 +136,18 @@ static void cb_task_priority(opentelemetry::metrics::ObserverResult obs, void*) 
     observe_task_metric(obs, static_cast<int64_t>(s_task_stats[i].priority), s_task_stats[i].name,
                         s_task_stats[i].core);
 }
-#endif  // CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+#endif  // CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
 
 // Base instruments (free heap, min free heap, internal free heap, free psram,
 // uptime, temperature) plus whichever of the two debug-only, opt-in groups
 // below are enabled.
 static constexpr size_t kBaseInstruments = 6;
-#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_LARGEST_FREE_BLOCK_ENABLED
+#ifdef CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
 static constexpr size_t kLargestFreeBlockInstruments = 1;
 #else
 static constexpr size_t kLargestFreeBlockInstruments = 0;
 #endif
-#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+#ifdef CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
 static constexpr size_t kTaskStatsInstruments = 2;
 #else
 static constexpr size_t kTaskStatsInstruments = 0;
@@ -181,7 +181,7 @@ void system_metrics_setup() {
   s_instruments[idx]->AddCallback(cb_min_free_heap, nullptr);
   idx++;
 
-#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_LARGEST_FREE_BLOCK_ENABLED
+#ifdef CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
   s_instruments[idx] = meter->CreateInt64ObservableGauge(
       "dust_mite.largest_free_block_bytes", "Largest contiguous free heap block", "By");
   s_instruments[idx]->AddCallback(cb_largest_free_block, nullptr);
@@ -208,7 +208,7 @@ void system_metrics_setup() {
   s_instruments[idx]->AddCallback(cb_temperature, nullptr);
   idx++;
 
-#ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_TASK_STATS_ENABLED
+#ifdef CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
   s_instruments[idx] =
       meter->CreateDoubleObservableGauge("dust_mite.task_cpu_usage", "Per-task CPU usage", "%");
   s_instruments[idx]->AddCallback(cb_task_cpu_usage, nullptr);
