@@ -2,7 +2,7 @@
 #include "freertos/queue.h"
 #include "web_server.hpp"
 #include "motor.hpp"
-#include "tracing.hpp"
+#include "esp_opentelemetry.hpp"
 #include "wifi.hpp"
 #include "telemetry.hpp"
 #include "unity.h"
@@ -20,7 +20,7 @@ extern "C" void app_main(void) {
 
 #ifndef CONFIG_WEB_SERVER_TEST_QEMU_MODE
   motor_setup(command_queue);
-  tracing_setup();
+  esp_opentelemetry_tracing_setup(CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME);
   wifi_setup();
   web_server_setup(frame_queue, command_queue, telemetry_queue);
 #endif

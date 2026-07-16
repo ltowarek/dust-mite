@@ -1,5 +1,5 @@
 #include "telemetry_metrics.hpp"
-#include "metrics.hpp"
+#include "esp_metrics.hpp"
 #include "sdkconfig.h"
 
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED

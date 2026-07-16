@@ -1,0 +1,14 @@
+# Statistical CPU profiler overlay (see CONTRIBUTING.md "Profiling"). Build with:
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.profiling" idf.py build
+# Opt-in debug tooling: keeps its costs (sampling ISRs, per-Scope span-slot
+# updates, the pyroscope.profile.id span attribute) out of normal builds.
+CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED=y
+
+# Profiles endpoint = the profiling-symbolizer on the host LAN, which resolves
+# Xtensa addresses against the published ELF and forwards to the collector ->
+# Pyroscope.
+CONFIG_ESP_OPENTELEMETRY_PROFILES_OTLP_BASE_URL="http://192.168.50.222:4319"
+
+# TLS pointer index 1 hosts the per-task active-span slot that links profile
+# samples to the span running on the interrupted task (index 0 = pthread).
+CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
