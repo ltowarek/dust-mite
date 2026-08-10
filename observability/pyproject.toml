@@ -1,0 +1,47 @@
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    env_list =
+        py312
+
+    [testenv]
+    package = skip
+    deps = -r requirements/dev.txt
+    passenv =
+        GRAFANA_URL
+        OTEL_EXPORTER_OTLP_ENDPOINT
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+    commands = pytest {posargs:tests/}
+"""
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+    "tests/**/*.py"
+]
+strict = true
+
+[tool.ruff]
+target-version = "py312"
+include = [
+    "pyproject.toml",
+    "tests/**/*.py"
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812",
+    "ISC001",
+    "S101",
+    "TD002",
+    "TD003",
+    "FIX002"
+]
+unfixable = ["F401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"

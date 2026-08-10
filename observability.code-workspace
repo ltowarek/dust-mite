@@ -1,0 +1,9 @@
+{
+  "folders": [
+    { "path": "observability" },
+    { "path": "." }
+  ],
+  "settings": {
+    "terminal.integrated.cwd": "${workspaceFolder:observability}"
+  }
+}

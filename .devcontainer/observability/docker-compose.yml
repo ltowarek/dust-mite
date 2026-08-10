@@ -3,10 +3,10 @@ networks:
     name: dust-mite-observability
 
 services:
-  js:
+  observability:
     build:
       context: ../..
-      dockerfile: .devcontainer/js/Dockerfile
+      dockerfile: .devcontainer/observability/Dockerfile
       args:
         USER_UID: "${UID:-1050}"
         USER_GID: "${GID:-1050}"
@@ -15,8 +15,6 @@ services:
       - ../..:/workspaces/dust-mite:cached
     env_file:
       - path: ../../.env
-    ports:
-      - "5174:5173"
     command: sleep infinity
     networks:
       - dust-mite-observability

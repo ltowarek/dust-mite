@@ -1,0 +1,63 @@
+{
+    "name": "Observability",
+    "dockerComposeFile": [
+        "./docker-compose.yml"
+    ],
+    "service": "observability",
+    "workspaceFolder": "/workspaces/dust-mite",
+    "mounts": [
+        "source=claude-code-config,target=/home/vscode/.claude,type=volume"
+    ],
+    "remoteEnv": {
+        "PATH": "/home/vscode/venv/bin:${containerEnv:PATH}",
+        "VIRTUAL_ENV": "/home/vscode/venv"
+    },
+    "containerEnv": {
+        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/observability/scripts/pre-commit.sh",
+        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/home/vscode/venv/bin/python",
+                "python.analysis.enabled": false,
+                "python.analysis.typeCheckingMode": "off",
+                "python.testing.pytestEnabled": true,
+                "[python]": {
+                    "editor.formatOnSave": true,
+                    "editor.codeActionsOnSave": {
+                        "source.fixAll": "explicit",
+                        "source.organizeImports": "explicit"
+                    },
+                    "editor.defaultFormatter": "charliermarsh.ruff"
+                },
+                "ruff.importStrategy": "fromEnvironment",
+                "mypy-type-checker.importStrategy": "fromEnvironment",
+                "mypy-type-checker.reportingScope": "workspace",
+                "cSpell.words": [
+                    "devcontainer",
+                    "opentelemetry",
+                    "otlp",
+                    "pyroscope",
+                    "tempo",
+                    "victoriametrics",
+                    "traceparent",
+                    "tracestate",
+                    "pytest",
+                    "venv"
+                ]
+            },
+            "extensions": [
+                "-ms-python.autopep8",
+                "-dbaeumer.vscode-eslint",
+                "-ms-python.vscode-pylance",
+                "ms-python.python",
+                "ms-python.debugpy",
+                "streetsidesoftware.code-spell-checker",
+                "charliermarsh.ruff",
+                "ms-python.mypy-type-checker"
+            ]
+        }
+    },
+    "remoteUser": "vscode"
+}

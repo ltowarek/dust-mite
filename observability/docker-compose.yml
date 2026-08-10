@@ -58,6 +58,12 @@ services:
     image: victoriametrics/victoria-metrics:v1.110.0
     ports:
       - "8428:8428"   # HTTP API (Prometheus-compatible + OTLP ingestion)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     networks:
       - dust-mite-observability
 
@@ -73,5 +79,11 @@ services:
     depends_on:
       - tempo
       - victoriametrics
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     networks:
       - dust-mite-observability

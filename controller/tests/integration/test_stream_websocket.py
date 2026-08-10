@@ -5,15 +5,13 @@ import time
 import pytest
 from websockets.asyncio.client import connect
 
-skip_dut_test = pytest.mark.skip(reason="DUT test")
-
 
 @pytest.fixture
 def stream_client_uri() -> str:
-    return os.environ.get("STREAM_CLIENT_URI", "ws://localhost:8765/stream")
+    return os.getenv("STREAM_CLIENT_URI", "ws://localhost:8765/stream")
 
 
-@skip_dut_test
+@pytest.mark.dut
 @pytest.mark.asyncio
 async def test_performance(stream_client_uri: str) -> None:
     frame_count = 100
@@ -30,7 +28,7 @@ async def test_performance(stream_client_uri: str) -> None:
     assert fps >= expected
 
 
-@skip_dut_test
+@pytest.mark.dut
 @pytest.mark.asyncio
 async def test_latency(stream_client_uri: str) -> None:
     async with connect(stream_client_uri) as websocket:

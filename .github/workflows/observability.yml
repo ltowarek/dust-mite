@@ -1,0 +1,63 @@
+name: Observability
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  run-checks:
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./observability
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: pip install --disable-pip-version-check --no-cache-dir -r requirements/dev.txt
+
+    - name: Run linters
+      run: ./scripts/run_linters.sh --output-format=github
+    - name: Run formatter
+      run: ./scripts/run_formatter.sh --diff
+    - name: Run type checks
+      run: ./scripts/run_type_checks.sh
+    - name: Run requirements checks
+      run: ./scripts/run_requirements_checks.sh
+
+    - name: Start observability stack
+      run: docker compose -f docker-compose.yml up -d --wait otel-collector tempo victoriametrics pyroscope grafana
+
+    - name: Run synthetic pipeline tests
+      env:
+        GRAFANA_URL: http://localhost:3000
+        OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://localhost:8428/opentelemetry/v1/metrics
+      run: ./scripts/run_tests.sh -- tests/integration
+
+    - name: Stop observability stack
+      if: always()
+      run: docker compose -f docker-compose.yml down
+
+  ci-status-observability:
+    needs: [run-checks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fail if any needed job did not succeed
+      if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+      run: exit 1
