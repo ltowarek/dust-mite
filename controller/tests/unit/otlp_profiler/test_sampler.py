@@ -63,9 +63,7 @@ class TestSampler:
             while not stop_busy.is_set():
                 pass
 
-        busy_thread = threading.Thread(
-            target=_busy, name="busy-thread-samples-test"
-        )
+        busy_thread = threading.Thread(target=_busy, name="busy-thread-samples-test")
         busy_thread.start()
 
         sampler.start()
