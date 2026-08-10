@@ -25,6 +25,7 @@ from .metrics import (
     record_frame,
     record_telemetry_received,
 )
+from .profiling import configure_profiling
 from .tracing import configure_tracing, extract_trace_context, inject_trace_context
 
 logging.basicConfig()
@@ -336,6 +337,7 @@ def main() -> None:
     """Run the main entry point."""
     configure_tracing("dust-mite-streamer")
     configure_metrics("dust-mite-streamer")
+    configure_profiling("dust-mite-streamer")
     try:
         with websockets.sync.server.serve(server_handler, "0.0.0.0", 8765) as server:  # noqa: S104 - intentional, streamer must accept connections from all interfaces
             logger.info("Starting server")

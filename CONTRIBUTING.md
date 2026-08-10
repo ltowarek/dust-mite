@@ -122,6 +122,7 @@ flowchart LR
         OC["OTel Collector\n4317 gRPC / 4318 HTTP"]
         TEMPO["Tempo"]
         VM["VictoriaMetrics\nlocalhost:8428"]
+        PYRO["Pyroscope\n4040"]
         GRAF["Grafana\nlocalhost:3000"]
     end
 
@@ -131,19 +132,23 @@ flowchart LR
     FW -- "OTLP/HTTP metrics" --> VM
     STR -- "OTLP/HTTP traces" --> OC
     STR -- "OTLP/HTTP metrics" --> VM
+    STR -- "OTLP/HTTP profiles (opt-in)" --> OC
     WEB -- "OTLP/HTTP" --> OC
     OC -- "OTLP/gRPC" --> TEMPO
     OC -- "OTLP/HTTP metrics" --> VM
+    OC -- "OTLP/HTTP profiles" --> PYRO
     GRAF -- "TraceQL" --> TEMPO
     GRAF -- "PromQL" --> VM
+    GRAF -- "profiles" --> PYRO
 ```
 
-The observability stack covers distributed tracing and real-time metrics. It comprises four tiers:
+The observability stack covers distributed tracing, real-time metrics, and continuous profiling. It comprises five tiers:
 
-- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo and forwards browser metrics to VictoriaMetrics. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
+- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo, forwards browser metrics to VictoriaMetrics, and forwards profiles to Pyroscope. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
 - **Grafana Tempo** — trace storage and query backend. Configuration: [observability/tempo.yml](observability/tempo.yml).
 - **VictoriaMetrics** (`victoriametrics/victoria-metrics`) — metrics storage. Firmware and Python metrics are pushed directly via OTLP/HTTP; browser metrics arrive via the OTel Collector. Exposes a Prometheus-compatible query API at `http://localhost:8428`. Configuration: none required (all defaults).
-- **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default) and VictoriaMetrics datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
+- **Grafana Pyroscope** (v2 architecture) — continuous profiling storage and query backend, exposed at `http://localhost:4040`. Configuration: [observability/pyroscope.yml](observability/pyroscope.yml). See [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) below. Ingestion is asynchronous — newly received profiles can take up to ~30-40 s to become queryable, unlike traces/metrics.
+- **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default), VictoriaMetrics, and Pyroscope datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
 
 ### Instrumented services
 
@@ -290,6 +295,58 @@ Grafana uses to enable the embedded flame graph.
 Expectations: at 100 Hz/core a 5 ms span catches at most one sample — per-span flame graphs
 are meaningful for spans of tens of milliseconds or when aggregated across many span
 instances. Raise `CONFIG_ESP_OPENTELEMETRY_PROFILING_SAMPLE_HZ` for a session if finer coverage is needed.
+
+### Profiling (Python streamer CPU)
+
+Same rationale as the firmware section above: spans and metrics tell you *which component* is
+slow, the profiler tells you *which code*. Unlike the firmware, this goes through the
+[OpenTelemetry profiles signal](https://opentelemetry.io/docs/concepts/signals/profiles/) end
+to end — a real in-process sampler and OTLP profiles exporter posting directly to the same
+OTel Collector `profiles` pipeline the firmware uses (no symbolizer hop needed: Python
+function names/line numbers are already human-readable at sample time).
+
+The generic sampler/aggregator/exporter live in `controller/src/otlp_profiler/` (no dust-mite
+imports, so it can move into its own package later with no code changes); the streamer-specific
+wiring — reading env vars, deciding whether to start it — is
+`controller/src/controller/profiling.py`.
+
+Exports as real protobuf (not JSON) directly to the collector's OTLP receiver — the observability
+stack's collector/Pyroscope versions are pinned specifically so `opentelemetry-proto`'s generated
+classes are wire-compatible. Its `sample_type`/`period_type` are both `samples`/`count`, matching
+the ESP32 firmware's own choice, so both languages share one Pyroscope profile type
+(`samples:samples:count:samples:count`) and one `tracesToProfilesV2` datasource config.
+
+The sampler filters samples to threads Linux reports as **running** (`R` state) at sample time,
+read from `/proc/<tid>/stat` — a thread parked in `socket.recv()` between messages is excluded,
+rather than counted on every tick it's blocked. It's a Linux-only mechanism, which matches this
+project's deployment (`controller/Dockerfile` is `python:3.12-bookworm`) — there's no non-Linux
+code path to preserve. It's still a point-in-time state check read a few microseconds after the
+stack snapshot, not a computed CPU-time delta, and it doesn't factor in GIL ownership — a thread
+contending for the GIL is typically in `S` state and gets filtered out even though it's using CPU.
+See `controller/src/otlp_profiler/sampler.py`'s module docstring for the full detail.
+
+Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off unless
+`PROFILING_ENABLED` is set to `1`.
+
+To profile a run:
+
+1. `source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh` --
+   loading the existing `.env` first (see [AGENTS.md](AGENTS.md#environment-variables)) keeps any
+   other already-set variables (e.g. `WIFI_SSID`/`WIFI_PASSWORD`) from being reset to placeholders.
+2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
+   `{service_name="dust-mite-streamer"}`, optionally split by `thread_name` — `websockets.sync.server`
+   spawns one thread per connection, so this separates them in the flame graph.
+
+#### Span profiles (trace → flame graph)
+
+Every span (not just the root span of a trace) is stamped with a `pyroscope.profile.id`
+attribute, so any streamer span in Tempo's trace view can show a **Profiles for this span**
+flame graph scoped to exactly that span's duration — including nested spans.
+
+Same sample-rate physics as the firmware: at 100 Hz a span of only a few milliseconds will catch
+zero or one sample. Per-span flame graphs are meaningful for spans of tens of milliseconds or
+longer, or aggregated across many instances of the same span — an empty flame graph on a very
+short span is an expected consequence of the sampling interval.
 
 ## Variants
 
