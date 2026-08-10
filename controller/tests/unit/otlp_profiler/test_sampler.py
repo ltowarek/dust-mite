@@ -53,6 +53,21 @@ class TestSampler:
             export_fn=lambda _time_unix_nano: None,
         )
 
+        # A thread that's actually spinning on CPU is needed here: the main
+        # thread spends nearly all of its time blocked in time.sleep below,
+        # so it's rarely (if ever) in Linux's "R" state when the sampler's
+        # on-CPU filter checks it, making this test flaky without one.
+        stop_busy = threading.Event()
+
+        def _busy() -> None:
+            while not stop_busy.is_set():
+                pass
+
+        busy_thread = threading.Thread(
+            target=_busy, name="busy-thread-samples-test"
+        )
+        busy_thread.start()
+
         sampler.start()
         try:
             deadline = time.monotonic() + 2
@@ -62,6 +77,8 @@ class TestSampler:
                 counts = aggregator.drain()
         finally:
             sampler.stop()
+            stop_busy.set()
+            busy_thread.join()
 
         assert counts
 
