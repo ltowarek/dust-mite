@@ -9,7 +9,7 @@ datasources:
     isDefault: true
     editable: true
     jsonData:
-      tracesToProfilesV2:
+      tracesToProfiles:
         datasourceUid: pyroscope
         profileTypeId: "samples:samples:count:samples:count"
         customQuery: false

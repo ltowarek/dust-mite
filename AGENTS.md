@@ -48,6 +48,12 @@ Grafana is available at `http://localhost:3000` for trace exploration.
 
 All environment variables used anywhere in the project must be declared in [scripts/dump_env.sh](scripts/dump_env.sh) with a sensible default. That script regenerates the root `.env` file; it is the single source of truth for the variable catalogue.
 
+Each variable falls back to `${VAR:-default}` from the *current shell environment*, not from the existing `.env` file. Running the script in a fresh shell silently resets every previously-set value (e.g. real `WIFI_SSID`/`WIFI_PASSWORD`) back to its placeholder default. Load the existing `.env` first with [scripts/load_env.sh](scripts/load_env.sh) so already-defined values survive the regeneration:
+
+```bash
+source scripts/load_env.sh && ./scripts/dump_env.sh
+```
+
 ## Working Rules for Agents
 
 - Treat [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) as authoritative.
