@@ -39,9 +39,21 @@ Available environments:
 - [.devcontainer/python/](.devcontainer/python/) for [controller/](controller/) work (controller app and Raspberry Pi camera service code quality checks)
 - [.devcontainer/cpp/](.devcontainer/cpp/) for [car/](car/) firmware work
 - [.devcontainer/js/](.devcontainer/js/) for [web/](web/) frontend work (bundler, linter, formatter, local dev server)
+- [.devcontainer/observability/](.devcontainer/observability/) for [observability/](observability/) work (datasource/pipeline config, synthetic and real-data pipeline tests)
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
 
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
+
+### Devcontainer ports alongside the headless stack
+
+The Python and JS devcontainers use different host ports than the headless `python`/`js` services, so both can run at the same time:
+
+| Service | Devcontainer (manual) | Main / headless |
+|---|---|---|
+| Python streamer | `ws://localhost:8766` | `ws://localhost:8765` |
+| JS dev server | `http://localhost:5174` | `http://localhost:5173` |
+
+Container-internal ports (`python:8765`, `js:5173`) are unchanged. To point a host browser at the Python devcontainer's streamer directly, override `VITE_WS_URL=ws://localhost:8766` — `.env` defaults to `8765` for the headless/byobu workflows. The C++ devcontainer publishes no ports, so it has no conflict.
 
 ### Open the correct workspace in container
 
@@ -54,14 +66,14 @@ There is currently no dedicated Raspberry Pi devcontainer profile. Use the Pytho
 
 3. Edit [.env](.env) and provide correct values for your setup (for example Wi-Fi SSID/password and other required variables).
 4. Open the target locally first in VS Code:
-   - For [python.code-workspace](python.code-workspace), [cpp.code-workspace](cpp.code-workspace), or [js.code-workspace](js.code-workspace):
+   - For [python.code-workspace](python.code-workspace), [cpp.code-workspace](cpp.code-workspace), [js.code-workspace](js.code-workspace), or [observability.code-workspace](observability.code-workspace):
      1. Run `File: Open Workspace from File...`.
-     2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work, or [js.code-workspace](js.code-workspace) for [web/](web/) work.
+     2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work, [js.code-workspace](js.code-workspace) for [web/](web/) work, or [observability.code-workspace](observability.code-workspace) for [observability/](observability/) work.
    - For docs work: no additional action is required; continue with the repository root opened in step 1.
 5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `devices:` entries in:
    - [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml)
    - [.devcontainer/cpp/docker-compose.yml](.devcontainer/cpp/docker-compose.yml)
-6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, or `Docs`).
+6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, `JavaScript`, `Observability`, or `Docs`).
 
 The container image includes project dependencies and VS Code extensions required for that stack. On first open, the devcontainer installs the controller package into the virtual environment via `postCreateCommand`.
 
@@ -146,7 +158,7 @@ The observability stack covers distributed tracing, real-time metrics, and conti
 
 - **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo, forwards browser metrics to VictoriaMetrics, and forwards profiles to Pyroscope. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
 - **Grafana Tempo** — trace storage and query backend. Configuration: [observability/tempo.yml](observability/tempo.yml).
-- **VictoriaMetrics** (`victoriametrics/victoria-metrics`) — metrics storage. Firmware and Python metrics are pushed directly via OTLP/HTTP; browser metrics arrive via the OTel Collector. Exposes a Prometheus-compatible query API at `http://localhost:8428`. Configuration: none required (all defaults).
+- **VictoriaMetrics** (`victoriametrics/victoria-metrics`) — metrics storage. Firmware and Python metrics are pushed directly via OTLP/HTTP; browser metrics arrive via the OTel Collector. Exposes a Prometheus-compatible query API at `http://localhost:8428`. Configuration: [observability/grafana/provisioning/datasources/victoriametrics.yml](observability/grafana/provisioning/datasources/victoriametrics.yml) sets an explicit datasource `uid` (`victoriametrics`) so it can be referenced by id from `/api/ds/query`; otherwise defaults.
 - **Grafana Pyroscope** (v2 architecture) — continuous profiling storage and query backend, exposed at `http://localhost:4040`. Configuration: [observability/pyroscope.yml](observability/pyroscope.yml). See [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) below. Ingestion is asynchronous — newly received profiles can take up to ~30-40 s to become queryable, unlike traces/metrics.
 - **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default), VictoriaMetrics, and Pyroscope datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
 
@@ -288,7 +300,7 @@ Profiles are linked to traces the same way Go/Python do it; see `esp_task_span_s
 for the mechanism. No changes are needed at span call sites.
 
 In a Tempo trace view, spans carry a **Profiles for this span** link/flame-graph tab
-(provisioned via `tracesToProfilesV2` on the Tempo datasource) showing the CPU sampled while
+(provisioned via `tracesToProfiles` on the Tempo datasource) showing the CPU sampled while
 that exact span was active. Spans are also stamped with the `pyroscope.profile.id` attribute
 Grafana uses to enable the embedded flame graph.
 
@@ -314,7 +326,7 @@ Exports as real protobuf (not JSON) directly to the collector's OTLP receiver �
 stack's collector/Pyroscope versions are pinned specifically so `opentelemetry-proto`'s generated
 classes are wire-compatible. Its `sample_type`/`period_type` are both `samples`/`count`, matching
 the ESP32 firmware's own choice, so both languages share one Pyroscope profile type
-(`samples:samples:count:samples:count`) and one `tracesToProfilesV2` datasource config.
+(`samples:samples:count:samples:count`) and one `tracesToProfiles` datasource config.
 
 The sampler filters samples to threads Linux reports as **running** (`R` state) at sample time,
 read from `/proc/<tid>/stat` — a thread parked in `socket.recv()` between messages is excluded,
@@ -331,8 +343,8 @@ Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off
 To profile a run:
 
 1. `source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh` --
-   loading the existing `.env` first (see [AGENTS.md](AGENTS.md#environment-variables)) keeps any
-   other already-set variables (e.g. `WIFI_SSID`/`WIFI_PASSWORD`) from being reset to placeholders.
+   loading the existing `.env` first keeps any other already-set variables (e.g.
+   `WIFI_SSID`/`WIFI_PASSWORD`) from being reset to placeholders.
 2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-streamer"}`, optionally split by `thread_name` — `websockets.sync.server`
    spawns one thread per connection, so this separates them in the flame graph.
@@ -347,6 +359,34 @@ Same sample-rate physics as the firmware: at 100 Hz a span of only a few millise
 zero or one sample. Per-span flame graphs are meaningful for spans of tens of milliseconds or
 longer, or aggregated across many instances of the same span — an empty flame graph on a very
 short span is an expected consequence of the sampling interval.
+
+### Observability tests
+
+In the Observability devcontainer, the workspace opens at `/workspaces/dust-mite/observability`.
+
+```bash
+./scripts/run_checks.sh
+./scripts/run_tests.sh
+```
+
+Two test tiers:
+
+- **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
+- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI.
+
+Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
+
+```bash
+source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh
+```
+
+Run from the Observability devcontainer with `--dut`:
+
+```bash
+./scripts/run_tests.sh -- tests/e2e --dut
+```
+
+Dependencies use [pip-compile-multi](https://pypi.org/project/pip-compile-multi/), same as [controller/](controller/): edit `requirements/base.in`/`requirements/dev.in`, then run `./scripts/update_requirements.sh` (or `upgrade_requirements.sh`/`upgrade_package.sh <name>`).
 
 ## Variants
 
@@ -392,14 +432,14 @@ If checks fail, apply automatic fixes:
 ### Controller test types
 
 - Unit tests: validate individual controller modules and functions in isolation using focused test doubles where needed; implemented in [controller/tests/unit/](controller/tests/unit/).
-- Integration tests: validate interactions across controller boundaries (for example websocket communication and packet flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/).
+- Integration tests: validate interactions across controller boundaries (for example websocket communication and packet flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/). Some require a real, connected device and are marked `@pytest.mark.dut` — skipped by default, run with `./scripts/run_tests.sh -- tests/integration --dut`, never run in CI.
 - E2E tests: validate full user-level control flows across the complete stack (controller input to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
 
 Run specific suites:
 
 ```bash
-./scripts/run_tests.sh tests/unit
-./scripts/run_tests.sh tests/integration
+./scripts/run_tests.sh -- tests/unit
+./scripts/run_tests.sh -- tests/integration
 ```
 
 ### Raspberry Pi camera service ([controller/src/controller/rpi/camera.py](controller/src/controller/rpi/camera.py))

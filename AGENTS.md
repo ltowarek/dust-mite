@@ -28,7 +28,7 @@ This file is a lightweight navigation guide for coding agents.
 - Web frontend code: [web/](web/)
 - Documentation and variant material: [docs/](docs/)
 - Repo-level automation and helper scripts: [scripts/](scripts/)
-- Observability stack, tracing architecture, and service names: [CONTRIBUTING.md](CONTRIBUTING.md#observability)
+- Observability stack, tracing architecture, service names, and pipeline tests (synthetic + real-data): [CONTRIBUTING.md](CONTRIBUTING.md#observability)
 
 ## Running the Full Stack (Headless)
 
@@ -62,7 +62,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes. When adding or removing a metric, update the metrics table in the relevant variant document under [docs/variants/](docs/variants/).
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
-- Code comments should explain *why*, not restate *what* the code does. Do not annotate imports/includes with what they provide (e.g. no `#include "x.hpp"  // some_function`).
+- Code comments should explain *why*, not restate *what* the code does. Do not annotate imports/includes with what they provide (e.g. no `#include "x.hpp"  // some_function`). State the fact or invariant itself, not how or when it was discovered — no "confirmed this session," "measured empirically," "has been observed to," or similar. Write what's true, not the investigation that found it.
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 
 ## Validation by Area
@@ -71,6 +71,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - For controller changes, use scripts under [controller/scripts/](controller/scripts/).
 - For web frontend changes, use scripts under [web/scripts/](web/scripts/).
 - For car firmware changes, use scripts and build flow under [car/scripts/](car/scripts/) and [CONTRIBUTING.md](CONTRIBUTING.md).
+- For observability changes, use scripts under [observability/scripts/](observability/scripts/). `observability/tests/integration/` (synthetic data) always runs, including in CI; `observability/tests/e2e/` (real data, requires headless stack running) is DUT-gated and on-demand only. See [CONTRIBUTING.md#observability-tests](CONTRIBUTING.md#observability-tests).
 - For repo-wide checks/hooks, use [scripts/](scripts/).
 - For full-stack E2E tests (requires headless stack running), exec into the `test-runner` container: `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack`. The test-runner starts with the headless stack in standby mode; no separate devcontainer session is needed. These on-demand tests do not run in CI.
 
@@ -82,6 +83,7 @@ For VS Code Dev Container workflow see [CONTRIBUTING.md#development-environment]
 docker compose --env-file .env -f .devcontainer/cpp/docker-compose.yml up -d --build cpp
 docker compose --env-file .env -f .devcontainer/python/docker-compose.yml up -d --build python
 docker compose --env-file .env -f .devcontainer/js/docker-compose.yml up -d --build js
+docker compose --env-file .env -f .devcontainer/observability/docker-compose.yml up -d --build observability
 ```
 
 `--env-file .env` supplies `UID`/`GID` (written by [scripts/dump_env.sh](scripts/dump_env.sh)) to the `build.args` and `user:` in each devcontainer compose, so the container is built and run as the **host user**. All dev/build/check containers then share the host uid and the bind-mounted workspace, `build/`, and caches stay writable — no `chown` workarounds needed. (Without `.env`, the images fall back to uid `1050` and stay portable.)
@@ -91,6 +93,7 @@ docker compose --env-file .env -f .devcontainer/js/docker-compose.yml up -d --bu
 - **Python:** `docker exec -w /workspaces/dust-mite/controller <container> ./scripts/run_checks.sh`
 - **JS:** `docker exec -w /workspaces/dust-mite/web <container> ./scripts/run_checks.sh`
 - **C++:** `docker exec -w /workspaces/dust-mite/car <container> ./scripts/pre-commit.sh`
+- **Observability:** `docker exec -w /workspaces/dust-mite/observability <container> ./scripts/run_checks.sh`
 
 ## Docs and Generated Artifacts
 

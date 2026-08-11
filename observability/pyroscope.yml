@@ -9,3 +9,6 @@ limits:
   ingestion_relabeling_rules:
     - action: labeldrop
       regex: "service\\.name"
+
+  # Skip "auto" split-time resolution (metastore lookup, cached for 1min on a miss) -- there's no v1 data to preserve here.
+  enable_query_backend_from: "1970-01-01T00:00:00Z"

@@ -23,7 +23,10 @@ legacy_tox_ini = """
     [testenv]
     package = editable
     deps = -r requirements/dev.txt
-    commands = pytest tests/ --cov=src --cov-report=xml:coverage.xml --junitxml=results.xml -o junit_family=legacy {posargs}
+    passenv =
+        STREAM_CLIENT_URI
+        TELEMETRY_CLIENT_URI
+    commands = pytest --cov=src --cov-report=xml:coverage.xml --junitxml=results.xml -o junit_family=legacy {posargs:tests/}
 """
 
 [tool.mypy]
@@ -64,6 +67,7 @@ unfixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D"]
+"conftest.py" = ["INP001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"

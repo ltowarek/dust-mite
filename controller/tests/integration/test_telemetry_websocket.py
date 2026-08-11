@@ -5,15 +5,13 @@ import time
 import pytest
 from websockets.asyncio.client import connect
 
-skip_dut_test = pytest.mark.skip(reason="DUT test")
-
 
 @pytest.fixture
 def telemetry_client_uri() -> str:
-    return os.environ.get("TELEMETRY_CLIENT_URI", "ws://localhost:8765/telemetry")
+    return os.getenv("TELEMETRY_CLIENT_URI", "ws://localhost:8765/telemetry")
 
 
-@skip_dut_test
+@pytest.mark.dut
 @pytest.mark.asyncio
 async def test_performance(telemetry_client_uri: str) -> None:
     packet_count = 100
@@ -29,7 +27,7 @@ async def test_performance(telemetry_client_uri: str) -> None:
     assert pps >= expected
 
 
-@skip_dut_test
+@pytest.mark.dut
 @pytest.mark.asyncio
 async def test_latency(telemetry_client_uri: str) -> None:
     async with connect(telemetry_client_uri) as websocket:
