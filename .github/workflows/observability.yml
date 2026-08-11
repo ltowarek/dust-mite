@@ -49,6 +49,20 @@ jobs:
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://localhost:8428/opentelemetry/v1/metrics
       run: ./scripts/run_tests.sh -- tests/integration
 
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: observability/results.xml
+        flags: observability
+        fail_ci_if_error: false
+        report_type: test_results
+
+    - name: Dump container logs on failure
+      if: failure()
+      run: docker compose -f docker-compose.yml logs
+
     - name: Stop observability stack
       if: always()
       run: docker compose -f docker-compose.yml down

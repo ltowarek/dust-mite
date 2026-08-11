@@ -11,7 +11,7 @@ legacy_tox_ini = """
         GRAFANA_URL
         OTEL_EXPORTER_OTLP_ENDPOINT
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
-    commands = pytest {posargs:tests/}
+    commands = pytest --junitxml=results.xml -o junit_family=legacy {posargs:tests/}
 """
 
 [tool.mypy]
