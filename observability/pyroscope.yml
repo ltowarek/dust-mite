@@ -10,12 +10,5 @@ limits:
     - action: labeldrop
       regex: "service\\.name"
 
-  # "auto" (the default) resolves the v1/v2 read-path split by asking the
-  # metastore for the tenant's oldest v2 profile time, and caches a negative
-  # answer for a full minute if the metastore doesn't have it yet. For a
-  # brand-new tenant (true in every CI run, since the stack is fresh each
-  # time) that negative answer can stay cached indefinitely under CPU
-  # contention, so every query keeps falling back to the empty v1 path.
-  # Pinning this to a fixed timestamp in the past skips that lookup and its
-  # caching entirely -- there's no v1 data to preserve here anyway.
+  # Skip "auto" split-time resolution (metastore lookup, cached for 1min on a miss) -- there's no v1 data to preserve here.
   enable_query_backend_from: "1970-01-01T00:00:00Z"
