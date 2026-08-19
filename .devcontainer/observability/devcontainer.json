@@ -40,7 +40,7 @@
                     "otlp",
                     "pyroscope",
                     "tempo",
-                    "victoriametrics",
+                    "mimir",
                     "traceparent",
                     "tracestate",
                     "pytest",

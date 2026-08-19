@@ -52,6 +52,6 @@ direct_dependencies:
 - espressif/esp32-camera
 - espressif/esp_gcov
 - idf
-manifest_hash: 828ba29bedec26137b74cfd5a5ea6a0de9a45facb65cd30a01f5b001625f1c4f
+manifest_hash: 595d94262d66efbdaa38e418b85634f748cdccd56ef797b92113482ce0a83413
 target: esp32s3
 version: 3.0.0

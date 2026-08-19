@@ -172,49 +172,49 @@ void system_metrics_setup() {
   size_t idx = 0;
 
   s_instruments[idx] =
-      meter->CreateInt64ObservableGauge("dust_mite.free_heap_bytes", "Free heap", "By");
+      meter->CreateInt64ObservableGauge("dust_mite_free_heap_bytes", "Free heap", "By");
   s_instruments[idx]->AddCallback(cb_free_heap, nullptr);
   idx++;
 
-  s_instruments[idx] = meter->CreateInt64ObservableGauge("dust_mite.min_free_heap_bytes",
+  s_instruments[idx] = meter->CreateInt64ObservableGauge("dust_mite_min_free_heap_bytes",
                                                          "Min free heap since boot", "By");
   s_instruments[idx]->AddCallback(cb_min_free_heap, nullptr);
   idx++;
 
 #ifdef CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
   s_instruments[idx] = meter->CreateInt64ObservableGauge(
-      "dust_mite.largest_free_block_bytes", "Largest contiguous free heap block", "By");
+      "dust_mite_largest_free_block_bytes", "Largest contiguous free heap block", "By");
   s_instruments[idx]->AddCallback(cb_largest_free_block, nullptr);
   idx++;
 #endif
 
-  s_instruments[idx] = meter->CreateInt64ObservableGauge("dust_mite.internal_free_heap_bytes",
+  s_instruments[idx] = meter->CreateInt64ObservableGauge("dust_mite_internal_free_heap_bytes",
                                                          "Free internal SRAM heap", "By");
   s_instruments[idx]->AddCallback(cb_internal_free_heap, nullptr);
   idx++;
 
   s_instruments[idx] =
-      meter->CreateInt64ObservableGauge("dust_mite.free_psram_bytes", "Free PSRAM", "By");
+      meter->CreateInt64ObservableGauge("dust_mite_free_psram_bytes", "Free PSRAM", "By");
   s_instruments[idx]->AddCallback(cb_free_psram, nullptr);
   idx++;
 
   s_instruments[idx] =
-      meter->CreateDoubleObservableGauge("dust_mite.uptime", "Uptime since boot", "s");
+      meter->CreateDoubleObservableGauge("dust_mite_uptime", "Uptime since boot", "s");
   s_instruments[idx]->AddCallback(cb_uptime, nullptr);
   idx++;
 
   s_instruments[idx] =
-      meter->CreateDoubleObservableGauge("dust_mite.temperature", "Die temperature", "Cel");
+      meter->CreateDoubleObservableGauge("dust_mite_temperature", "Die temperature", "Cel");
   s_instruments[idx]->AddCallback(cb_temperature, nullptr);
   idx++;
 
 #ifdef CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
   s_instruments[idx] =
-      meter->CreateDoubleObservableGauge("dust_mite.task_cpu_usage", "Per-task CPU usage", "%");
+      meter->CreateDoubleObservableGauge("dust_mite_task_cpu_usage", "Per-task CPU usage", "%");
   s_instruments[idx]->AddCallback(cb_task_cpu_usage, nullptr);
   idx++;
 
-  s_instruments[idx] = meter->CreateInt64ObservableGauge("dust_mite.task_priority",
+  s_instruments[idx] = meter->CreateInt64ObservableGauge("dust_mite_task_priority",
                                                          "Per-task FreeRTOS priority", "1");
   s_instruments[idx]->AddCallback(cb_task_priority, nullptr);
   idx++;

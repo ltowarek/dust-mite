@@ -4,7 +4,7 @@ menu "System metrics"
         depends on ESP_OPENTELEMETRY_METRICS_ENABLED
         default n
         help
-            Collects dust_mite.task_cpu_usage and dust_mite.task_priority via
+            Collects dust_mite_task_cpu_usage and dust_mite_task_priority via
             FreeRTOS uxTaskGetSystemState(), which suspends the scheduler while
             it walks every task. FreeRTOS documents this whole API family as
             debug-only, not for production use. On this board it can disrupt
@@ -17,7 +17,7 @@ menu "System metrics"
         depends on ESP_OPENTELEMETRY_METRICS_ENABLED
         default n
         help
-            Collects dust_mite.largest_free_block_bytes via
+            Collects dust_mite_largest_free_block_bytes via
             heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), which walks
             every allocated and free block (via tlsf_walk_pool()) under a
             heap lock, for both the internal SRAM heap and the PSRAM heap.

@@ -4,7 +4,7 @@ import websockets
 from pytest_embedded import Dut
 
 
-def test_web_server(dut: Dut) -> None:
+def test_web_server_endpoints_reachable(dut: Dut) -> None:
     match = dut.expect(r'sta ip: (\d+\.\d+\.\d+\.\d+)', timeout=30)
     ip = match.group(1).decode()
 

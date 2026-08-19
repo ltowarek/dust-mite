@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 // In the headless stack, the js service sets VITE_WS_URL=ws://python:8765.
 // Traces go to otel-collector:4318 via VITE_OTLP_ENDPOINT.
-// Metrics go from the browser to otel-collector:4318 (VITE_OTLP_METRICS_ENDPOINT), which forwards to VictoriaMetrics.
+// Metrics go from the browser to otel-collector:4318 (VITE_OTLP_METRICS_ENDPOINT), which forwards to Mimir.
 
 const wsUrl = process.env.VITE_WS_URL;
 
@@ -43,7 +43,7 @@ test("receives live telemetry", async ({ page }) => {
 });
 
 // Requires the car to be connected and the camera to be active.
-// Verifies that the browser exports dust_mite.frames_displayed to VictoriaMetrics via the OTel Collector.
+// Verifies that the browser exports dust_mite_frames_displayed to Mimir via the OTel Collector.
 test("exports frames_displayed metric", async ({ page, request }) => {
   await page.goto("/");
 
@@ -52,11 +52,13 @@ test("exports frames_displayed metric", async ({ page, request }) => {
     timeout: 10000,
   });
 
-  // Allow time for the 500 ms OTLP export cycle to reach VictoriaMetrics.
+  // Allow time for the 500 ms OTLP export cycle to reach Mimir.
   await page.waitForTimeout(2000);
 
-  const response = await request.get("http://victoriametrics:8428/api/v1/query", {
-    params: { query: 'dust_mite.frames_displayed{service_name="dust-mite-web"}' },
+  // Mimir's OTLP receiver maps the OTel resource attribute service.name to
+  // the Prometheus "job" label, not a literal "service_name" label.
+  const response = await request.get("http://mimir:8080/prometheus/api/v1/query", {
+    params: { query: 'dust_mite_frames_displayed{job="dust-mite-web"}' },
   });
   const data = await response.json();
   expect(data.data.result.length).toBeGreaterThan(0);

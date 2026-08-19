@@ -1,10 +1,10 @@
 apiVersion: 1
 
 datasources:
-  - name: VictoriaMetrics
-    uid: victoriametrics
+  - name: Mimir
+    uid: mimir
     type: prometheus
-    url: http://victoriametrics:8428
+    url: http://mimir:8080/prometheus
     access: proxy
     isDefault: false
     editable: false
