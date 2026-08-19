@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-bookworm
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
@@ -24,6 +25,7 @@ RUN pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements/
 WORKDIR /home/$USERNAME/workspace/controller
 
 COPY --chown=$USERNAME:$USERNAME . .
-RUN pip install --disable-pip-version-check --no-cache-dir .
+RUN --mount=type=bind,from=root,source=.git,target=/home/$USERNAME/workspace/.git \
+    pip install --disable-pip-version-check --no-cache-dir .
 
 CMD ["streamer"]

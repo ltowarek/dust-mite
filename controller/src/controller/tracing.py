@@ -12,6 +12,12 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
+from controller.otel import (
+    current_repository,
+    resolve_current_git_ref,
+    resolve_vcs_attributes,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,7 +58,10 @@ def configure_tracing(service_name: str) -> None:
         )
         return
     exporter = OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces")
-    resource = Resource.create({SERVICE_NAME: service_name})
+    vcs_attributes = resolve_vcs_attributes(
+        current_repository(), resolve_current_git_ref()
+    )
+    resource = Resource.create({SERVICE_NAME: service_name, **vcs_attributes})
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)

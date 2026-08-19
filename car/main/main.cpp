@@ -14,8 +14,21 @@
 #include "telemetry_metrics.hpp"
 #include "system_metrics.hpp"
 #include "wifi.hpp"
+#include "esp_git_ref.hpp"
 #include "esp_opentelemetry.hpp"
 #include "sdkconfig.h"
+
+static opentelemetry::sdk::resource::ResourceAttributes otel_resource_attributes() {
+  opentelemetry::sdk::resource::ResourceAttributes attrs = {
+      {"service.name", CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME}};
+  const char* repository = CONFIG_ESP_OPENTELEMETRY_SERVICE_REPOSITORY;
+  const char* git_ref = esp_opentelemetry::current_git_ref();
+  if (repository[0] != '\0' && git_ref[0] != '\0') {
+    attrs.SetAttribute("vcs.repository.url.full", repository);
+    attrs.SetAttribute("vcs.ref.head.revision", git_ref);
+  }
+  return attrs;
+}
 
 static i2c_master_bus_handle_t i2c_bus_init() {
   i2c_master_bus_config_t bus_cfg = {};
@@ -43,8 +56,9 @@ extern "C" void app_main() {
 
   // Must run before web_server_setup() can activate a span: profiling's RuntimeContextStorage swap
   // and tracing's provider both must be installed before the first span is created.
-  esp_opentelemetry_tracing_setup(CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME);
-  esp_opentelemetry_metrics_setup();
+  const opentelemetry::sdk::resource::ResourceAttributes resource_attrs = otel_resource_attributes();
+  esp_opentelemetry_tracing_setup(resource_attrs);
+  esp_opentelemetry_metrics_setup(resource_attrs);
   esp_opentelemetry_profiling_setup();
 
   motor_setup(command_queue);

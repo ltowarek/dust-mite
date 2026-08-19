@@ -64,6 +64,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
 - Code comments should explain *why*, not restate *what* the code does. Do not annotate imports/includes with what they provide (e.g. no `#include "x.hpp"  // some_function`). State the fact or invariant itself, not how or when it was discovered — no "confirmed this session," "measured empirically," "has been observed to," or similar. Write what's true, not the investigation that found it.
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
+- Before running a build/compile command (`idf.py build`/`reconfigure`, `docker compose build`, etc.), check `free -h` for available memory, not just that no other build is already running — background containers idling can hold enough RAM on their own to make the difference. Run one such command at a time; don't queue more until it finishes.
 
 ## Validation by Area
 
@@ -86,7 +87,7 @@ docker compose --env-file .env -f .devcontainer/js/docker-compose.yml up -d --bu
 docker compose --env-file .env -f .devcontainer/observability/docker-compose.yml up -d --build observability
 ```
 
-`--env-file .env` supplies `UID`/`GID` (written by [scripts/dump_env.sh](scripts/dump_env.sh)) to the `build.args` and `user:` in each devcontainer compose, so the container is built and run as the **host user**. All dev/build/check containers then share the host uid and the bind-mounted workspace, `build/`, and caches stay writable — no `chown` workarounds needed. (Without `.env`, the images fall back to uid `1050` and stay portable.)
+`--env-file .env` supplies `USER_UID`/`USER_GID` (written by [scripts/dump_env.sh](scripts/dump_env.sh)) to the `build.args` and `user:` in each devcontainer compose, so the container is built and run as the **host user**. All dev/build/check containers then share the host uid and the bind-mounted workspace, `build/`, and caches stay writable — no `chown` workarounds needed. (Without `.env`, the images fall back to uid `1050` and stay portable.)
 
 ## Running Pre-commit Checks
 

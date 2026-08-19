@@ -61,7 +61,11 @@ def push_span(endpoint: str, service_name: str, span_name: str) -> None:
     provider.shutdown()
 
 
-def push_profile(endpoint: str, service_name: str) -> None:
+def push_profile(
+    endpoint: str,
+    service_name: str,
+    resource_attributes: dict[str, str] | None = None,
+) -> None:
     """POST one minimal, valid synthetic OTLP profile directly.
 
     No OTel SDK support exists for this signal, so this builds the protobuf
@@ -89,13 +93,16 @@ def push_profile(endpoint: str, service_name: str) -> None:
         period=1,
         profile_id=os.urandom(16),
     )
-    resource = resource_pb2.Resource(
-        attributes=[
-            common_pb2.KeyValue(
-                key="service.name", value=common_pb2.AnyValue(string_value=service_name)
-            )
-        ]
-    )
+    attributes = [
+        common_pb2.KeyValue(
+            key="service.name", value=common_pb2.AnyValue(string_value=service_name)
+        )
+    ]
+    for key, value in (resource_attributes or {}).items():
+        attributes.append(
+            common_pb2.KeyValue(key=key, value=common_pb2.AnyValue(string_value=value))
+        )
+    resource = resource_pb2.Resource(attributes=attributes)
     request = profiles_service_pb2.ExportProfilesServiceRequest(
         resource_profiles=[
             profiles_pb2.ResourceProfiles(

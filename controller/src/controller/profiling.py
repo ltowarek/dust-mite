@@ -4,10 +4,12 @@ import logging
 import os
 
 import otlp_profiler
+from controller.otel import current_repository, resolve_current_git_ref
 
 logger = logging.getLogger(__name__)
 
 _ENABLED_VALUE = "1"
+_ROOT_PATH = "controller"
 
 
 def resolve_endpoint(profiling_enabled: str, endpoint: str | None) -> str | None:
@@ -30,6 +32,18 @@ def resolve_endpoint(profiling_enabled: str, endpoint: str | None) -> str | None
     return endpoint
 
 
+def resolve_source_attributes(
+    repository: str, git_ref: str, root_path: str
+) -> dict[str, str]:
+    """Return the Pyroscope GitHub source-linking resource attributes."""
+    if not repository or not git_ref:
+        return {}
+    attributes = {"service_repository": repository, "service_git_ref": git_ref}
+    if root_path:
+        attributes["service_root_path"] = root_path
+    return attributes
+
+
 def configure_profiling(service_name: str) -> None:
     """Configure continuous CPU profiling for `service_name`.
 
@@ -47,4 +61,10 @@ def configure_profiling(service_name: str) -> None:
     if endpoint is None:
         return
 
-    otlp_profiler.configure(service_name, endpoint)
+    resource_attributes = resolve_source_attributes(
+        current_repository(), resolve_current_git_ref(), _ROOT_PATH
+    )
+
+    otlp_profiler.configure(
+        service_name, endpoint, resource_attributes=resource_attributes
+    )

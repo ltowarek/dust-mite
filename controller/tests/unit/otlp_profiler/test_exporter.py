@@ -129,3 +129,32 @@ class TestBuildRequest:
             if kv.key == "service.name"
         ]
         assert names == ["svc"]
+
+    def test_resource_attributes_are_added_when_given(self) -> None:
+        request = exporter.build_request(
+            _sample_counts(),
+            "svc",
+            100,
+            1,
+            500_000_000,
+            resource_attributes={"service_repository": "https://github.com/o/r"},
+        )
+
+        resource = request.resource_profiles[0].resource
+        values = {kv.key: kv.value.string_value for kv in resource.attributes}
+        assert values["service_repository"] == "https://github.com/o/r"
+        assert values["service.name"] == "svc"
+
+    def test_no_extra_resource_attributes_when_none(self) -> None:
+        with_none = exporter.build_request(
+            _sample_counts(), "svc", 100, 1, 500_000_000, resource_attributes=None
+        )
+        without_arg = exporter.build_request(
+            _sample_counts(), "svc", 100, 1, 500_000_000
+        )
+
+        assert len(with_none.resource_profiles[0].resource.attributes) == 1
+        assert (
+            with_none.resource_profiles[0].resource
+            == without_arg.resource_profiles[0].resource
+        )

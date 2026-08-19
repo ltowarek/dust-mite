@@ -6,6 +6,7 @@ Linux-only: on-CPU filtering reads `/proc/<tid>/stat` (see
 
 import logging
 import threading
+from collections.abc import Mapping
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -32,6 +33,7 @@ def configure(
     endpoint: str,
     sample_rate: int = _DEFAULT_SAMPLE_RATE,
     export_interval_ms: int = _DEFAULT_EXPORT_INTERVAL_MS,
+    resource_attributes: Mapping[str, str] | None = None,
 ) -> None:
     """Start continuous profiling and attach span/profile linking.
 
@@ -63,6 +65,7 @@ def configure(
                         sample_rate,
                         time_unix_nano,
                         duration_nano,
+                        resource_attributes=resource_attributes,
                     )
                 except Exception:
                     logger.exception("failed to export profiles")
