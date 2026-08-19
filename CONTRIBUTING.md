@@ -276,10 +276,10 @@ To profile a build:
 
 1. Bring up the stack (`./scripts/start_headless.sh`) — it includes `pyroscope` and
    `profiling-symbolizer`.
-2. Build/flash the firmware with the profiling overlay (enables the sampler, the
+2. Build the firmware with the profiling overlay (enables the sampler, the
    span→profile task slot, and the symbolizer endpoint; see
-   [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)):
-   `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.profiling" idf.py build flash`
+   [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)), then flash it:
+   `./scripts/run_build.sh --profiling . && idf.py flash`
    Symbols need no publishing step: the symbolizer mounts `car/` and finds the
    matching ELF by hash (the profile `build_id` equals the ELF's sha256).
 3. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
@@ -342,9 +342,9 @@ Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off
 
 To profile a run:
 
-1. `source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh` --
-   loading the existing `.env` first keeps any other already-set variables (e.g.
-   `WIFI_SSID`/`WIFI_PASSWORD`) from being reset to placeholders.
+1. `./scripts/enable_profiling.sh && ./scripts/start_headless.sh` — sets `PROFILING_ENABLED=1`
+   in `.env` (preserving any other already-set variables, e.g. `WIFI_SSID`/`WIFI_PASSWORD`),
+   then brings up the stack.
 2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-streamer"}`, optionally split by `thread_name` — `websockets.sync.server`
    spawns one thread per connection, so this separates them in the flame graph.
@@ -359,6 +359,59 @@ Same sample-rate physics as the firmware: at 100 Hz a span of only a few millise
 zero or one sample. Per-span flame graphs are meaningful for spans of tens of milliseconds or
 longer, or aggregated across many instances of the same span — an empty flame graph on a very
 short span is an expected consequence of the sampling interval.
+
+### Source-code linking (GitHub)
+
+Pyroscope's [source-code integration](https://grafana.com/docs/pyroscope/latest/view-and-analyze-profile-data/line-by-line/)
+shows the actual GitHub source line next to a sampled frame in a flame graph's Function Details
+panel, instead of just a function name. It requires two things: profiling data tagged with three
+resource attributes, and a self-hosted Pyroscope server configured with a GitHub OAuth App.
+
+**Resource attributes.** `service_repository` and `service_git_ref` are mandatory;
+`service_root_path` is optional (the subtree within the repository where a given service's code
+lives).
+
+- **Python streamer**: `SERVICE_REPOSITORY`/`SERVICE_ROOT_PATH` env vars, catalogued in
+  `scripts/dump_env.sh`. `service_git_ref` comes from the installed `controller` package's own
+  version (`setuptools_scm`, derived from git at `pip install .` time) rather than an env var, so
+  it can't go stale relative to `.env`. `controller/Dockerfile` bind-mounts `.git` for that one
+  install step only, via `additional_contexts: {root: .}` in `docker-compose.yml`.
+- **Car firmware**: `service_repository`/`service_root_path` are static Kconfig options, set in
+  `car/sdkconfig.defaults`. `service_git_ref` comes from ESP-IDF's own `esp_app_desc_t.version`
+  (`git describe` at build time), read via `esp_git_ref.cpp`. Confirmed working on real hardware.
+
+**Path mapping.** Frames carry the absolute path baked in at build time (the container's install
+or build path), not a repo-relative one, so per-line source display additionally needs a
+`.pyroscope.yaml` translating one to the other. `controller/.pyroscope.yaml` and `car/.pyroscope.yaml`
+do this; Pyroscope fetches them from the pushed GitHub ref, so they take effect only once committed
+and pushed, not from a local checkout.
+
+`.pyroscope.yaml`'s `language` field only documents `go`/`java`/`python`/`javascript`; there's no
+documented value for C++, so `car/.pyroscope.yaml` uses `cpp`, which is unconfirmed.
+
+**GitHub App setup (manual, one-time).** Pyroscope's self-hosted GitHub integration still requires
+a GitHub OAuth App even for a public repository — the "Connect to GitHub" flow in the Function
+Details panel runs regardless of repository visibility. The only simplification a public repo
+gets is that the App needs no extra permissions (no Contents/Metadata read scopes).
+
+1. GitHub → **Settings** → **Developer settings** → **GitHub Apps** → **New GitHub App**.
+   Callback URL: `http://localhost:3000/a/grafana-pyroscope-app/github/callback` (adjust the host
+   if Grafana is reached differently than this repo's documented `http://localhost:3000`).
+2. Generate a client secret for the App.
+3. Set the three secrets and regenerate `.env`, preserving existing values:
+
+   ```bash
+   source scripts/load_env.sh && GITHUB_CLIENT_ID=<id> GITHUB_CLIENT_SECRET=<secret> \
+     GITHUB_SESSION_SECRET=$(openssl rand -hex 32) ./scripts/dump_env.sh
+   ```
+
+   `GITHUB_SESSION_SECRET` has no auto-generated default in `dump_env.sh` for the same reason
+   `service_git_ref` avoids `.env`: a computed default would silently mint a fresh secret — and
+   invalidate every existing Pyroscope OAuth session — on any unrelated `dump_env.sh` run.
+
+**Verification.** Grafana → **Explore** → **Pyroscope** → `{service_name="dust-mite-streamer"}` →
+open a flame graph → click a frame → **Function Details** should show the GitHub source line
+inline.
 
 ### Observability tests
 

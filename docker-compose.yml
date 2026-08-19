@@ -19,6 +19,8 @@ services:
     build:
       context: ./controller
       dockerfile: Dockerfile
+      additional_contexts:
+        root: .
     env_file:
       - path: .env
     # devices:
@@ -78,9 +80,9 @@ services:
       context: .
       dockerfile: .devcontainer/js/Dockerfile
       args:
-        USER_UID: "${UID:-1050}"
-        USER_GID: "${GID:-1050}"
-    user: "${UID:-1050}:${GID:-1050}"
+        USER_UID: "${USER_UID:-1050}"
+        USER_GID: "${USER_GID:-1050}"
+    user: "${USER_UID:-1050}:${USER_GID:-1050}"
     volumes:
       - .:/workspaces/dust-mite
     working_dir: /workspaces/dust-mite/web

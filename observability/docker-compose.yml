@@ -24,6 +24,10 @@ services:
     command:
       - "-config.file=/etc/pyroscope/config.yml"
       - "-self-profiling.disable-push=true"
+    environment:
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:-}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:-}"
+      GITHUB_SESSION_SECRET: "${GITHUB_SESSION_SECRET:-}"
     volumes:
       - ./pyroscope.yml:/etc/pyroscope/config.yml:ro
     ports:

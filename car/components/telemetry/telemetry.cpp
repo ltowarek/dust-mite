@@ -55,15 +55,21 @@ static i2c_master_dev_handle_t g_imu_g_dev = NULL;
 #define URM_ECHO_PIN GPIO_NUM_17
 #define URM_TRIG_PIN GPIO_NUM_16
 
+#define SNTP_MAX_ATTEMPTS 5
+
 void sync_time() {
   ESP_LOGI(TAG, "Initializing SNTP");
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
   esp_netif_sntp_init(&config);
 
-  while (esp_netif_sntp_sync_wait(2000 / portTICK_PERIOD_MS) == ESP_ERR_TIMEOUT) {
+  for (int attempt = 0; attempt < SNTP_MAX_ATTEMPTS; ++attempt) {
+    if (esp_netif_sntp_sync_wait(2000 / portTICK_PERIOD_MS) != ESP_ERR_TIMEOUT) {
+      ESP_LOGI(TAG, "Set system time");
+      return;
+    }
     ESP_LOGI(TAG, "Waiting for system time to be set...");
   }
-  ESP_LOGI(TAG, "Set system time");
+  ESP_LOGW(TAG, "SNTP sync timed out after %d attempts; continuing without it", SNTP_MAX_ATTEMPTS);
 }
 
 void get_timestamp(char* buf) {

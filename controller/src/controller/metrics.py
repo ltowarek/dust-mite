@@ -10,6 +10,12 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
+from controller.otel import (
+    current_repository,
+    resolve_current_git_ref,
+    resolve_vcs_attributes,
+)
+
 logger = logging.getLogger(__name__)
 
 _metrics: SimpleNamespace = SimpleNamespace(
@@ -32,7 +38,10 @@ def configure_metrics(service_name: str, provider: MeterProvider | None = None) 
         endpoint_url = os.environ["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"]
         exporter = OTLPMetricExporter(endpoint=endpoint_url)
         reader = PeriodicExportingMetricReader(exporter, export_interval_millis=500)
-        resource = Resource.create({SERVICE_NAME: service_name})
+        vcs_attributes = resolve_vcs_attributes(
+            current_repository(), resolve_current_git_ref()
+        )
+        resource = Resource.create({SERVICE_NAME: service_name, **vcs_attributes})
         provider = MeterProvider(resource=resource, metric_readers=[reader])
         otel_metrics.set_meter_provider(provider)
 

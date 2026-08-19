@@ -1,0 +1,9 @@
+version: v1
+source_code:
+  mappings:
+    - path:
+        - prefix: /workspaces/dust-mite/car
+      language: cpp
+      source:
+        local:
+          path: .

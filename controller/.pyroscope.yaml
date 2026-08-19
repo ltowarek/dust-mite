@@ -1,0 +1,9 @@
+version: v1
+source_code:
+  mappings:
+    - path:
+        - prefix: /home/dustmite/venv/lib/python3.12/site-packages/controller
+      language: python
+      source:
+        local:
+          path: src/controller

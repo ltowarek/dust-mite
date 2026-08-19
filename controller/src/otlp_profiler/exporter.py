@@ -7,7 +7,7 @@ Serializes as real protobuf. `sample_type`/`period_type` default to
 
 import dataclasses
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import requests
 from opentelemetry.proto.collector.profiles.v1development import (
@@ -187,6 +187,7 @@ def build_request(  # noqa: PLR0913 -- each param is an independent OTLP field
     time_unix_nano: int,
     duration_nano: int,
     profile_type: ProfileType = _DEFAULT_PROFILE_TYPE,
+    resource_attributes: Mapping[str, str] | None = None,
 ) -> profiles_service_pb2.ExportProfilesServiceRequest:
     """Build one `ExportProfilesServiceRequest` from a drained aggregate."""
     dictionary = _DictionaryBuilder()
@@ -213,14 +214,17 @@ def build_request(  # noqa: PLR0913 -- each param is an independent OTLP field
         profile_id=os.urandom(16),
     )
 
-    resource = resource_pb2.Resource(
-        attributes=[
-            common_pb2.KeyValue(
-                key=SERVICE_NAME,
-                value=common_pb2.AnyValue(string_value=service_name),
-            )
-        ]
-    )
+    attributes = [
+        common_pb2.KeyValue(
+            key=SERVICE_NAME,
+            value=common_pb2.AnyValue(string_value=service_name),
+        )
+    ]
+    for key, value in (resource_attributes or {}).items():
+        attributes.append(
+            common_pb2.KeyValue(key=key, value=common_pb2.AnyValue(string_value=value))
+        )
+    resource = resource_pb2.Resource(attributes=attributes)
     scope_profiles = profiles_pb2.ScopeProfiles(profiles=[profile])
     resource_profiles = profiles_pb2.ResourceProfiles(
         resource=resource, scope_profiles=[scope_profiles]
@@ -262,6 +266,7 @@ def export(  # noqa: PLR0913 -- each param is an independent OTLP field
     time_unix_nano: int,
     duration_nano: int,
     profile_type: ProfileType = _DEFAULT_PROFILE_TYPE,
+    resource_attributes: Mapping[str, str] | None = None,
 ) -> None:
     """Build and send one export covering `counts` from the last interval."""
     if not counts:
@@ -273,5 +278,6 @@ def export(  # noqa: PLR0913 -- each param is an independent OTLP field
         time_unix_nano=time_unix_nano,
         duration_nano=duration_nano,
         profile_type=profile_type,
+        resource_attributes=resource_attributes,
     )
     send(endpoint, request)

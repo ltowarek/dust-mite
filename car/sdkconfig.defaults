@@ -42,6 +42,8 @@ CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED=y
 CONFIG_ESP_OPENTELEMETRY_TRACING_OTLP_BASE_URL="http://192.168.50.222:4318"
 CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL="http://192.168.50.222:8428/opentelemetry"
 CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME="dust-mite-car"
+CONFIG_ESP_OPENTELEMETRY_SERVICE_REPOSITORY="https://github.com/ltowarek/dust-mite"
+CONFIG_ESP_OPENTELEMETRY_SERVICE_ROOT_PATH="car"
 
 # BatchSpanProcessor creates a std::thread (via pthreads) that serialises
 # spans to protobuf and POSTs them over HTTP. 3 KB (the IDF default) is far
