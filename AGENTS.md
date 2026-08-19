@@ -29,6 +29,7 @@ This file is a lightweight navigation guide for coding agents.
 - Documentation and variant material: [docs/](docs/)
 - Repo-level automation and helper scripts: [scripts/](scripts/)
 - Observability stack, tracing architecture, service names, and pipeline tests (synthetic + real-data): [CONTRIBUTING.md](CONTRIBUTING.md#observability)
+- GitHub issue label taxonomy (type and component labels): [CONTRIBUTING.md](CONTRIBUTING.md#issue-labels)
 
 ## Running the Full Stack (Headless)
 
