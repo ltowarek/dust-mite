@@ -56,7 +56,8 @@ extern "C" void app_main() {
 
   // Must run before web_server_setup() can activate a span: profiling's RuntimeContextStorage swap
   // and tracing's provider both must be installed before the first span is created.
-  const opentelemetry::sdk::resource::ResourceAttributes resource_attrs = otel_resource_attributes();
+  const opentelemetry::sdk::resource::ResourceAttributes resource_attrs =
+      otel_resource_attributes();
   esp_opentelemetry_tracing_setup(resource_attrs);
   esp_opentelemetry_metrics_setup(resource_attrs);
   esp_opentelemetry_profiling_setup();
