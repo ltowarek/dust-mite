@@ -13,6 +13,7 @@ This file is a lightweight navigation guide for coding agents.
 4. [Working Rules for Agents](#working-rules-for-agents)
 5. [Validation by Area](#validation-by-area)
 6. [Docs and Generated Artifacts](#docs-and-generated-artifacts)
+7. [Agent Skills](#agent-skills)
 
 ## Start Here
 
@@ -123,3 +124,17 @@ cat /tmp/monitor.txt
 When rebuilding after a `sdkconfig.defaults` or Kconfig change, delete only
 `sdkconfig` (not the whole `build/` directory) — IDF detects the stale config
 and reconfigures automatically, avoiding a full rebuild.
+
+## Agent Skills
+
+### Issue tracker
+
+Issues live in [ltowarek/dust-mite GitHub Issues](https://github.com/ltowarek/dust-mite/issues); skills use the `gh` CLI. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+The five canonical triage roles, using the role names as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) — a separate axis from this repo's type/component labels ([CONTRIBUTING.md#issue-labels](CONTRIBUTING.md#issue-labels)). See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root, created lazily as needed. See [docs/agents/domain.md](docs/agents/domain.md).
