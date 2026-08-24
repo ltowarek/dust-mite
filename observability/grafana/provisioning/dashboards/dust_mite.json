@@ -65,7 +65,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.rssi",
+          "expr": "dust_mite_rssi",
           "legendFormat": "RSSI"
         }
       ]
@@ -110,7 +110,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.temperature",
+          "expr": "dust_mite_temperature",
           "legendFormat": "Die temp"
         }
       ]
@@ -163,7 +163,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.uptime",
+          "expr": "dust_mite_uptime",
           "legendFormat": "Uptime"
         }
       ]
@@ -208,7 +208,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.free_heap_bytes",
+          "expr": "dust_mite_free_heap_bytes",
           "legendFormat": "Free heap"
         },
         {
@@ -216,7 +216,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.min_free_heap_bytes",
+          "expr": "dust_mite_min_free_heap_bytes",
           "legendFormat": "Min free (watermark)"
         }
       ]
@@ -261,7 +261,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.free_psram_bytes",
+          "expr": "dust_mite_free_psram_bytes",
           "legendFormat": "Free PSRAM"
         }
       ]
@@ -306,7 +306,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.internal_free_heap_bytes",
+          "expr": "dust_mite_internal_free_heap_bytes",
           "legendFormat": "Free internal SRAM"
         }
       ]
@@ -351,7 +351,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.largest_free_block_bytes",
+          "expr": "dust_mite_largest_free_block_bytes",
           "legendFormat": "Largest block"
         }
       ]
@@ -417,7 +417,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "dust_mite.task_cpu_usage{core=\"0\",task!~\"IDLE.*\"}",
+              "expr": "dust_mite_task_cpu_usage{core=\"0\",task!~\"IDLE.*\"}",
               "legendFormat": "{{task}}"
             }
           ]
@@ -471,7 +471,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "dust_mite.task_cpu_usage{core=\"1\",task!~\"IDLE.*\"}",
+              "expr": "dust_mite_task_cpu_usage{core=\"1\",task!~\"IDLE.*\"}",
               "legendFormat": "{{task}}"
             }
           ]
@@ -520,7 +520,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "dust_mite.task_priority{core=\"0\",task!~\"IDLE.*\"}",
+              "expr": "dust_mite_task_priority{core=\"0\",task!~\"IDLE.*\"}",
               "legendFormat": "{{task}}"
             }
           ]
@@ -569,7 +569,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "dust_mite.task_priority{core=\"1\",task!~\"IDLE.*\"}",
+              "expr": "dust_mite_task_priority{core=\"1\",task!~\"IDLE.*\"}",
               "legendFormat": "{{task}}"
             }
           ]
@@ -628,7 +628,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.speed",
+          "expr": "dust_mite_speed",
           "legendFormat": "Speed"
         }
       ]
@@ -690,7 +690,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.distance_ahead",
+          "expr": "dust_mite_distance_ahead",
           "legendFormat": "Distance ahead"
         }
       ]
@@ -747,7 +747,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.accelerometer.x",
+          "expr": "dust_mite_accelerometer_x",
           "legendFormat": "X"
         },
         {
@@ -755,7 +755,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.accelerometer.y",
+          "expr": "dust_mite_accelerometer_y",
           "legendFormat": "Y"
         },
         {
@@ -763,7 +763,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.accelerometer.z",
+          "expr": "dust_mite_accelerometer_z",
           "legendFormat": "Z"
         }
       ]
@@ -808,7 +808,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.gyroscope.x",
+          "expr": "dust_mite_gyroscope_x",
           "legendFormat": "X"
         },
         {
@@ -816,7 +816,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.gyroscope.y",
+          "expr": "dust_mite_gyroscope_y",
           "legendFormat": "Y"
         },
         {
@@ -824,7 +824,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.gyroscope.z",
+          "expr": "dust_mite_gyroscope_z",
           "legendFormat": "Z"
         }
       ]
@@ -869,7 +869,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.magnetometer.x",
+          "expr": "dust_mite_magnetometer_x",
           "legendFormat": "X"
         },
         {
@@ -877,7 +877,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.magnetometer.y",
+          "expr": "dust_mite_magnetometer_y",
           "legendFormat": "Y"
         },
         {
@@ -885,7 +885,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.magnetometer.z",
+          "expr": "dust_mite_magnetometer_z",
           "legendFormat": "Z"
         }
       ]
@@ -942,7 +942,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.frames_processed[10s])",
+          "expr": "rate(dust_mite_frames_processed[10s])",
           "legendFormat": "Frames/s"
         }
       ]
@@ -987,7 +987,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.telemetry_packets_received[10s])",
+          "expr": "rate(dust_mite_telemetry_packets_received[10s])",
           "legendFormat": "Packets/s"
         }
       ]
@@ -1032,7 +1032,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.commands_sent[10s])",
+          "expr": "rate(dust_mite_commands_sent[10s])",
           "legendFormat": "Commands/s"
         }
       ]
@@ -1077,7 +1077,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.frames_sent[10s])",
+          "expr": "rate(dust_mite_frames_sent[10s])",
           "legendFormat": "Firmware"
         },
         {
@@ -1085,7 +1085,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.frames_processed[10s])",
+          "expr": "rate(dust_mite_frames_processed[10s])",
           "legendFormat": "Streamer"
         },
         {
@@ -1093,7 +1093,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite.frames_displayed[10s])",
+          "expr": "rate(dust_mite_frames_displayed[10s])",
           "legendFormat": "Browser"
         }
       ]
@@ -1149,7 +1149,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.camera.frame_size_bytes",
+          "expr": "dust_mite_camera_frame_size_bytes",
           "legendFormat": "Peak frame size"
         },
         {
@@ -1157,7 +1157,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "dust_mite.camera.frame_buffer_bytes",
+          "expr": "dust_mite_camera_frame_buffer_bytes",
           "legendFormat": "Buffer limit"
         }
       ]
@@ -1218,7 +1218,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(dust_mite.camera.frame_size_bytes) / max(dust_mite.camera.frame_buffer_bytes) * 100",
+          "expr": "max(dust_mite_camera_frame_size_bytes) / max(dust_mite_camera_frame_buffer_bytes) * 100",
           "legendFormat": "Buffer used"
         }
       ]

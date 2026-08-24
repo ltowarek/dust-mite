@@ -45,15 +45,15 @@ void camera_metrics_setup() {
       CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME, "1.0.0");
 
   s_frames_captured =
-      meter->CreateUInt64Counter("dust_mite.frames_captured", "Camera frames captured", "{frame}");
+      meter->CreateUInt64Counter("dust_mite_frames_captured", "Camera frames captured", "{frame}");
 
   s_frame_size = meter->CreateInt64ObservableGauge(
-      "dust_mite.camera.frame_size_bytes", "Peak delivered JPEG frame size since last collection",
+      "dust_mite_camera_frame_size_bytes", "Peak delivered JPEG frame size since last collection",
       "By");
   s_frame_size->AddCallback(cb_frame_size, nullptr);
 
   s_frame_buffer = meter->CreateInt64ObservableGauge(
-      "dust_mite.camera.frame_buffer_bytes", "JPEG frame-buffer capacity (drop limit)", "By");
+      "dust_mite_camera_frame_buffer_bytes", "JPEG frame-buffer capacity (drop limit)", "By");
   s_frame_buffer->AddCallback(cb_frame_buffer, nullptr);
 #endif
 }

@@ -15,7 +15,7 @@ import requests
 
 TEMPO_UID = "tempo"
 PYROSCOPE_UID = "pyroscope"
-VICTORIAMETRICS_UID = "victoriametrics"
+MIMIR_UID = "mimir"
 
 _PROFILE_TOTAL_ROW = (
     1  # an empty flame graph still returns one row -- see has_profile_samples
@@ -87,7 +87,7 @@ def _has_any_rows(result: dict[str, Any]) -> bool:
 
 
 def has_metrics(result: dict[str, Any]) -> bool:
-    """True if a Prometheus (VictoriaMetrics) query result has any rows."""
+    """True if a Prometheus query result has any rows."""
     return _has_any_rows(result)
 
 
@@ -171,15 +171,7 @@ def wait_for_metrics(  # noqa: PLR0913 -- each param independently configures th
     timeout: float = 60.0,
     interval: float = 2.0,
 ) -> dict[str, Any]:
-    """Poll until a metrics query result has data, or `timeout` elapses.
-
-    A single freshly-pushed metric is not queryable instantly: VictoriaMetrics
-    takes roughly 5-30s to index a brand-new series, varying with its own
-    flush/indexing cycle rather than request latency. An already-flowing,
-    minutes-old stream (what the e2e suite checks) looks instant by
-    comparison, but a synthetic single-sample push races this indexing delay
-    every time, hence polling with a safety margin instead of querying once.
-    """
+    """Poll until a metrics query result has data, or `timeout` elapses."""
     return _wait_for(
         has_metrics,
         datasource_uid,

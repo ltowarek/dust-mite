@@ -86,28 +86,28 @@ void telemetry_metrics_setup() {
   static_assert(kNumInstruments == 12,
                 "Update kNumInstruments when adding or removing instruments");
 
-  s_instruments[0] = meter->CreateInt64ObservableGauge("dust_mite.rssi", "WiFi RSSI", "dBm");
-  s_instruments[1] = meter->CreateDoubleObservableGauge("dust_mite.speed", "Car speed", "km/h");
+  s_instruments[0] = meter->CreateInt64ObservableGauge("dust_mite_rssi", "WiFi RSSI", "dBm");
+  s_instruments[1] = meter->CreateDoubleObservableGauge("dust_mite_speed", "Car speed", "km/h");
   s_instruments[2] =
-      meter->CreateInt64ObservableGauge("dust_mite.distance_ahead", "Ultrasonic distance", "cm");
+      meter->CreateInt64ObservableGauge("dust_mite_distance_ahead", "Ultrasonic distance", "cm");
   s_instruments[3] =
-      meter->CreateDoubleObservableGauge("dust_mite.accelerometer.x", "Accelerometer X", "g");
+      meter->CreateDoubleObservableGauge("dust_mite_accelerometer_x", "Accelerometer X", "g");
   s_instruments[4] =
-      meter->CreateDoubleObservableGauge("dust_mite.accelerometer.y", "Accelerometer Y", "g");
+      meter->CreateDoubleObservableGauge("dust_mite_accelerometer_y", "Accelerometer Y", "g");
   s_instruments[5] =
-      meter->CreateDoubleObservableGauge("dust_mite.accelerometer.z", "Accelerometer Z", "g");
+      meter->CreateDoubleObservableGauge("dust_mite_accelerometer_z", "Accelerometer Z", "g");
   s_instruments[6] =
-      meter->CreateDoubleObservableGauge("dust_mite.magnetometer.x", "Magnetometer X", "G");
+      meter->CreateDoubleObservableGauge("dust_mite_magnetometer_x", "Magnetometer X", "G");
   s_instruments[7] =
-      meter->CreateDoubleObservableGauge("dust_mite.magnetometer.y", "Magnetometer Y", "G");
+      meter->CreateDoubleObservableGauge("dust_mite_magnetometer_y", "Magnetometer Y", "G");
   s_instruments[8] =
-      meter->CreateDoubleObservableGauge("dust_mite.magnetometer.z", "Magnetometer Z", "G");
+      meter->CreateDoubleObservableGauge("dust_mite_magnetometer_z", "Magnetometer Z", "G");
   s_instruments[9] =
-      meter->CreateDoubleObservableGauge("dust_mite.gyroscope.x", "Gyroscope X", "deg/s");
+      meter->CreateDoubleObservableGauge("dust_mite_gyroscope_x", "Gyroscope X", "deg/s");
   s_instruments[10] =
-      meter->CreateDoubleObservableGauge("dust_mite.gyroscope.y", "Gyroscope Y", "deg/s");
+      meter->CreateDoubleObservableGauge("dust_mite_gyroscope_y", "Gyroscope Y", "deg/s");
   s_instruments[11] =
-      meter->CreateDoubleObservableGauge("dust_mite.gyroscope.z", "Gyroscope Z", "deg/s");
+      meter->CreateDoubleObservableGauge("dust_mite_gyroscope_z", "Gyroscope Z", "deg/s");
 
   s_instruments[0]->AddCallback(cb_rssi, nullptr);
   s_instruments[1]->AddCallback(cb_speed, nullptr);

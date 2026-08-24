@@ -40,13 +40,13 @@ jobs:
       run: ./scripts/run_requirements_checks.sh
 
     - name: Start observability stack
-      run: docker compose -f docker-compose.yml up -d --wait otel-collector tempo victoriametrics pyroscope grafana
+      run: docker compose -f docker-compose.yml up -d --wait otel-collector tempo mimir pyroscope grafana
 
     - name: Run synthetic pipeline tests
       env:
         GRAFANA_URL: http://localhost:3000
         OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
-        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://localhost:8428/opentelemetry/v1/metrics
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://localhost:8080/otlp/v1/metrics
       run: ./scripts/run_tests.sh -- tests/integration
 
     - name: Upload test results to Codecov

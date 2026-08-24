@@ -58,16 +58,14 @@ services:
     networks:
       - dust-mite-observability
 
-  victoriametrics:
-    image: victoriametrics/victoria-metrics:v1.110.0
+  mimir:
+    image: grafana/mimir:3.2.0
+    command: ["-config.file=/etc/mimir.yml"]
+    volumes:
+      - ./mimir.yml:/etc/mimir.yml:ro
     ports:
-      - "8428:8428"   # HTTP API (Prometheus-compatible + OTLP ingestion)
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+      - "8080:8080"   # HTTP API (Prometheus-compatible + OTLP ingestion)
+    # No healthcheck: the official image ships no shell/wget/curl to run one (grafana/mimir#9034).
     networks:
       - dust-mite-observability
 
@@ -82,7 +80,7 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     depends_on:
       - tempo
-      - victoriametrics
+      - mimir
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
       interval: 5s

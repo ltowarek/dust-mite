@@ -55,10 +55,10 @@ services:
       file: observability/docker-compose.yml
       service: tempo
 
-  victoriametrics:
+  mimir:
     extends:
       file: observability/docker-compose.yml
-      service: victoriametrics
+      service: mimir
 
   grafana:
     extends:

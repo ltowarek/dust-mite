@@ -48,17 +48,17 @@ def configure_metrics(service_name: str, provider: MeterProvider | None = None) 
     meter = provider.get_meter(__name__)
 
     _metrics.frames_processed = meter.create_counter(
-        "dust_mite.frames_processed",
+        "dust_mite_frames_processed",
         unit="{frame}",
         description="Number of camera frames processed",
     )
     _metrics.telemetry_packets_received = meter.create_counter(
-        "dust_mite.telemetry_packets_received",
+        "dust_mite_telemetry_packets_received",
         unit="{packet}",
         description="Number of telemetry packets received from the car",
     )
     _metrics.commands_sent = meter.create_counter(
-        "dust_mite.commands_sent",
+        "dust_mite_commands_sent",
         unit="{command}",
         description="Number of drive commands sent to the car",
     )

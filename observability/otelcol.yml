@@ -15,8 +15,8 @@ exporters:
     tls:
       insecure: true
 
-  otlp_http/victoriametrics:
-    endpoint: http://victoriametrics:8428/opentelemetry
+  otlp_http/mimir:
+    endpoint: http://mimir:8080/otlp
     tls:
       insecure: true
 
@@ -34,7 +34,7 @@ service:
 
     metrics:
       receivers: [otlp]
-      exporters: [otlp_http/victoriametrics]
+      exporters: [otlp_http/mimir]
 
     profiles:
       receivers: [otlp]

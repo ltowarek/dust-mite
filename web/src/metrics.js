@@ -18,7 +18,7 @@ export function setupMetrics() {
     ],
   });
   const meter = provider.getMeter("dust-mite-web");
-  _framesDisplayed = meter.createCounter("dust_mite.frames_displayed", {
+  _framesDisplayed = meter.createCounter("dust_mite_frames_displayed", {
     description: "Browser frames rendered",
     unit: "{frame}",
   });

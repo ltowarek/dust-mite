@@ -133,7 +133,7 @@ flowchart LR
     subgraph observability ["Observability"]
         OC["OTel Collector\n4317 gRPC / 4318 HTTP"]
         TEMPO["Tempo"]
-        VM["VictoriaMetrics\nlocalhost:8428"]
+        MIMIR["Mimir\nlocalhost:8080"]
         PYRO["Pyroscope\n4040"]
         GRAF["Grafana\nlocalhost:3000"]
     end
@@ -141,51 +141,52 @@ flowchart LR
     FW -- "WebSocket + traceparent" --> STR
     STR -- "WebSocket + traceparent" --> WEB
     FW -- "OTLP/HTTP traces" --> OC
-    FW -- "OTLP/HTTP metrics" --> VM
+    FW -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP traces" --> OC
-    STR -- "OTLP/HTTP metrics" --> VM
+    STR -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP profiles (opt-in)" --> OC
     WEB -- "OTLP/HTTP" --> OC
     OC -- "OTLP/gRPC" --> TEMPO
-    OC -- "OTLP/HTTP metrics" --> VM
+    OC -- "OTLP/HTTP metrics" --> MIMIR
     OC -- "OTLP/HTTP profiles" --> PYRO
     GRAF -- "TraceQL" --> TEMPO
-    GRAF -- "PromQL" --> VM
+    GRAF -- "PromQL" --> MIMIR
     GRAF -- "profiles" --> PYRO
 ```
 
 The observability stack covers distributed tracing, real-time metrics, and continuous profiling. It comprises five tiers:
 
-- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo, forwards browser metrics to VictoriaMetrics, and forwards profiles to Pyroscope. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
+- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo, forwards browser metrics to Mimir, and forwards profiles to Pyroscope. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
 - **Grafana Tempo** — trace storage and query backend. Configuration: [observability/tempo.yml](observability/tempo.yml).
-- **VictoriaMetrics** (`victoriametrics/victoria-metrics`) — metrics storage. Firmware and Python metrics are pushed directly via OTLP/HTTP; browser metrics arrive via the OTel Collector. Exposes a Prometheus-compatible query API at `http://localhost:8428`. Configuration: [observability/grafana/provisioning/datasources/victoriametrics.yml](observability/grafana/provisioning/datasources/victoriametrics.yml) sets an explicit datasource `uid` (`victoriametrics`) so it can be referenced by id from `/api/ds/query`; otherwise defaults.
+- **Grafana Mimir** (single-tenant) — metrics storage, exposing a Prometheus-compatible query API under `http://localhost:8080/prometheus`. Configuration: [observability/mimir.yml](observability/mimir.yml).
 - **Grafana Pyroscope** (v2 architecture) — continuous profiling storage and query backend, exposed at `http://localhost:4040`. Configuration: [observability/pyroscope.yml](observability/pyroscope.yml). See [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) below. Ingestion is asynchronous — newly received profiles can take up to ~30-40 s to become queryable, unlike traces/metrics.
-- **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default), VictoriaMetrics, and Pyroscope datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
+- **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default), Mimir, and Pyroscope datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
 
 ### Instrumented services
 
-All three services export traces via OTLP/HTTP to the OTel Collector and metrics directly to VictoriaMetrics:
+All three services export traces via OTLP/HTTP to the OTel Collector and metrics directly to Mimir:
 
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
 | ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
-| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://victoriametrics:8428/opentelemetry/v1/metrics`) |
+| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
 | Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `http://localhost:4318`) via OTel Collector |
 
 The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
 
 ### Metrics
 
-The set of emitted metrics is variant-specific. See the variant documentation in [docs/variants/](docs/variants/) for the full list. When adding or removing a metric, update the metrics table in the relevant variant document.
+The set of emitted metrics is variant-specific. See the variant documentation in [docs/variants/](docs/variants/) for the full list. When adding or removing a metric, update the metrics table in the relevant variant document. Metric names use underscores (`dust_mite_rssi`), not dots — Mimir's OTLP ingestion normalizes dots to underscores at write time, and its PromQL grammar rejects dotted names outright at query time, so instrumentation, dashboards, and tests all use the underscore form to match what's actually queryable.
 
 To verify the metrics pipeline is working:
 
 ```bash
-# Query VictoriaMetrics (populated once metrics are being emitted):
-curl -s 'http://localhost:8428/api/v1/query?query=up' | python3 -m json.tool
+# Query Mimir (populated once metrics are being emitted); Mimir's Prometheus-
+# compatible API is mounted under /prometheus:
+curl -s 'http://localhost:8080/prometheus/api/v1/query?query=up' | python3 -m json.tool
 
 # Check a specific firmware metric:
-curl -s 'http://localhost:8428/api/v1/query?query=dust_mite_task_cpu_usage_percent' | python3 -m json.tool
+curl -s 'http://localhost:8080/prometheus/api/v1/query?query=dust_mite_task_cpu_usage' | python3 -m json.tool
 ```
 
 ### Cross-service trace propagation
@@ -575,7 +576,7 @@ Run specific suites:
 
 ### Full-stack E2E tests
 
-`tests/e2e/full_stack.test.js` runs Playwright against the real running stack. The `js` service bakes Docker-network service names into the served JavaScript, so the browser connects directly to the Python streamer and VictoriaMetrics without any URL patching.
+`tests/e2e/full_stack.test.js` runs Playwright against the real running stack. The `js` service bakes Docker-network service names into the served JavaScript, so the browser connects directly to the Python streamer and Mimir without any URL patching.
 
 Some tests require the car to be connected and active. Prerequisites: start the headless stack first.
 
@@ -589,7 +590,7 @@ The headless stack includes the `test-runner` service (built from the JS devcont
 docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack
 ```
 
-The test-runner connects to the `js` and `victoriametrics` containers over the Docker network; no port forwarding to the host is required.
+The test-runner connects to the `js` and `mimir` containers over the Docker network; no port forwarding to the host is required.
 
 The Vite dev server on port 5173 is provided by the `js` service. For visual inspection, open `http://localhost:5173` directly in a host browser.
 

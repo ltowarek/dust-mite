@@ -41,16 +41,16 @@ def test_record_frame(reader: InMemoryMetricReader) -> None:
     calls = 2
     for _ in range(calls):
         record_frame()
-    assert _counter_value(reader, "dust_mite.frames_processed") == calls
+    assert _counter_value(reader, "dust_mite_frames_processed") == calls
 
 
 def test_record_telemetry_received(reader: InMemoryMetricReader) -> None:
     record_telemetry_received()
-    assert _counter_value(reader, "dust_mite.telemetry_packets_received") == 1
+    assert _counter_value(reader, "dust_mite_telemetry_packets_received") == 1
 
 
 def test_record_command_sent(reader: InMemoryMetricReader) -> None:
     calls = 3
     for _ in range(calls):
         record_command_sent()
-    assert _counter_value(reader, "dust_mite.commands_sent") == calls
+    assert _counter_value(reader, "dust_mite_commands_sent") == calls
