@@ -11,6 +11,17 @@ This repository is an experimental platform, and contributions that improve tech
 - Follow classical TDD: use real collaborators in tests instead of mocks or stubs.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
 
+## Issue labels
+
+Every issue should carry one type label and at least one component label.
+
+- **Type** — `bug`, `enhancement`, `documentation`.
+- **Component** — `web`, `camera`, `telemetry`, `infrastructure`, `observability`, `drive`, `teleop`. Each names a functional subsystem, not a root directory, so a subsystem can move between [car/](car/) and [controller/](controller/) across variants without invalidating its label.
+
+See each label's description on the [GitHub labels page](https://github.com/ltowarek/dust-mite/labels) for what it covers.
+
+Don't add a new label without a recurring, evidenced need — an unused label is noise.
+
 ## Prerequisites
 
 - Docker
