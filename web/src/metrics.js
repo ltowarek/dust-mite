@@ -11,7 +11,7 @@ export function setupMetrics() {
     readers: [
       new PeriodicExportingMetricReader({
         exporter: new OTLPMetricExporter({
-          url: `${import.meta.env.VITE_OTLP_METRICS_ENDPOINT ?? import.meta.env.VITE_OTLP_ENDPOINT ?? "http://localhost:4318"}/v1/metrics`,
+          url: `${import.meta.env.VITE_OTLP_METRICS_ENDPOINT ?? "/otlp"}/v1/metrics`,
         }),
         exportIntervalMillis: 500,
       }),
