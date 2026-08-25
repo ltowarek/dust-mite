@@ -18,6 +18,15 @@ export default defineConfig({
     host: true,
     port: 5173,
     allowedHosts: ["js"],
+    proxy: {
+      // Mimir has no CORS support, so the browser's OTLP metrics exporter
+      // can't POST to it cross-origin. Proxying keeps the request
+      // same-origin (to this dev server) so no CORS header is needed.
+      "/otlp": {
+        target: "http://mimir:8080",
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     environment: "jsdom",

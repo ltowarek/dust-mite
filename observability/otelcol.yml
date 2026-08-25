@@ -15,11 +15,6 @@ exporters:
     tls:
       insecure: true
 
-  otlp_http/mimir:
-    endpoint: http://mimir:8080/otlp
-    tls:
-      insecure: true
-
   otlp_http/pyroscope:
     endpoint: http://pyroscope:4040
     compression: none
@@ -31,10 +26,6 @@ service:
     traces:
       receivers: [otlp]
       exporters: [otlp_grpc/tempo]
-
-    metrics:
-      receivers: [otlp]
-      exporters: [otlp_http/mimir]
 
     profiles:
       receivers: [otlp]

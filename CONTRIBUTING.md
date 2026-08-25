@@ -156,9 +156,9 @@ flowchart LR
     STR -- "OTLP/HTTP traces" --> OC
     STR -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP profiles (opt-in)" --> OC
-    WEB -- "OTLP/HTTP" --> OC
+    WEB -- "OTLP/HTTP traces" --> OC
+    WEB -- "OTLP/HTTP metrics" --> MIMIR
     OC -- "OTLP/gRPC" --> TEMPO
-    OC -- "OTLP/HTTP metrics" --> MIMIR
     OC -- "OTLP/HTTP profiles" --> PYRO
     GRAF -- "TraceQL" --> TEMPO
     GRAF -- "PromQL" --> MIMIR
@@ -167,7 +167,7 @@ flowchart LR
 
 The observability stack covers distributed tracing, real-time metrics, and continuous profiling. It comprises five tiers:
 
-- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo, forwards browser metrics to Mimir, and forwards profiles to Pyroscope. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
+- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo and forwards profiles to Pyroscope. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
 - **Grafana Tempo** — trace storage and query backend. Configuration: [observability/tempo.yml](observability/tempo.yml).
 - **Grafana Mimir** (single-tenant) — metrics storage, exposing a Prometheus-compatible query API under `http://localhost:8080/prometheus`. Configuration: [observability/mimir.yml](observability/mimir.yml).
 - **Grafana Pyroscope** (v2 architecture) — continuous profiling storage and query backend, exposed at `http://localhost:4040`. Configuration: [observability/pyroscope.yml](observability/pyroscope.yml). See [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) below. Ingestion is asynchronous — newly received profiles can take up to ~30-40 s to become queryable, unlike traces/metrics.
@@ -181,9 +181,11 @@ All three services export traces via OTLP/HTTP to the OTel Collector and metrics
 |---|---|---|---|
 | ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
 | Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
-| Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `http://localhost:4318`) via OTel Collector |
+| Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `/otlp`), proxied by Vite straight to Mimir |
 
 The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
+
+Mimir has no CORS support (no config option to set `Access-Control-Allow-Origin`), so a browser page can't POST metrics to it cross-origin. `web/vite.config.js`'s dev server proxies its own `/otlp` path straight to Mimir, keeping the browser's request same-origin — no CORS header is ever needed. Traces still go through the OTel Collector, whose receiver has CORS enabled, since that path isn't proxied.
 
 ### Metrics
 
