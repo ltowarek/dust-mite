@@ -11,7 +11,13 @@ export function setupMetrics() {
     readers: [
       new PeriodicExportingMetricReader({
         exporter: new OTLPMetricExporter({
-          url: `${import.meta.env.VITE_OTLP_METRICS_ENDPOINT ?? "/otlp"}/v1/metrics`,
+          // OTel's URL validation rejects relative URLs, so resolve against
+          // the page's own origin — VITE_OTLP_METRICS_ENDPOINT is relative
+          // (proxied by Vite's dev server) by default.
+          url: new URL(
+            `${import.meta.env.VITE_OTLP_METRICS_ENDPOINT ?? "/otlp"}/v1/metrics`,
+            window.location.origin,
+          ).toString(),
         }),
         exportIntervalMillis: 500,
       }),
