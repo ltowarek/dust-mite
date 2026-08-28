@@ -25,7 +25,6 @@ def _make_tracer_provider() -> TracerProvider:
 
 @pytest.fixture
 def exporter() -> Generator[InMemoryLogRecordExporter, None, None]:
-    # opentelemetry-sdk's logs API ships without a typed __init__ here.
     log_exporter = InMemoryLogRecordExporter()  # type: ignore[no-untyped-call]
     log_provider = LoggerProvider()
     log_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
