@@ -2,8 +2,10 @@ import pytest
 
 from tests.helpers.query import LOKI_UID, has_logs, logql_query, query
 
-# No real component emits logs yet.
-CASES: list[tuple[str, str]] = []
+CASES: list[tuple[str, str]] = [
+    ("dust-mite-streamer", "Starting server"),
+    ("dust-mite-controller", "Sending new command with value"),
+]
 
 
 @pytest.mark.dut

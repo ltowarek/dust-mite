@@ -206,6 +206,20 @@ curl -s 'http://localhost:8080/prometheus/api/v1/query?query=up' | python3 -m js
 curl -s 'http://localhost:8080/prometheus/api/v1/query?query=dust_mite_task_cpu_usage' | python3 -m json.tool
 ```
 
+### Logs
+
+The Python controller package bridges its existing standard-library `logging` output into OTel
+rather than introducing a separate structured logging vocabulary. `configure_logging(service_name)` in
+[controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
+`opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
+`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. It's
+called from both `controller.py` (gamepad CLI) and `streamer.py` (always-on service) — unlike
+metrics/profiling, which today only reach the streamer. Log records reuse the same shared
+`vcs.*` resource-attribute helpers tracing already uses, and route through the same
+`OTEL_EXPORTER_OTLP_ENDPOINT` collector endpoint as traces (not the metrics bypass-to-Mimir
+pattern). No log-level filtering is added — both entry points already run at `DEBUG`, and
+everything already being logged, including `DEBUG`, ships as-is.
+
 ### Cross-service trace propagation
 
 W3C `traceparent` is embedded as a field in every WebSocket JSON packet, linking spans across the firmware → streamer → browser path:

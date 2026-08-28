@@ -9,6 +9,7 @@ import websockets.sync.client
 from opentelemetry import trace
 from pydualsense import pydualsense
 
+from .logging import configure_logging
 from .tracing import configure_tracing, inject_trace_context
 
 logging.basicConfig()
@@ -111,6 +112,7 @@ def control(ws_conn: websockets.sync.client.ClientConnection, ds: pydualsense) -
 def main() -> None:
     """Run the main entry point."""
     configure_tracing("dust-mite-controller")
+    configure_logging("dust-mite-controller")
     controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
 
     ws_conn = websockets.sync.client.connect(controller_client_uri)
