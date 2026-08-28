@@ -214,10 +214,8 @@ void ws_stream_task(void* p) {
     active = false;
     camera_stop();
     ESP_LOGI(TAG, "Stream stopped");
-    if (connection_span) {
-      connection_span->End();
-      connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
-    }
+    connection_span->End();
+    connection_span = nullptr;
   };
 
   while (true) {
@@ -350,10 +348,8 @@ void ws_telemetry_task(void* p) {
     active = false;
     telemetry_stop();
     ESP_LOGI(TAG, "Telemetry stopped");
-    if (connection_span) {
-      connection_span->End();
-      connection_span = opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>{};
-    }
+    connection_span->End();
+    connection_span = nullptr;
   };
 
   while (true) {
