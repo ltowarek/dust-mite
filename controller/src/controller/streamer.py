@@ -19,6 +19,7 @@ import websockets.sync.client
 import websockets.sync.server
 from opentelemetry import trace
 
+from .logging import configure_logging
 from .metrics import (
     configure_metrics,
     record_command_sent,
@@ -336,6 +337,7 @@ def prepare_command_packet(command: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     """Run the main entry point."""
     configure_tracing("dust-mite-streamer")
+    configure_logging("dust-mite-streamer")
     configure_metrics("dust-mite-streamer")
     configure_profiling("dust-mite-streamer")
     try:
