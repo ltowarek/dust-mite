@@ -16,6 +16,7 @@ import requests
 TEMPO_UID = "tempo"
 PYROSCOPE_UID = "pyroscope"
 MIMIR_UID = "mimir"
+LOKI_UID = "loki"
 
 _PROFILE_TOTAL_ROW = (
     1  # an empty flame graph still returns one row -- see has_profile_samples
@@ -72,12 +73,21 @@ def traceql_query(service_name: str, span_name: str) -> dict[str, Any]:
     }
 
 
+def logql_query(service_name: str, log_body: str) -> dict[str, Any]:
+    """Build the `/api/ds/query` payload fields for a LogQL lookup."""
+    return {
+        "queryType": "range",
+        "expr": f'{{service_name="{service_name}"}} |= `{log_body}`',
+    }
+
+
 def _has_any_rows(result: dict[str, Any]) -> bool:
     """True if any frame has at least one row.
 
     An empty match returns either zero frames or a frame with zero-length
-    columns, for both Prometheus (timeseries) and Tempo (traceql table)
-    responses. Profiles behave differently -- see `has_profile_samples`.
+    columns, for Prometheus (timeseries), Tempo (traceql table), and Loki
+    (logql range) responses alike. Profiles behave differently -- see
+    `has_profile_samples`.
     """
     for frame in result.get("frames", []):
         values = frame.get("data", {}).get("values", [])
@@ -93,6 +103,11 @@ def has_metrics(result: dict[str, Any]) -> bool:
 
 def has_traces(result: dict[str, Any]) -> bool:
     """True if a Tempo TraceQL query result has any rows."""
+    return _has_any_rows(result)
+
+
+def has_logs(result: dict[str, Any]) -> bool:
+    """True if a Loki LogQL query result has any rows."""
     return _has_any_rows(result)
 
 
@@ -203,6 +218,27 @@ def wait_for_traces(  # noqa: PLR0913 -- each param independently configures the
     """
     return _wait_for(
         has_traces,
+        datasource_uid,
+        datasource_type,
+        fields,
+        time_range=time_range,
+        timeout=timeout,
+        interval=interval,
+    )
+
+
+def wait_for_logs(  # noqa: PLR0913 -- each param independently configures the poll
+    datasource_uid: str,
+    datasource_type: str,
+    fields: dict[str, Any],
+    *,
+    time_range: str = "now-5m",
+    timeout: float = 60.0,
+    interval: float = 2.0,
+) -> dict[str, Any]:
+    """Poll until a logs query result has data, or `timeout` elapses."""
+    return _wait_for(
+        has_logs,
         datasource_uid,
         datasource_type,
         fields,

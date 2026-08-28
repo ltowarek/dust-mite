@@ -1,0 +1,30 @@
+auth_enabled: false
+
+# Built on the same dskit ring library as Mimir: a lone instance never
+# reports itself healthy at the default replication_factor of 3 (it can't
+# find enough replicas). Single instance needs replication_factor: 1 with
+# an in-memory ring, matching mimir.yml.
+common:
+  path_prefix: /tmp/loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /tmp/loki/chunks
+      rules_directory: /tmp/loki/rules
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h

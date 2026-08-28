@@ -4,6 +4,8 @@ import os
 import time
 
 import requests
+from opentelemetry._logs import SeverityNumber
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.proto.collector.profiles.v1development import (
@@ -12,6 +14,8 @@ from opentelemetry.proto.collector.profiles.v1development import (
 from opentelemetry.proto.common.v1 import common_pb2
 from opentelemetry.proto.profiles.v1development import profiles_pb2
 from opentelemetry.proto.resource.v1 import resource_pb2
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -57,6 +61,18 @@ def push_span(endpoint: str, service_name: str, span_name: str) -> None:
     tracer = provider.get_tracer(service_name)
     with tracer.start_as_current_span(span_name, kind=SpanKind.INTERNAL):
         pass
+    provider.force_flush()
+    provider.shutdown()
+
+
+def push_log(endpoint: str, service_name: str, body: str) -> None:
+    """Emit one synthetic log record via the real OTel SDK, force-flushed now."""
+    resource = Resource.create({SERVICE_NAME: service_name})
+    exporter = OTLPLogExporter(endpoint=endpoint)
+    provider = LoggerProvider(resource=resource)
+    provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
+    logger = provider.get_logger(service_name)
+    logger.emit(body=body, severity_text="INFO", severity_number=SeverityNumber.INFO)
     provider.force_flush()
     provider.shutdown()
 
