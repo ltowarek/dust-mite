@@ -457,7 +457,7 @@ In the Observability devcontainer, the workspace opens at `/workspaces/dust-mite
 Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
-- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` carries no cases yet, since no real component emits logs.
+- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` covers the Python controller (`dust-mite-controller`/`dust-mite-streamer`); firmware and browser logging aren't wired up yet, so `dust-mite-car`/`dust-mite-web` cases aren't in it.
 
 Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 
