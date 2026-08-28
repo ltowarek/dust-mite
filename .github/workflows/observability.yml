@@ -40,7 +40,7 @@ jobs:
       run: ./scripts/run_requirements_checks.sh
 
     - name: Start observability stack
-      run: docker compose -f docker-compose.yml up -d --wait otel-collector tempo mimir pyroscope grafana
+      run: docker compose -f docker-compose.yml up -d --wait otel-collector tempo mimir pyroscope loki grafana
 
     - name: Run synthetic pipeline tests
       env:

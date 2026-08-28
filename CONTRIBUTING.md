@@ -146,6 +146,7 @@ flowchart LR
         TEMPO["Tempo"]
         MIMIR["Mimir\nlocalhost:8080"]
         PYRO["Pyroscope\n4040"]
+        LOKI["Loki\nlocalhost:3100"]
         GRAF["Grafana\nlocalhost:3000"]
     end
 
@@ -160,18 +161,21 @@ flowchart LR
     WEB -- "OTLP/HTTP metrics" --> MIMIR
     OC -- "OTLP/gRPC" --> TEMPO
     OC -- "OTLP/HTTP profiles" --> PYRO
+    OC -- "OTLP/HTTP logs" --> LOKI
     GRAF -- "TraceQL" --> TEMPO
     GRAF -- "PromQL" --> MIMIR
     GRAF -- "profiles" --> PYRO
+    GRAF -- "LogQL" --> LOKI
 ```
 
-The observability stack covers distributed tracing, real-time metrics, and continuous profiling. It comprises five tiers:
+The observability stack covers distributed tracing, real-time metrics, continuous profiling, and logs. It comprises six tiers:
 
-- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo and forwards profiles to Pyroscope. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
+- **OTel Collector** (`otel/opentelemetry-collector-contrib`) — OTLP receiver on 4317 (gRPC) and 4318 (HTTP). Routes traces to Tempo, forwards profiles to Pyroscope, and forwards logs to Loki. Configuration: [observability/otelcol.yml](observability/otelcol.yml).
 - **Grafana Tempo** — trace storage and query backend. Configuration: [observability/tempo.yml](observability/tempo.yml).
 - **Grafana Mimir** (single-tenant) — metrics storage, exposing a Prometheus-compatible query API under `http://localhost:8080/prometheus`. Configuration: [observability/mimir.yml](observability/mimir.yml).
 - **Grafana Pyroscope** (v2 architecture) — continuous profiling storage and query backend, exposed at `http://localhost:4040`. Configuration: [observability/pyroscope.yml](observability/pyroscope.yml). See [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) below. Ingestion is asynchronous — newly received profiles can take up to ~30-40 s to become queryable, unlike traces/metrics.
-- **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default), Mimir, and Pyroscope datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
+- **Grafana Loki** (single-tenant) — log storage, ingesting via its native OTLP endpoint at `http://loki:3100/otlp`. Resource attributes become index labels using Loki's default OTLP mapping (e.g. `service.name` → `service_name`), matching the label naming already used for Tempo/Mimir/Pyroscope. Configuration: [observability/loki.yml](observability/loki.yml).
+- **Grafana** — visualization UI at `http://localhost:3000`. Tempo (default), Mimir, Pyroscope, and Loki datasources are auto-provisioned. A pre-built dashboard is available under **Dashboards → dust-mite**. Configuration: [observability/grafana/provisioning/](observability/grafana/provisioning/).
 
 ### Instrumented services
 
@@ -439,7 +443,7 @@ In the Observability devcontainer, the workspace opens at `/workspaces/dust-mite
 Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
-- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI.
+- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` carries no cases yet, since no real component emits logs.
 
 Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 

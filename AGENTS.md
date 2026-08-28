@@ -37,7 +37,7 @@ This file is a lightweight navigation guide for coding agents.
 Run `./scripts/start_headless.sh` to build and start all services in the background.
 Run `./scripts/stop_headless.sh` to stop and remove all containers.
 
-Docker Compose services: `cpp`, `python`, `js`, `otel-collector`, `tempo`, `mimir`, `pyroscope`, `profiling-symbolizer`, `grafana`. Use standard docker compose commands to manage them:
+Docker Compose services: `cpp`, `python`, `js`, `otel-collector`, `tempo`, `mimir`, `loki`, `pyroscope`, `profiling-symbolizer`, `grafana`. Use standard docker compose commands to manage them:
 
 - Logs: `docker compose -f docker-compose.yml -f docker-compose.headless.yml logs [-f] <service>`
 - Restart: `docker compose -f docker-compose.yml -f docker-compose.headless.yml restart <service>`

@@ -21,6 +21,11 @@ exporters:
     tls:
       insecure: true
 
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
 service:
   pipelines:
     traces:
@@ -30,3 +35,7 @@ service:
     profiles:
       receivers: [otlp]
       exporters: [otlp_http/pyroscope]
+
+    logs:
+      receivers: [otlp]
+      exporters: [otlp_http/loki]
