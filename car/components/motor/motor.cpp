@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_log_otel.h"
 #include "driver/gpio.h"
 #include "driver/mcpwm_prelude.h"
 

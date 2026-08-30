@@ -4,4 +4,6 @@ idf_component_register(SRCS "utils.cpp" "servo.cpp" "motor.cpp"
                     REQUIRES
                     esp_driver_gpio
                     esp_driver_mcpwm
+                    PRIV_REQUIRES
+                    esp-opentelemetry-cpp
                     )

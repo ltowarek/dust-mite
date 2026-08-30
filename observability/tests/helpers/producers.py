@@ -65,9 +65,16 @@ def push_span(endpoint: str, service_name: str, span_name: str) -> None:
     provider.shutdown()
 
 
-def push_log(endpoint: str, service_name: str, body: str) -> None:
+def push_log(
+    endpoint: str,
+    service_name: str,
+    body: str,
+    resource_attributes: dict[str, str] | None = None,
+) -> None:
     """Emit one synthetic log record via the real OTel SDK, force-flushed now."""
-    resource = Resource.create({SERVICE_NAME: service_name})
+    resource = Resource.create(
+        {SERVICE_NAME: service_name, **(resource_attributes or {})}
+    )
     exporter = OTLPLogExporter(endpoint=endpoint)
     provider = LoggerProvider(resource=resource)
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))

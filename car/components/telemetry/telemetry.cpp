@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_log_otel.h"
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
 #include "esp_wifi.h"

@@ -5,6 +5,7 @@
 #include "esp_camera.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#include "esp_log_otel.h"
 #include "DFRobot_AXP313A.h"
 
 static const char* TAG = "camera";

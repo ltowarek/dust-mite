@@ -60,6 +60,7 @@ extern "C" void app_main() {
       otel_resource_attributes();
   esp_opentelemetry_tracing_setup(resource_attrs);
   esp_opentelemetry_metrics_setup(resource_attrs);
+  esp_opentelemetry_logs_setup(resource_attrs);
   esp_opentelemetry_profiling_setup();
 
   motor_setup(command_queue);

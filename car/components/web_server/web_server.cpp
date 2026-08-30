@@ -11,6 +11,7 @@
 #include "esp_err.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_log_otel.h"
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include "esp_wifi.h"

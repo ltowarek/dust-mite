@@ -81,6 +81,40 @@ def logql_query(service_name: str, log_body: str) -> dict[str, Any]:
     }
 
 
+def logql_severity_query(
+    service_name: str, log_body: str, severity_text: str
+) -> dict[str, Any]:
+    """Build the `/api/ds/query` payload fields for a severity-filtered LogQL lookup.
+
+    `logql_query` alone proves a log line exists; this additionally proves it
+    was ingested with the severity the call site actually used, not just any
+    severity.
+    """
+    selector = f'{{service_name="{service_name}"}}'
+    return {
+        "queryType": "range",
+        "expr": f"{selector} |= `{log_body}` | severity_text=`{severity_text}`",
+    }
+
+
+def logql_attribute_query(
+    service_name: str, attribute_key: str, attribute_value: str
+) -> dict[str, Any]:
+    """Build the `/api/ds/query` payload fields for a structured-metadata lookup.
+
+    OTel resource attributes other than `service.name` land in Loki as
+    structured metadata, not stream labels -- `{service_name="..."}` alone
+    can't select on them, but a `| key=value` label filter expression can.
+    `attribute_key` must already be in Loki's dot-to-underscore form (e.g.
+    `vcs_repository_url_full`).
+    """
+    selector = f'{{service_name="{service_name}"}}'
+    return {
+        "queryType": "range",
+        "expr": f"{selector} | {attribute_key}=`{attribute_value}`",
+    }
+
+
 def _has_any_rows(result: dict[str, Any]) -> bool:
     """True if any frame has at least one row.
 
