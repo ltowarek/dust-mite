@@ -6,8 +6,13 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
         cors:
+          # Explicit origins, not "*": this receiver also sends Access-Control-Allow-Credentials,
+          # and a wildcard Access-Control-Allow-Origin alongside that is invalid per the Fetch
+          # spec, so browsers reject it outright. The two origins are the browser dev server on
+          # the host and inside the headless stack.
           allowed_origins:
-            - "*"
+            - "http://localhost:5173"
+            - "http://js:5173"
 
 exporters:
   otlp_grpc/tempo:

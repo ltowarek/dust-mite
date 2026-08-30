@@ -5,6 +5,11 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import {
+  buildUncaughtErrorLogRecord,
+  buildWsAbnormalCloseLogRecord,
+  setupLogging,
+} from "./logging.js";
 import { handleMessage } from "./messages.js";
 import { setupMetrics } from "./metrics.js";
 
@@ -22,6 +27,20 @@ provider.register({ propagator: new W3CTraceContextPropagator() });
 const tracer = provider.getTracer("dust-mite-web");
 
 setupMetrics();
+
+const logger = setupLogging();
+
+window.addEventListener("error", (event) => {
+  logger.emit(
+    buildUncaughtErrorLogRecord({
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error,
+    }),
+  );
+});
 
 window.addEventListener("DOMContentLoaded", () => {
   const socket = new WebSocket(import.meta.env.VITE_WS_URL ?? "ws://localhost:8765");
@@ -81,6 +100,18 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.addEventListener("close", (event) => {
+    if (event.code !== 1000 || !event.wasClean) {
+      logger.emit({
+        ...buildWsAbnormalCloseLogRecord({
+          url: socket.url,
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+        }),
+        context: connectionContext ?? undefined,
+      });
+    }
+
     if (connectionSpan) {
       connectionSpan.setAttribute("ws.close.code", event.code);
       connectionSpan.end();

@@ -220,6 +220,14 @@ metrics/profiling, which today only reach the streamer. Log records reuse the sa
 pattern). No log-level filtering is added — both entry points already run at `DEBUG`, and
 everything already being logged, including `DEBUG`, ships as-is.
 
+The web frontend has no existing logging to bridge, so `setupLogging()` in
+[web/src/logging.js](web/src/logging.js) initializes a `LoggerProvider` directly, matching the
+resource-attribute pattern of the existing `WebTracerProvider`/`MeterProvider` and routing through
+the OTel Collector like traces. It emits a `DEBUG` handshake record on every page load as a
+steady-state signal, plus two purposeful call sites: a global uncaught-error handler and the
+WebSocket connection logic's abnormal-close handler. The WebSocket `error` event isn't logged on
+its own, since the `close` event that always follows it carries the actual diagnostic detail.
+
 ### Cross-service trace propagation
 
 W3C `traceparent` is embedded as a field in every WebSocket JSON packet, linking spans across the firmware → streamer → browser path:
@@ -457,7 +465,7 @@ In the Observability devcontainer, the workspace opens at `/workspaces/dust-mite
 Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
-- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` covers the Python controller (`dust-mite-controller`/`dust-mite-streamer`); firmware and browser logging aren't wired up yet, so `dust-mite-car`/`dust-mite-web` cases aren't in it.
+- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` covers the Python controller (`dust-mite-controller`/`dust-mite-streamer`) and the browser (`dust-mite-web`); firmware logging isn't wired up yet, so a `dust-mite-car` case isn't in it.
 
 Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 
