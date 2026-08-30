@@ -13,9 +13,6 @@ CASES: list[tuple[str, str]] = [
     ("dust-mite-streamer", "Starting server"),
     ("dust-mite-controller", "Sending new command with value"),
     ("dust-mite-web", "dust-mite-web logging initialized"),
-    # A boot-once marker logged from camera_task(), which camera_setup() starts
-    # after esp_opentelemetry_logs_setup() -- unlike wifi/SNTP call sites, which
-    # run before the provider is installed and are never exported.
     ("dust-mite-car", "Starting camera task"),
 ]
 
@@ -39,12 +36,7 @@ def test_car_log_has_correct_severity() -> None:
 
 @pytest.mark.dut
 def test_car_log_has_source_link_attribute() -> None:
-    """Confirms car's logs carry the GitHub source-linking resource attribute.
-
-    Only checks `vcs_repository_url_full`: it's a static Kconfig value, unlike
-    `vcs_ref_head_revision`, which is the build's own git ref and has no fixed
-    expected value to assert against here.
-    """
+    """Confirms car's logs carry the GitHub source-linking resource attribute."""
     result = query(
         LOKI_UID,
         "loki",

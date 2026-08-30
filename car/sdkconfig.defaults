@@ -42,9 +42,6 @@ CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED=y
 CONFIG_ESP_OPENTELEMETRY_LOGS_ENABLED=y
 CONFIG_ESP_OPENTELEMETRY_TRACING_OTLP_BASE_URL="http://192.168.50.222:4318"
 CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL="http://192.168.50.222:8080/otlp"
-# Same collector endpoint as tracing (Loki ingests via the collector, not a
-# direct-to-backend bypass like metrics): the ESP32 can't resolve the stack's
-# Docker DNS names, so this must stay the host LAN IP.
 CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL="http://192.168.50.222:4318"
 CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME="dust-mite-car"
 CONFIG_ESP_OPENTELEMETRY_SERVICE_REPOSITORY="https://github.com/ltowarek/dust-mite"

@@ -43,13 +43,7 @@ def _pushed_source_link_log() -> None:
 
 @pytest.mark.parametrize("attribute_key", sorted(_SOURCE_LINK_ATTRIBUTES))
 def test_github_source_link_attribute_is_queryable(attribute_key: str) -> None:
-    """GitHub source linking requires this attribute to be queryable.
-
-    Loki stores OTel resource attributes as structured metadata with dots
-    replaced by underscores, the same mapping CONTRIBUTING.md documents for
-    stream labels -- confirmed empirically against a running Loki instance,
-    since Loki's OTLP ingestion behavior here isn't otherwise documented.
-    """
+    """GitHub source linking requires this attribute to be queryable."""
     loki_key = attribute_key.replace(".", "_")
     value = _SOURCE_LINK_ATTRIBUTES[attribute_key]
     result = wait_for_logs(
