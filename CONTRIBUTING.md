@@ -333,6 +333,17 @@ Open Grafana at `http://localhost:3000` → **Explore** → select the **Tempo**
 - `{resource.service.name="dust-mite-car"}` — firmware spans only
 - `{resource.service.name="dust-mite-streamer"}` — streamer spans only
 
+### Viewing logs
+
+Open Grafana at `http://localhost:3000` → **Explore** → select the **Loki** datasource → run a LogQL query. Unlike Tempo's `resource.service.name`, Loki's stream label is `service_name` (dots already normalized to underscores):
+
+- `{service_name="dust-mite-car"}` — firmware logs only
+- `{service_name="dust-mite-streamer"}` — streamer logs only
+- `{service_name="dust-mite-controller"}` — gamepad CLI logs only
+- `{service_name="dust-mite-web"}` — browser logs only
+
+Attributes other than `service_name` (e.g. `code_file_path`, `code_line_number`) land as structured metadata rather than stream labels — add a `| key="value"` filter to query on them, e.g. `{service_name="dust-mite-streamer"} | code_file_path="controller/src/controller/streamer.py"`.
+
 ### Profiling (firmware CPU)
 
 Spans and metrics tell you *which component* is slow; the statistical profiler tells you
