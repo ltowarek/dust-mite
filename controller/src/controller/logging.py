@@ -47,5 +47,9 @@ def configure_logging(
         provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
         set_logger_provider(provider)
 
-    handler = LoggingHandler(level=logging.NOTSET, logger_provider=provider)
+    handler = LoggingHandler(
+        level=logging.NOTSET,
+        logger_provider=provider,
+        log_code_attributes=True,
+    )
     logging.getLogger().addHandler(handler)
