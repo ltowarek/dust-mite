@@ -189,6 +189,8 @@ All three services export traces via OTLP/HTTP to the OTel Collector and metrics
 
 The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
 
+The firmware's logs endpoint (`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL`) reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
+
 Mimir has no CORS support (no config option to set `Access-Control-Allow-Origin`), so a browser page can't POST metrics to it cross-origin. `web/vite.config.js`'s dev server proxies its own `/otlp` path straight to Mimir, keeping the browser's request same-origin — no CORS header is ever needed. Traces still go through the OTel Collector, whose receiver has CORS enabled, since that path isn't proxied.
 
 ### Metrics
@@ -227,6 +229,34 @@ the OTel Collector like traces. It emits a `DEBUG` handshake record on every pag
 steady-state signal, plus two purposeful call sites: a global uncaught-error handler and the
 WebSocket connection logic's abnormal-close handler. The WebSocket `error` event isn't logged on
 its own, since the `close` event that always follows it carries the actual diagnostic detail.
+
+The ESP32 firmware bridges its existing `ESP_LOG` call sites the same way the Python controller
+bridges `logging`: no change to call-site text or levels. `esp_log_otel.h`, from the
+[esp-opentelemetry-cpp](https://github.com/ltowarek/esp-opentelemetry-cpp) fork
+([car/components/esp-opentelemetry-cpp](car/components/esp-opentelemetry-cpp)), redefines
+`ESP_LOGE`/`W`/`I` to also feed the OTel logger `esp_opentelemetry_logs_setup()` installs in
+[car/main/main.cpp](car/main/main.cpp); it's included by each firmware `.cpp` that has call sites
+to ship ([camera.cpp](car/components/camera/camera.cpp),
+[web_server.cpp](car/components/web_server/web_server.cpp),
+[motor.cpp](car/components/motor/motor.cpp), [wifi.cpp](car/components/wifi/wifi.cpp),
+[telemetry.cpp](car/components/telemetry/telemetry.cpp)). `ESP_LOGD`/`V` are not wrapped — they're
+already compiled out of this build (`CONFIG_LOG_MAXIMUM_LEVEL` follows the default `Info` level),
+matching what the fork's macro deliberately excludes. Reuses the same `vcs.*` resource attributes
+tracing/metrics already build in `main.cpp`, routed through
+`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL` (same collector endpoint as tracing).
+
+One structural gap: `esp_opentelemetry_logs_setup()` must run after `sync_time()` (SNTP) or every
+record is stamped 1970 and Loki drops it — but `wifi_setup()`'s own `ESP_LOGI(TAG, "wifi_init_sta
+finished.")` and `telemetry.cpp`'s SNTP call sites necessarily run *before* both, so those specific
+lines are never exported, only ever seen on the serial console. Every call site reached once
+Wi-Fi/time are up (which is nearly all of them) ships normally.
+
+Batch sizing (`CONFIG_ESP_OPENTELEMETRY_LOGS_BATCH_MAX_QUEUE_SIZE` /
+`..._SCHEDULE_DELAY_MS`) is left at the fork's defaults (128 / 5000 ms), consistent with how
+tracing/metrics are configured in `car/sdkconfig.defaults` — neither overrides its own batch
+settings either. A sustained burst of INFO logs (e.g. continuous driving, which logs once per
+received command in both `web_server.cpp` and `motor.cpp`) can exceed that and drop excess
+records; the drop is silent and non-blocking by design, not a correctness bug.
 
 ### Cross-service trace propagation
 
@@ -465,7 +495,7 @@ In the Observability devcontainer, the workspace opens at `/workspaces/dust-mite
 Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
-- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` covers the Python controller (`dust-mite-controller`/`dust-mite-streamer`) and the browser (`dust-mite-web`); firmware logging isn't wired up yet, so a `dust-mite-car` case isn't in it.
+- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` covers the Python controller (`dust-mite-controller`/`dust-mite-streamer`), the browser (`dust-mite-web`), and firmware (`dust-mite-car`, via a boot-once marker logged after `esp_opentelemetry_logs_setup()` installs), plus a source-linking check confirming the firmware's `vcs.repository.url.full` resource attribute is queryable.
 
 Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 

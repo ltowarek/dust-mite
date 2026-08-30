@@ -5,6 +5,7 @@ idf_component_register(SRCS "wifi.cpp"
                     nvs_flash
                     esp_event
                     esp_netif
+                    esp-opentelemetry-cpp
                     )
 target_compile_definitions(
     ${COMPONENT_LIB}
