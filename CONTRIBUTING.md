@@ -220,7 +220,9 @@ metrics/profiling, which today only reach the streamer. Log records reuse the sa
 `vcs.*` resource-attribute helpers tracing already uses, and route through the same
 `OTEL_EXPORTER_OTLP_ENDPOINT` collector endpoint as traces (not the metrics bypass-to-Mimir
 pattern). No log-level filtering is added — both entry points already run at `DEBUG`, and
-everything already being logged, including `DEBUG`, ships as-is.
+everything already being logged, including `DEBUG`, ships as-is. The handler is constructed with
+`log_code_attributes=True`, which is off by default: without it records reach Loki with no `code.*`
+attributes, so nothing there says which call site produced a line.
 
 The web frontend has no existing logging to bridge, so `setupLogging()` in
 [web/src/logging.js](web/src/logging.js) initializes a `LoggerProvider` directly, matching the

@@ -1,3 +1,4 @@
+import inspect
 import logging
 from collections.abc import Generator
 
@@ -93,3 +94,18 @@ def test_no_correlation_without_active_span(
     record = records[0].log_record
     assert record.trace_id == 0
     assert record.span_id == 0
+
+
+def test_records_carry_source_location(exporter: InMemoryLogRecordExporter) -> None:
+    """Records carry the call site, not just the message text."""
+    test_logger = logging.getLogger("test-records-carry-source-location")
+    test_logger.setLevel(logging.DEBUG)
+
+    test_logger.info("Locate me")
+    expected_line = inspect.currentframe().f_lineno - 1  # type: ignore[union-attr]
+
+    records = exporter.get_finished_logs()
+    assert len(records) == 1
+    attributes = records[0].log_record.attributes or {}
+    assert attributes["code.file.path"] == __file__
+    assert attributes["code.line.number"] == expected_line
