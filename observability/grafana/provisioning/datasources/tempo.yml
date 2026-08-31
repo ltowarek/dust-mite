@@ -9,6 +9,13 @@ datasources:
     isDefault: true
     editable: true
     jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        customQuery: false
+        tags:
+          - key: "service.name"
+            value: "service_name"
       tracesToProfiles:
         datasourceUid: pyroscope
         profileTypeId: "samples:samples:count:samples:count"

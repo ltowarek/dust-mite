@@ -65,6 +65,40 @@ def push_span(endpoint: str, service_name: str, span_name: str) -> None:
     provider.shutdown()
 
 
+def push_span_with_log(
+    trace_endpoint: str,
+    log_endpoint: str,
+    service_name: str,
+    span_name: str,
+    log_body: str,
+) -> str:
+    """Emit one span and, from inside its scope, one log record; return the trace ID."""
+    resource = Resource.create({SERVICE_NAME: service_name})
+
+    span_exporter = OTLPSpanExporter(endpoint=trace_endpoint)
+    tracer_provider = TracerProvider(resource=resource)
+    tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
+    tracer = tracer_provider.get_tracer(service_name)
+
+    log_exporter = OTLPLogExporter(endpoint=log_endpoint)
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+    logger = logger_provider.get_logger(service_name)
+
+    with tracer.start_as_current_span(span_name, kind=SpanKind.INTERNAL) as span:
+        logger.emit(
+            body=log_body, severity_text="INFO", severity_number=SeverityNumber.INFO
+        )
+        trace_id = span.get_span_context().trace_id
+
+    tracer_provider.force_flush()
+    tracer_provider.shutdown()
+    logger_provider.force_flush()
+    logger_provider.shutdown()
+
+    return format(trace_id, "032x")
+
+
 def push_log(
     endpoint: str,
     service_name: str,

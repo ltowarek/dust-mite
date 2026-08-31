@@ -59,6 +59,26 @@ def query(
     return cast("dict[str, Any]", response.json()["results"]["A"])
 
 
+def datasource_settings(uid: str) -> dict[str, Any]:
+    """GET a datasource's provisioned settings, the same way Grafana's UI reads them."""
+    response = requests.get(f"{grafana_url()}/api/datasources/uid/{uid}", timeout=10)
+    response.raise_for_status()
+    return cast("dict[str, Any]", response.json())
+
+
+def trace_id_query(trace_id: str) -> dict[str, Any]:
+    """Build the `/api/ds/query` payload fields for a Tempo trace-by-ID lookup.
+
+    This is what Grafana's "Logs for this span" link resolves back through in
+    reverse (a `trace_id` found in Loki, looked up in Tempo) -- distinct from
+    `traceql_query`'s search-by-attributes shape.
+    """
+    return {
+        "queryType": "traceId",
+        "query": trace_id,
+    }
+
+
 def traceql_query(service_name: str, span_name: str) -> dict[str, Any]:
     """Build the `/api/ds/query` payload fields for a TraceQL lookup.
 
@@ -113,6 +133,30 @@ def logql_attribute_query(
         "queryType": "range",
         "expr": f"{selector} | {attribute_key}=`{attribute_value}`",
     }
+
+
+def log_label_values(result: dict[str, Any], label_key: str) -> list[str]:
+    """Return every distinct `label_key` value across a LogQL query result's rows.
+
+    Reads the "labels" field Loki attaches per row (stream labels, resource
+    attributes, and structured metadata alike) by schema field name rather
+    than a fixed column index, matching how `has_profile_samples` looks up
+    the "value" column.
+    """
+    seen: list[str] = []
+    for frame in result.get("frames", []):
+        fields = frame.get("schema", {}).get("fields", [])
+        values = frame.get("data", {}).get("values", [])
+        labels_col = next(
+            (i for i, f in enumerate(fields) if f["name"] == "labels"), None
+        )
+        if labels_col is None or not values:
+            continue
+        for labels in values[labels_col]:
+            value = labels.get(label_key)
+            if value is not None and value not in seen:
+                seen.append(cast("str", value))
+    return seen
 
 
 def _has_any_rows(result: dict[str, Any]) -> bool:

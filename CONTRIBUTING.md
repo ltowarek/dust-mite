@@ -342,7 +342,7 @@ Open Grafana at `http://localhost:3000` → **Explore** → select the **Loki** 
 - `{service_name="dust-mite-controller"}` — gamepad CLI logs only
 - `{service_name="dust-mite-web"}` — browser logs only
 
-Attributes other than `service_name` (e.g. `code_file_path`, `code_line_number`) land as structured metadata rather than stream labels — add a `| key="value"` filter to query on them, e.g. `{service_name="dust-mite-streamer"} | code_file_path="controller/src/controller/streamer.py"`.
+In a Tempo trace view, a span carries a **Logs for this span** link that jumps straight to the matching Loki lines by `trace_id`.
 
 ### Profiling (firmware CPU)
 
@@ -508,8 +508,7 @@ In the Observability devcontainer, the workspace opens at `/workspaces/dust-mite
 Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
-- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI. `tests/e2e/test_logs.py` covers the Python controller (`dust-mite-controller`/`dust-mite-streamer`), the browser (`dust-mite-web`), and firmware (`dust-mite-car`, via a boot-once marker logged after `esp_opentelemetry_logs_setup()` installs), plus a source-linking check confirming the firmware's `vcs.repository.url.full` resource attribute is queryable.
-
+- **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI.
 Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 
 ```bash
