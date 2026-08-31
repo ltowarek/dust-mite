@@ -2,11 +2,16 @@ import pytest
 
 from tests.helpers.query import (
     LOKI_UID,
+    TEMPO_UID,
     has_logs,
+    has_traces,
+    log_label_values,
     logql_attribute_query,
     logql_query,
     logql_severity_query,
     query,
+    trace_id_query,
+    wait_for_traces,
 )
 
 CASES: list[tuple[str, str]] = [
@@ -32,6 +37,41 @@ def test_car_log_has_correct_severity() -> None:
         logql_severity_query("dust-mite-car", "Starting camera task", "INFO"),
     )
     assert has_logs(result)
+
+
+@pytest.mark.dut
+def test_streamer_server_handler_log_resolves_to_a_real_trace() -> None:
+    """Proves the correlation mechanism (see tests/integration/test_logs.py's
+    synthetic version) holds for a real call site, not just synthetic data."""
+    log_result = query(
+        LOKI_UID,
+        "loki",
+        logql_query("dust-mite-streamer", "Server connection from"),
+        time_range="now-1h",
+    )
+    trace_ids = log_label_values(log_result, "trace_id")
+    assert trace_ids, "no streamer.server_handler connection logged in the last hour"
+
+    resolved = next(
+        (
+            trace_id
+            for trace_id in trace_ids
+            if has_traces(
+                wait_for_traces(
+                    TEMPO_UID,
+                    "tempo",
+                    trace_id_query(trace_id),
+                    time_range="now-1h",
+                    timeout=10.0,
+                )
+            )
+        ),
+        None,
+    )
+    assert resolved is not None, (
+        f"none of {len(trace_ids)} candidate connection(s) had a closed "
+        "streamer.server_handler span in Tempo"
+    )
 
 
 @pytest.mark.dut
