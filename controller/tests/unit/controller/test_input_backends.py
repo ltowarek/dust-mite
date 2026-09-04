@@ -15,12 +15,7 @@ from controller.senders import InMemoryCommandSender
 
 
 def _dualsense(**state_overrides: bool | int) -> pydualsense:
-    """Build a real, hardware-free `pydualsense` with `.state` fields set.
-
-    `pydualsense()` itself never touches hardware (only `.init()` does), and
-    `DSState` is a plain object, so this uses the library's own classes
-    instead of a hand-rolled stand-in for its state shape.
-    """
+    """Build a real, hardware-free `pydualsense` with `.state` fields set."""
     ds = pydualsense()
     ds.state = DSState()
     # DSState()'s raw LX/RX/RY/LY default (128) is an unpopulated
