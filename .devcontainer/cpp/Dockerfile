@@ -47,12 +47,10 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 # vendored protobuf runtime pinned in car/components/esp-opentelemetry-cpp:
 # protoc emits an exact-match version guard, and protobuf disclaims all
 # cross-runtime support. Install the official release matching that pin
-# instead, on PATH, in place of the apt package.
-RUN curl -sSL -o /tmp/protoc.zip \
-        https://github.com/protocolbuffers/protobuf/releases/download/v36.0/protoc-36.0-linux-x86_64.zip \
-    && unzip -q /tmp/protoc.zip -d /usr/local \
-    && rm /tmp/protoc.zip \
-    && chmod +x /usr/local/bin/protoc
+# instead, on PATH, in place of the apt package. Reuse the fork's own
+# install script so the pinned version lives in one place.
+COPY car/components/esp-opentelemetry-cpp/.devcontainer/install-protoc.sh /tmp/install-protoc.sh
+RUN bash /tmp/install-protoc.sh && rm /tmp/install-protoc.sh
 
 COPY --from=qemu-builder /opt/espressif-qemu/bin/qemu-system-xtensa \
                          /opt/espressif-qemu/bin/qemu-system-xtensa
