@@ -41,7 +41,18 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     libpixman-1-0 \
     libslirp0 \
     locales \
-    protobuf-compiler
+    unzip
+
+# Ubuntu's protobuf-compiler (libprotoc 3.21.12) cannot generate code for the
+# vendored protobuf runtime pinned in car/components/esp-opentelemetry-cpp:
+# protoc emits an exact-match version guard, and protobuf disclaims all
+# cross-runtime support. Install the official release matching that pin
+# instead, on PATH, in place of the apt package.
+RUN curl -sSL -o /tmp/protoc.zip \
+        https://github.com/protocolbuffers/protobuf/releases/download/v36.0/protoc-36.0-linux-x86_64.zip \
+    && unzip -q /tmp/protoc.zip -d /usr/local \
+    && rm /tmp/protoc.zip \
+    && chmod +x /usr/local/bin/protoc
 
 COPY --from=qemu-builder /opt/espressif-qemu/bin/qemu-system-xtensa \
                          /opt/espressif-qemu/bin/qemu-system-xtensa
