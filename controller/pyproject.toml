@@ -41,7 +41,7 @@ files = [
 strict = true
 
 [[tool.mypy.overrides]]
-module = "pydualsense"
+module = ["pydualsense", "pydualsense.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
