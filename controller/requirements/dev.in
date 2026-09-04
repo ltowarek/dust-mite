@@ -5,9 +5,7 @@ tox
 pytest
 pytest-asyncio
 pytest-cov
-pexpect
 ruff
 mypy
-types-pexpect
 types-protobuf
 types-requests
