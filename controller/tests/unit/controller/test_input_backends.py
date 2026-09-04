@@ -118,9 +118,6 @@ class FakeCursesWindow:
     def getch(self) -> int:
         return next(self._keys, -1)
 
-    def keypad(self, flag: bool) -> None:  # noqa: FBT001 - matches curses' C API
-        pass
-
 
 class TestKeyboardInputBackend:
     def test_sets_polling_timeout(self) -> None:

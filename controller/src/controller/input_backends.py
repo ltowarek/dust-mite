@@ -18,24 +18,7 @@ class InputBackendName(StrEnum):
 
 
 class InputBackend(Protocol):
-    """Source of driving commands, polled once per control loop iteration.
-
-    Implementations own their hardware/terminal session and must be usable
-    as a context manager: connect on `__enter__`, disconnect on `__exit__`.
-    """
-
-    def __enter__(self) -> Self:
-        """Open the input source."""
-        ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        exc_traceback: TracebackType | None,
-    ) -> None:
-        """Close the input source."""
-        ...
+    """Source of driving commands, polled once per control loop iteration."""
 
     def poll(self) -> tuple[Command, int | None] | None:
         """Return the current command and value, or `None` to exit the control loop."""
@@ -128,8 +111,6 @@ class _CursesWindow(Protocol):
 
     def getch(self) -> int: ...
 
-    def keypad(self, flag: bool) -> None: ...  # noqa: FBT001 - curses' C API is positional-only
-
 
 # Fixed values, mirroring the DualSense D-pad's existing fixed-value convention
 # rather than analog interpolation.
@@ -153,49 +134,19 @@ _KEYBOARD_POLL_TIMEOUT_MS = 50
 class KeyboardInputBackend:
     """Poll a terminal keyboard for the current command and value.
 
-    Use as a context manager: starts a `curses` terminal session on entry
-    and restores the terminal on exit, unless a window is already given
-    (for tests).
-
     Uses a timed-out `curses` read, so a key that isn't held down (or isn't
     being auto-repeated by the terminal within the poll timeout) reads back
     as `BRAKE`, mirroring the DualSense analog sticks' spring-back-to-center
     behavior.
     """
 
-    def __init__(self, window: _CursesWindow | None = None) -> None:
+    def __init__(self, window: _CursesWindow) -> None:
         """Initialize the object."""
         self._window = window
-        if self._window is not None:
-            self._window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)
-
-    def __enter__(self) -> Self:
-        """Start a terminal session, if a window wasn't already given."""
-        if self._window is None:
-            window = curses.initscr()
-            curses.noecho()
-            curses.cbreak()
-            window.keypad(True)  # noqa: FBT003 - curses' C API is positional-only
-            window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)
-            self._window = window
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        exc_traceback: TracebackType | None,
-    ) -> None:
-        """Restore the terminal session started by `__enter__`."""
-        assert self._window is not None
-        self._window.keypad(False)  # noqa: FBT003 - curses' C API is positional-only
-        curses.echo()
-        curses.nocbreak()
-        curses.endwin()
+        self._window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)
 
     def poll(self) -> tuple[Command, int | None] | None:
         """Return the current command and value, or `None` if 'q' was pressed."""
-        assert self._window is not None
         key = self._window.getch()
         if key == _KEYBOARD_EXIT_KEY:
             return None

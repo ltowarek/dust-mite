@@ -1,5 +1,6 @@
 """controller module."""
 
+import curses
 import logging
 import os
 
@@ -44,14 +45,12 @@ def main() -> None:
     controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
     input_backend_name = InputBackendName(os.environ["CONTROLLER_INPUT_BACKEND"])
 
-    backend: DualSenseInputBackend | KeyboardInputBackend
-    if input_backend_name is InputBackendName.KEYBOARD:
-        backend = KeyboardInputBackend()
-    else:
-        backend = DualSenseInputBackend()
-
-    with WebSocketCommandSender(controller_client_uri) as sender, backend:
-        control(backend, sender)
+    with WebSocketCommandSender(controller_client_uri) as sender:
+        if input_backend_name is InputBackendName.KEYBOARD:
+            curses.wrapper(lambda window: control(KeyboardInputBackend(window), sender))
+        else:
+            with DualSenseInputBackend() as backend:
+                control(backend, sender)
 
 
 if __name__ == "__main__":
