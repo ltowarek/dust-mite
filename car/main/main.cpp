@@ -18,12 +18,8 @@
 #include <memory>
 
 #include "esp_opentelemetry.hpp"
-#include "esp_profiles_exporter.hpp"
-#if defined(CONFIG_ESP_OPENTELEMETRY_EXPORTER_JTAG)
-#include "esp_jtag_exporters.hpp"
-#else
 #include "esp_otlp_http_exporters.hpp"
-#endif
+#include "esp_profiles_exporter.hpp"
 #include "sdkconfig.h"
 
 static opentelemetry::sdk::resource::ResourceAttributes otel_resource_attributes() {
@@ -66,14 +62,6 @@ extern "C" void app_main() {
   // and tracing's provider both must be installed before the first span is created.
   const opentelemetry::sdk::resource::ResourceAttributes resource_attrs =
       otel_resource_attributes();
-  // Which exporters the component compiled in decides which ones to build
-  // here; the firmware has no reason to carry a family it will not construct.
-#if defined(CONFIG_ESP_OPENTELEMETRY_EXPORTER_JTAG)
-  auto span_exporter = std::make_unique<esp_opentelemetry::JtagSpanExporter>();
-  auto metric_exporter = std::make_unique<esp_opentelemetry::JtagMetricExporter>();
-  auto log_exporter = std::make_unique<esp_opentelemetry::JtagLogRecordExporter>();
-  auto profiles_exporter = std::make_unique<esp_opentelemetry::JtagProfilesExporter>();
-#else
   auto span_exporter =
       esp_opentelemetry::MakeOtlpHttpSpanExporter(CONFIG_ESP_OPENTELEMETRY_TRACING_OTLP_BASE_URL);
   auto metric_exporter =
@@ -86,7 +74,6 @@ extern "C" void app_main() {
   // one from CONFIG_ESP_OPENTELEMETRY_PROFILES_OTLP_BASE_URL, which appears
   // with it.
   std::unique_ptr<esp_opentelemetry::ProfilesExporter> profiles_exporter;
-#endif
 
   esp_opentelemetry_tracing_setup(std::move(span_exporter), resource_attrs);
   esp_opentelemetry_metrics_setup(std::move(metric_exporter), resource_attrs);
