@@ -1,10 +1,9 @@
 """Input backends: sources of driving commands for the gamepad CLI."""
 
-import contextlib
 import curses
-from collections.abc import Iterator
 from enum import StrEnum
-from typing import Protocol
+from types import TracebackType
+from typing import Protocol, Self
 
 from pydualsense import pydualsense
 
@@ -19,7 +18,24 @@ class InputBackendName(StrEnum):
 
 
 class InputBackend(Protocol):
-    """Source of driving commands, polled once per control loop iteration."""
+    """Source of driving commands, polled once per control loop iteration.
+
+    Implementations own their hardware/terminal session and must be usable
+    as a context manager: connect on `__enter__`, disconnect on `__exit__`.
+    """
+
+    def __enter__(self) -> Self:
+        """Open the input source."""
+        ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: TracebackType | None,
+    ) -> None:
+        """Close the input source."""
+        ...
 
     def poll(self) -> tuple[Command, int | None] | None:
         """Return the current command and value, or `None` to exit the control loop."""
@@ -34,12 +50,33 @@ def interpolate(
 
 
 class DualSenseInputBackend:
-    """Poll a DualSense controller for the current command and value."""
+    """Poll a DualSense controller for the current command and value.
 
-    def __init__(self, ds: pydualsense, analog_dead_zone: int = 5) -> None:
+    Use as a context manager: connects to the controller on entry, closes
+    on exit. Constructs its own `pydualsense` handle unless one is given
+    (for tests).
+    """
+
+    def __init__(
+        self, ds: pydualsense | None = None, analog_dead_zone: int = 5
+    ) -> None:
         """Initialize the object."""
-        self._ds = ds
+        self._ds = ds if ds is not None else pydualsense()
         self._analog_dead_zone = analog_dead_zone
+
+    def __enter__(self) -> Self:
+        """Connect to the DualSense controller."""
+        self._ds.init()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: TracebackType | None,
+    ) -> None:
+        """Disconnect from the DualSense controller."""
+        self._ds.close()
 
     def poll(self) -> tuple[Command, int | None] | None:
         """Return the current command/value, or `None` if the PS button was pressed."""
@@ -91,6 +128,8 @@ class _CursesWindow(Protocol):
 
     def getch(self) -> int: ...
 
+    def keypad(self, flag: bool) -> None: ...  # noqa: FBT001 - curses' C API is positional-only
+
 
 # Fixed values, mirroring the DualSense D-pad's existing fixed-value convention
 # rather than analog interpolation.
@@ -114,63 +153,52 @@ _KEYBOARD_POLL_TIMEOUT_MS = 50
 class KeyboardInputBackend:
     """Poll a terminal keyboard for the current command and value.
 
+    Use as a context manager: starts a `curses` terminal session on entry
+    and restores the terminal on exit, unless a window is already given
+    (for tests).
+
     Uses a timed-out `curses` read, so a key that isn't held down (or isn't
     being auto-repeated by the terminal within the poll timeout) reads back
     as `BRAKE`, mirroring the DualSense analog sticks' spring-back-to-center
     behavior.
     """
 
-    def __init__(self, window: _CursesWindow) -> None:
+    def __init__(self, window: _CursesWindow | None = None) -> None:
         """Initialize the object."""
         self._window = window
-        self._window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)
+        if self._window is not None:
+            self._window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)
+
+    def __enter__(self) -> Self:
+        """Start a terminal session, if a window wasn't already given."""
+        if self._window is None:
+            window = curses.initscr()
+            curses.noecho()
+            curses.cbreak()
+            window.keypad(True)  # noqa: FBT003 - curses' C API is positional-only
+            window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)
+            self._window = window
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: TracebackType | None,
+    ) -> None:
+        """Restore the terminal session started by `__enter__`."""
+        assert self._window is not None
+        self._window.keypad(False)  # noqa: FBT003 - curses' C API is positional-only
+        curses.echo()
+        curses.nocbreak()
+        curses.endwin()
 
     def poll(self) -> tuple[Command, int | None] | None:
         """Return the current command and value, or `None` if 'q' was pressed."""
+        assert self._window is not None
         key = self._window.getch()
         if key == _KEYBOARD_EXIT_KEY:
             return None
         if key in _KEYBOARD_BINDINGS:
             return _KEYBOARD_BINDINGS[key]
         return Command.BRAKE, None
-
-
-@contextlib.contextmanager
-def _curses_session() -> Iterator[_CursesWindow]:
-    """Initialize curses and guarantee terminal restoration on exit.
-
-    Mirrors `curses.wrapper`'s setup/teardown sequence, but as a context
-    manager spanning a backend's lifetime instead of a single wrapped
-    function call.
-    """
-    window = curses.initscr()
-    try:
-        curses.noecho()
-        curses.cbreak()
-        window.keypad(True)  # noqa: FBT003 - curses' C API is positional-only
-        with contextlib.suppress(curses.error):
-            # Harmless if the terminal doesn't have color; matches
-            # `curses.wrapper`'s own use of `start_color`.
-            curses.start_color()
-        yield window
-    finally:
-        window.keypad(False)  # noqa: FBT003 - curses' C API is positional-only
-        curses.echo()
-        curses.nocbreak()
-        curses.endwin()
-
-
-@contextlib.contextmanager
-def create_input_backend(name: InputBackendName) -> Iterator[InputBackend]:
-    """Construct and manage the lifecycle of the named input backend."""
-    if name is InputBackendName.KEYBOARD:
-        with _curses_session() as window:
-            yield KeyboardInputBackend(window)
-        return
-
-    ds = pydualsense()
-    ds.init()
-    try:
-        yield DualSenseInputBackend(ds)
-    finally:
-        ds.close()

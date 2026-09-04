@@ -4,7 +4,12 @@ import logging
 import os
 
 from .command import Command
-from .input_backends import InputBackend, InputBackendName, create_input_backend
+from .input_backends import (
+    DualSenseInputBackend,
+    InputBackend,
+    InputBackendName,
+    KeyboardInputBackend,
+)
 from .logging import configure_logging
 from .senders import CommandSender, WebSocketCommandSender
 from .tracing import configure_tracing
@@ -39,10 +44,13 @@ def main() -> None:
     controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
     input_backend_name = InputBackendName(os.environ["CONTROLLER_INPUT_BACKEND"])
 
-    with (
-        WebSocketCommandSender(controller_client_uri) as sender,
-        create_input_backend(input_backend_name) as backend,
-    ):
+    backend: DualSenseInputBackend | KeyboardInputBackend
+    if input_backend_name is InputBackendName.KEYBOARD:
+        backend = KeyboardInputBackend()
+    else:
+        backend = DualSenseInputBackend()
+
+    with WebSocketCommandSender(controller_client_uri) as sender, backend:
         control(backend, sender)
 
 

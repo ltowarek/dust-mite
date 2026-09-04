@@ -1,3 +1,6 @@
+from types import TracebackType
+from typing import Self
+
 from controller.command import Command
 from controller.controller import control
 from controller.senders import InMemoryCommandSender
@@ -6,6 +9,17 @@ from controller.senders import InMemoryCommandSender
 class FakeInputBackend:
     def __init__(self, results: list[tuple[Command, int | None] | None]) -> None:
         self._results = iter(results)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: TracebackType | None,
+    ) -> None:
+        return None
 
     def poll(self) -> tuple[Command, int | None] | None:
         return next(self._results)
