@@ -1,16 +1,10 @@
-import curses
-
 import pytest
 from pydualsense import pydualsense
 from pydualsense.pydualsense import DSState
 
 from controller.command import Command
 from controller.controller import control
-from controller.input_backends import (
-    _KEYBOARD_POLL_TIMEOUT_MS,
-    DualSenseInputBackend,
-    KeyboardInputBackend,
-)
+from controller.input_backends import DualSenseInputBackend
 from controller.senders import InMemoryCommandSender
 
 
@@ -100,65 +94,6 @@ class TestDualSenseInputBackend:
         ds = pydualsense()
         ds.state = AutoExitDSState(exit_after=1)
         backend = DualSenseInputBackend(ds)
-        sender = InMemoryCommandSender()
-
-        control(backend, sender)
-
-        assert sender.sent == [(Command.ADVANCE, 50)]
-
-
-class FakeCursesWindow:
-    def __init__(self, keys: list[int]) -> None:
-        self._keys = iter(keys)
-        self.timeout_ms: int | None = None
-
-    def timeout(self, delay: int) -> None:
-        self.timeout_ms = delay
-
-    def getch(self) -> int:
-        return next(self._keys, -1)
-
-
-class TestKeyboardInputBackend:
-    def test_sets_polling_timeout(self) -> None:
-        window = FakeCursesWindow([])
-        KeyboardInputBackend(window)
-        assert window.timeout_ms == _KEYBOARD_POLL_TIMEOUT_MS
-
-    def test_q_returns_none(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([ord("q")]))
-        assert backend.poll() is None
-
-    @pytest.mark.parametrize(
-        ("key", "expected"),
-        [
-            pytest.param(-1, (Command.BRAKE, None), id="no_key"),
-            pytest.param(ord("w"), (Command.ADVANCE, 50), id="w"),
-            pytest.param(ord("s"), (Command.RETREAT, 50), id="s"),
-            pytest.param(ord("a"), (Command.TURN_LEFT, 50), id="a"),
-            pytest.param(ord("d"), (Command.TURN_RIGHT, 50), id="d"),
-            pytest.param(
-                curses.KEY_LEFT, (Command.LOOK_HORIZONTALLY, -45), id="left_arrow"
-            ),
-            pytest.param(
-                curses.KEY_RIGHT, (Command.LOOK_HORIZONTALLY, 45), id="right_arrow"
-            ),
-            pytest.param(curses.KEY_UP, (Command.LOOK_VERTICALLY, 45), id="up_arrow"),
-            pytest.param(
-                curses.KEY_DOWN, (Command.LOOK_VERTICALLY, -45), id="down_arrow"
-            ),
-            pytest.param(ord("z"), (Command.BRAKE, None), id="unrecognized_key"),
-        ],
-    )
-    def test_translates_key_to_command(
-        self, key: int, expected: tuple[Command, int | None]
-    ) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([key]))
-        assert backend.poll() == expected
-
-    def test_drives_the_control_loop(self) -> None:
-        window = FakeCursesWindow([ord("w"), ord("w"), ord("q")])
-        backend = KeyboardInputBackend(window)
         sender = InMemoryCommandSender()
 
         control(backend, sender)

@@ -104,14 +104,6 @@ class DualSenseInputBackend:
         return command, value
 
 
-class _CursesWindow(Protocol):
-    """Minimal curses window interface used by `KeyboardInputBackend`."""
-
-    def timeout(self, delay: int) -> None: ...
-
-    def getch(self) -> int: ...
-
-
 # Fixed values, mirroring the DualSense D-pad's existing fixed-value convention
 # rather than analog interpolation.
 _KEYBOARD_BINDINGS: dict[int, tuple[Command, int]] = {
@@ -140,7 +132,7 @@ class KeyboardInputBackend:
     behavior.
     """
 
-    def __init__(self, window: _CursesWindow) -> None:
+    def __init__(self, window: curses.window) -> None:
         """Initialize the object."""
         self._window = window
         self._window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)

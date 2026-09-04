@@ -1,11 +1,3 @@
-import dataclasses
-import json
-import threading
-from collections.abc import Generator
-from typing import Any
-
-import pytest
-import websockets.sync.server
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -13,39 +5,9 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from controller.command import Command
 from controller.senders import WebSocketCommandSender
 
+from .conftest import LocalServer
+
 _WAIT_TIMEOUT_S = 5
-
-
-@dataclasses.dataclass
-class LocalServer:
-    server: websockets.sync.server.Server
-    received: list[dict[str, Any]]
-    message_received: threading.Event
-
-    @property
-    def uri(self) -> str:
-        host, port = self.server.socket.getsockname()[:2]
-        return f"ws://{host}:{port}"
-
-
-@pytest.fixture
-def local_server() -> Generator[LocalServer, None, None]:
-    received: list[dict[str, Any]] = []
-    message_received = threading.Event()
-
-    def handler(websocket: websockets.sync.server.ServerConnection) -> None:
-        message = websocket.recv()
-        received.append(json.loads(message))
-        message_received.set()
-
-    with websockets.sync.server.serve(handler, "localhost", 0) as server:
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
-        try:
-            yield LocalServer(server, received, message_received)
-        finally:
-            server.shutdown()
-            thread.join()
 
 
 def test_send_delivers_command_and_value_over_the_wire(
