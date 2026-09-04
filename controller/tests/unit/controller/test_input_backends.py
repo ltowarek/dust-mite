@@ -1,5 +1,7 @@
 import curses
 
+import pytest
+
 from controller.command import Command
 from controller.controller import control
 from controller.input_backends import (
@@ -77,60 +79,38 @@ class TestDualSenseInputBackend:
         backend = DualSenseInputBackend(ds)
         assert backend.poll() is None
 
-    def test_no_input_returns_brake(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState())
+    @pytest.mark.parametrize(
+        ("state_kwargs", "expected"),
+        [
+            pytest.param({}, (Command.BRAKE, None), id="no_input"),
+            pytest.param({"dpad_up": 1}, (Command.ADVANCE, 50), id="dpad_up"),
+            pytest.param({"dpad_right": 1}, (Command.TURN_RIGHT, 50), id="dpad_right"),
+            pytest.param({"dpad_down": 1}, (Command.RETREAT, 50), id="dpad_down"),
+            pytest.param({"dpad_left": 1}, (Command.TURN_LEFT, 50), id="dpad_left"),
+            pytest.param(
+                {"lx": 5}, (Command.BRAKE, None), id="left_stick_within_dead_zone"
+            ),
+            pytest.param(
+                {"lx": -128}, (Command.TURN_LEFT, 100), id="left_stick_negative"
+            ),
+            pytest.param(
+                {"lx": 127}, (Command.TURN_RIGHT, 100), id="left_stick_positive"
+            ),
+            pytest.param(
+                {"rx": 127}, (Command.LOOK_HORIZONTALLY, 90), id="right_stick_x"
+            ),
+            pytest.param(
+                {"ry": -128}, (Command.LOOK_VERTICALLY, 90), id="right_stick_y"
+            ),
+            pytest.param({"r2": 255}, (Command.ADVANCE, 100), id="r2"),
+        ],
+    )
+    def test_translates_state_to_command(
+        self, state_kwargs: dict[str, int], expected: tuple[Command, int | None]
+    ) -> None:
+        ds = FakeDualSense(FakeDualSenseState(**state_kwargs))
         backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.BRAKE, None)
-
-    def test_dpad_up_returns_advance(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(dpad_up=1))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.ADVANCE, 50)
-
-    def test_dpad_right_returns_turn_right(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(dpad_right=1))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.TURN_RIGHT, 50)
-
-    def test_dpad_down_returns_retreat(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(dpad_down=1))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.RETREAT, 50)
-
-    def test_dpad_left_returns_turn_left(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(dpad_left=1))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.TURN_LEFT, 50)
-
-    def test_left_stick_within_dead_zone_is_ignored(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(lx=5))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.BRAKE, None)
-
-    def test_left_stick_negative_returns_turn_left(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(lx=-128))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.TURN_LEFT, 100)
-
-    def test_left_stick_positive_returns_turn_right(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(lx=127))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.TURN_RIGHT, 100)
-
-    def test_right_stick_x_returns_look_horizontally(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(rx=127))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.LOOK_HORIZONTALLY, 90)
-
-    def test_right_stick_y_returns_look_vertically(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(ry=-128))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.LOOK_VERTICALLY, 90)
-
-    def test_r2_returns_advance(self) -> None:
-        ds = FakeDualSense(FakeDualSenseState(r2=255))
-        backend = DualSenseInputBackend(ds)
-        assert backend.poll() == (Command.ADVANCE, 100)
+        assert backend.poll() == expected
 
     def test_drives_the_control_loop(self) -> None:
         ds = AutoExitDualSense(AutoExitDualSenseState(exit_after=1))
@@ -160,49 +140,36 @@ class TestKeyboardInputBackend:
         KeyboardInputBackend(window)
         assert window.timeout_ms == _KEYBOARD_POLL_TIMEOUT_MS
 
-    def test_no_key_returns_brake(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([-1]))
-        assert backend.poll() == (Command.BRAKE, None)
-
-    def test_w_returns_advance(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([ord("w")]))
-        assert backend.poll() == (Command.ADVANCE, 50)
-
-    def test_s_returns_retreat(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([ord("s")]))
-        assert backend.poll() == (Command.RETREAT, 50)
-
-    def test_a_returns_turn_left(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([ord("a")]))
-        assert backend.poll() == (Command.TURN_LEFT, 50)
-
-    def test_d_returns_turn_right(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([ord("d")]))
-        assert backend.poll() == (Command.TURN_RIGHT, 50)
-
-    def test_left_arrow_returns_look_horizontally_negative(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([curses.KEY_LEFT]))
-        assert backend.poll() == (Command.LOOK_HORIZONTALLY, -45)
-
-    def test_right_arrow_returns_look_horizontally_positive(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([curses.KEY_RIGHT]))
-        assert backend.poll() == (Command.LOOK_HORIZONTALLY, 45)
-
-    def test_up_arrow_returns_look_vertically_positive(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([curses.KEY_UP]))
-        assert backend.poll() == (Command.LOOK_VERTICALLY, 45)
-
-    def test_down_arrow_returns_look_vertically_negative(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([curses.KEY_DOWN]))
-        assert backend.poll() == (Command.LOOK_VERTICALLY, -45)
-
     def test_q_returns_none(self) -> None:
         backend = KeyboardInputBackend(FakeCursesWindow([ord("q")]))
         assert backend.poll() is None
 
-    def test_unrecognized_key_returns_brake(self) -> None:
-        backend = KeyboardInputBackend(FakeCursesWindow([ord("z")]))
-        assert backend.poll() == (Command.BRAKE, None)
+    @pytest.mark.parametrize(
+        ("key", "expected"),
+        [
+            pytest.param(-1, (Command.BRAKE, None), id="no_key"),
+            pytest.param(ord("w"), (Command.ADVANCE, 50), id="w"),
+            pytest.param(ord("s"), (Command.RETREAT, 50), id="s"),
+            pytest.param(ord("a"), (Command.TURN_LEFT, 50), id="a"),
+            pytest.param(ord("d"), (Command.TURN_RIGHT, 50), id="d"),
+            pytest.param(
+                curses.KEY_LEFT, (Command.LOOK_HORIZONTALLY, -45), id="left_arrow"
+            ),
+            pytest.param(
+                curses.KEY_RIGHT, (Command.LOOK_HORIZONTALLY, 45), id="right_arrow"
+            ),
+            pytest.param(curses.KEY_UP, (Command.LOOK_VERTICALLY, 45), id="up_arrow"),
+            pytest.param(
+                curses.KEY_DOWN, (Command.LOOK_VERTICALLY, -45), id="down_arrow"
+            ),
+            pytest.param(ord("z"), (Command.BRAKE, None), id="unrecognized_key"),
+        ],
+    )
+    def test_translates_key_to_command(
+        self, key: int, expected: tuple[Command, int | None]
+    ) -> None:
+        backend = KeyboardInputBackend(FakeCursesWindow([key]))
+        assert backend.poll() == expected
 
     def test_drives_the_control_loop(self) -> None:
         window = FakeCursesWindow([ord("w"), ord("w"), ord("q")])

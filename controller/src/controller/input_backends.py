@@ -1,6 +1,8 @@
 """Input backends: sources of driving commands for the gamepad CLI."""
 
+import contextlib
 import curses
+from collections.abc import Iterator
 from enum import StrEnum
 from typing import Protocol
 
@@ -131,3 +133,44 @@ class KeyboardInputBackend:
         if key in _KEYBOARD_BINDINGS:
             return _KEYBOARD_BINDINGS[key]
         return Command.BRAKE, None
+
+
+@contextlib.contextmanager
+def _curses_session() -> Iterator[_CursesWindow]:
+    """Initialize curses and guarantee terminal restoration on exit.
+
+    Mirrors `curses.wrapper`'s setup/teardown sequence, but as a context
+    manager spanning a backend's lifetime instead of a single wrapped
+    function call.
+    """
+    window = curses.initscr()
+    try:
+        curses.noecho()
+        curses.cbreak()
+        window.keypad(True)  # noqa: FBT003 - curses' C API is positional-only
+        with contextlib.suppress(curses.error):
+            # Harmless if the terminal doesn't have color; matches
+            # `curses.wrapper`'s own use of `start_color`.
+            curses.start_color()
+        yield window
+    finally:
+        window.keypad(False)  # noqa: FBT003 - curses' C API is positional-only
+        curses.echo()
+        curses.nocbreak()
+        curses.endwin()
+
+
+@contextlib.contextmanager
+def create_input_backend(name: InputBackendName) -> Iterator[InputBackend]:
+    """Construct and manage the lifecycle of the named input backend."""
+    if name is InputBackendName.KEYBOARD:
+        with _curses_session() as window:
+            yield KeyboardInputBackend(window)
+        return
+
+    ds = pydualsense()
+    ds.init()
+    try:
+        yield DualSenseInputBackend(ds)
+    finally:
+        ds.close()

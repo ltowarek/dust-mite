@@ -1,19 +1,10 @@
 """controller module."""
 
-import curses
 import logging
 import os
 
-import websockets.sync.client
-from pydualsense import pydualsense
-
 from .command import Command
-from .input_backends import (
-    DualSenseInputBackend,
-    InputBackend,
-    InputBackendName,
-    KeyboardInputBackend,
-)
+from .input_backends import InputBackend, InputBackendName, create_input_backend
 from .logging import configure_logging
 from .senders import CommandSender, WebSocketCommandSender
 from .tracing import configure_tracing
@@ -46,22 +37,13 @@ def main() -> None:
     configure_tracing("dust-mite-controller")
     configure_logging("dust-mite-controller")
     controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
-    input_backend_name = InputBackendName(
-        os.environ.get("CONTROLLER_INPUT_BACKEND", InputBackendName.DUALSENSE)
-    )
+    input_backend_name = InputBackendName(os.environ["CONTROLLER_INPUT_BACKEND"])
 
-    ws_conn = websockets.sync.client.connect(controller_client_uri)
-    sender = WebSocketCommandSender(ws_conn)
-
-    if input_backend_name is InputBackendName.KEYBOARD:
-        curses.wrapper(lambda window: control(KeyboardInputBackend(window), sender))
-    else:
-        ds = pydualsense()
-        ds.init()
-        control(DualSenseInputBackend(ds), sender)
-        ds.close()
-
-    ws_conn.close()
+    with (
+        WebSocketCommandSender(controller_client_uri) as sender,
+        create_input_backend(input_backend_name) as backend,
+    ):
+        control(backend, sender)
 
 
 if __name__ == "__main__":
