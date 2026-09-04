@@ -74,12 +74,12 @@ extern "C" void app_main() {
   auto log_exporter = std::make_unique<esp_opentelemetry::JtagLogRecordExporter>();
   auto profiles_exporter = std::make_unique<esp_opentelemetry::JtagProfilesExporter>();
 #else
-  auto span_exporter = esp_opentelemetry::MakeOtlpHttpSpanExporter(
-      CONFIG_ESP_OPENTELEMETRY_TRACING_OTLP_BASE_URL);
-  auto metric_exporter = esp_opentelemetry::MakeOtlpHttpMetricExporter(
-      CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL);
-  auto log_exporter = esp_opentelemetry::MakeOtlpHttpLogRecordExporter(
-      CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL);
+  auto span_exporter =
+      esp_opentelemetry::MakeOtlpHttpSpanExporter(CONFIG_ESP_OPENTELEMETRY_TRACING_OTLP_BASE_URL);
+  auto metric_exporter =
+      esp_opentelemetry::MakeOtlpHttpMetricExporter(CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL);
+  auto log_exporter =
+      esp_opentelemetry::MakeOtlpHttpLogRecordExporter(CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL);
   // Profiling is off in this firmware, so its base-URL option does not exist to
   // name here, and a null exporter leaves profiling off - the same thing a null
   // exporter means for every other signal. Enabling profiling means building
