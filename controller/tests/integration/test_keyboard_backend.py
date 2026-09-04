@@ -16,30 +16,47 @@ from controller.command import Command
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from .conftest import LocalServer
-
 _WAIT_TIMEOUT_S = 5
+
+# Drives KeyboardInputBackend directly against a real curses session,
+# printing each poll() result - no websocket/CommandSender involved, since
+# that path is already covered by test_controller_websocket.py and the
+# fast unit tests in test_controller.py cover control()'s dedup/exit logic
+# against a fake backend. This isolates exactly the thing that needs a real
+# terminal to verify: does curses actually translate a real keypress the
+# way _KEYBOARD_BINDINGS says it should.
+_POLL_SCRIPT = """\
+import curses
+
+from controller.input_backends import KeyboardInputBackend
+
+
+def main(window):
+    backend = KeyboardInputBackend(window)
+    while True:
+        result = backend.poll()
+        if result is None:
+            print("RESULT None None", flush=True)
+        else:
+            command, value = result
+            print(f"RESULT {command.value} {value}", flush=True)
+
+
+curses.wrapper(main)
+"""
 
 
 @pytest.fixture
-def keyboard_backend_process(
-    local_server: LocalServer,
-) -> Generator[pexpect.spawn[str], None, None]:
+def keyboard_backend_process() -> Generator[pexpect.spawn[str], None, None]:
     env = {
         **os.environ,
         # Pinned rather than inherited: CI runners often leave TERM unset
         # or set to "dumb", and curses.initscr() needs a real terminfo
         # entry to succeed.
         "TERM": "xterm",
-        "CONTROLLER_INPUT_BACKEND": "keyboard",
-        "CONTROLLER_CLIENT_URI": local_server.uri,
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "",
     }
     child = pexpect.spawn(
-        sys.executable,
-        ["-m", "controller.controller"],
-        env=env,
-        timeout=_WAIT_TIMEOUT_S,
+        sys.executable, ["-c", _POLL_SCRIPT], env=env, timeout=_WAIT_TIMEOUT_S
     )
     try:
         yield child
@@ -47,19 +64,25 @@ def keyboard_backend_process(
         child.close(force=True)
 
 
-def test_keyboard_backend_sends_command_over_the_wire(
-    local_server: LocalServer,
+@pytest.mark.parametrize(
+    ("key", "expected_command", "expected_value"),
+    [
+        pytest.param("w", Command.ADVANCE, 50, id="w"),
+        pytest.param("s", Command.RETREAT, 50, id="s"),
+        pytest.param("a", Command.TURN_LEFT, 50, id="a"),
+        pytest.param("d", Command.TURN_RIGHT, 50, id="d"),
+    ],
+)
+def test_translates_key_to_command(
     keyboard_backend_process: pexpect.spawn[str],
+    key: str,
+    expected_command: Command,
+    expected_value: int,
 ) -> None:
-    sent_value = 50
-    keyboard_backend_process.send("w")
-    assert local_server.message_received.wait(timeout=_WAIT_TIMEOUT_S)
-    keyboard_backend_process.send("q")
-    keyboard_backend_process.expect(pexpect.EOF)
-    # expect(EOF) only confirms the child's output stream ended; close()
-    # reaps the process so exitstatus is actually populated.
-    keyboard_backend_process.close()
+    keyboard_backend_process.send(key)
+    keyboard_backend_process.expect(f"RESULT {expected_command.value} {expected_value}")
 
-    assert keyboard_backend_process.exitstatus == 0
-    assert local_server.received[0]["command"] == Command.ADVANCE.value
-    assert local_server.received[0]["value"] == sent_value
+
+def test_q_returns_none(keyboard_backend_process: pexpect.spawn[str]) -> None:
+    keyboard_backend_process.send("q")
+    keyboard_backend_process.expect("RESULT None None")
