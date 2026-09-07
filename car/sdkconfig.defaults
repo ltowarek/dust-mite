@@ -47,9 +47,4 @@ CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME="dust-mite-car"
 CONFIG_ESP_OPENTELEMETRY_SERVICE_REPOSITORY="https://github.com/ltowarek/dust-mite"
 CONFIG_ESP_OPENTELEMETRY_SERVICE_ROOT_PATH="car"
 
-# BatchSpanProcessor creates a std::thread (via pthreads) that serialises
-# spans to protobuf and POSTs them over HTTP. 3 KB (the IDF default) is far
-# too small; the protobuf serialiser and HTTP client together need ~8 KB.
-CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=32768
-
 CONFIG_HTTPD_QUEUE_WORK_BLOCKING=y
