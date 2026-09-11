@@ -14,9 +14,12 @@ services:
     volumes:
       - ./otelcol.yml:/etc/otelcol-contrib/config.yaml:ro
     depends_on:
-      - tempo
-      - pyroscope
-      - loki
+      tempo:
+        condition: service_started
+      pyroscope:
+        condition: service_started
+      loki:
+        condition: service_healthy
     networks:
       - dust-mite-observability
 
@@ -71,7 +74,8 @@ services:
       - dust-mite-observability
 
   loki:
-    image: grafana/loki:3.7.7
+    build:
+      context: ./loki
     command: ["-config.file=/etc/loki.yml"]
     volumes:
       - ./loki.yml:/etc/loki.yml:ro
