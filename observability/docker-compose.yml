@@ -15,16 +15,17 @@ services:
       - ./otelcol.yml:/etc/otelcol-contrib/config.yaml:ro
     depends_on:
       tempo:
-        condition: service_started
+        condition: service_healthy
       pyroscope:
-        condition: service_started
+        condition: service_healthy
       loki:
         condition: service_healthy
     networks:
       - dust-mite-observability
 
   pyroscope:
-    image: grafana/pyroscope:2.1.1
+    build:
+      context: ./pyroscope
     command:
       - "-config.file=/etc/pyroscope/config.yml"
       - "-self-profiling.disable-push=true"
@@ -55,7 +56,8 @@ services:
       - dust-mite-observability
 
   tempo:
-    image: grafana/tempo:3.0.0
+    build:
+      context: ./tempo
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
       - ./tempo.yml:/etc/tempo.yml:ro
@@ -63,13 +65,13 @@ services:
       - dust-mite-observability
 
   mimir:
-    image: grafana/mimir:3.2.0
+    build:
+      context: ./mimir
     command: ["-config.file=/etc/mimir.yml"]
     volumes:
       - ./mimir.yml:/etc/mimir.yml:ro
     ports:
       - "8080:8080"   # HTTP API (Prometheus-compatible + OTLP ingestion)
-    # No healthcheck: the official image ships no shell/wget/curl to run one (grafana/mimir#9034).
     networks:
       - dust-mite-observability
 
