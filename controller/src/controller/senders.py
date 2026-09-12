@@ -8,9 +8,21 @@ import websockets.sync.client
 from opentelemetry import trace
 
 from .command import Command
+from .metrics import record_command_sent
 from .tracing import inject_trace_context
 
 tracer = trace.get_tracer(__name__)
+
+
+class _Connection(Protocol):
+    """The subset of a `websockets` client connection the sender writes through.
+
+    A structural type rather than `ClientConnection` itself, so tests can
+    exercise the send path with a plain fake instead of a live socket.
+    """
+
+    def send(self, message: str, /) -> None: ...
+    def close(self) -> None: ...
 
 
 class CommandSender(Protocol):
@@ -30,7 +42,7 @@ class WebSocketCommandSender:
     def __init__(self, uri: str) -> None:
         """Initialize the object."""
         self._uri = uri
-        self._ws_conn: websockets.sync.client.ClientConnection | None = None
+        self._ws_conn: _Connection | None = None
 
     def connect(self) -> None:
         """Connect to the car."""
@@ -70,6 +82,7 @@ class WebSocketCommandSender:
         payload = inject_trace_context(payload)
 
         self._ws_conn.send(json.dumps(payload))
+        record_command_sent(command)
 
 
 class InMemoryCommandSender:

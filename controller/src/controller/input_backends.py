@@ -118,9 +118,29 @@ _KEYBOARD_BINDINGS: dict[int, tuple[Command, int]] = {
 }
 _KEYBOARD_EXIT_KEY = ord("q")
 
-# Wide enough to catch the terminal's next auto-repeated keydown while a key
-# is held, so a held key doesn't flicker back to BRAKE between repeats.
-_KEYBOARD_POLL_TIMEOUT_MS = 50
+# Must exceed the host's initial key-repeat delay (500 ms on Ubuntu). A held
+# key delivers one keydown, then nothing until auto-repeat starts; a timeout
+# shorter than that gap reads the silence as a released key and emits BRAKE,
+# so the car stutters for the whole delay before the repeats sustain it.
+#
+# The timeout is therefore also the shortest command the backend can express:
+# a tap holds its command for this long before BRAKE follows. Shortening it
+# below the host's repeat delay brings the stutter back; the way to a finer
+# minimum is to lower that delay (`xset r rate`) and this timeout together.
+_KEYBOARD_POLL_TIMEOUT_MS = 600
+
+
+class _InputWindow(Protocol):
+    """The subset of `curses.window` the keyboard backend reads through.
+
+    A structural type rather than `curses.window` itself, so tests can pass
+    a plain fake instead of a real (C-extension) curses window.
+    """
+
+    # `timeout` and `getch` mirror curses.window's C functions, which only
+    # accept positional arguments.
+    def timeout(self, delay: int, /) -> None: ...
+    def getch(self) -> int: ...
 
 
 class KeyboardInputBackend:
@@ -129,10 +149,11 @@ class KeyboardInputBackend:
     Uses a timed-out `curses` read, so a key that isn't held down (or isn't
     being auto-repeated by the terminal within the poll timeout) reads back
     as `BRAKE`, mirroring the DualSense analog sticks' spring-back-to-center
-    behavior.
+    behavior. The timeout also bounds how long the exit key takes to
+    register.
     """
 
-    def __init__(self, window: curses.window) -> None:
+    def __init__(self, window: _InputWindow) -> None:
         """Initialize the object."""
         self._window = window
         self._window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)

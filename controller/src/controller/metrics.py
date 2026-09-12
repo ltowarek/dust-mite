@@ -10,6 +10,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
+from controller.command import Command
 from controller.otel import (
     current_repository,
     resolve_current_git_ref,
@@ -30,12 +31,19 @@ def configure_metrics(service_name: str, provider: MeterProvider | None = None) 
 
     When ``provider`` is omitted, builds a production ``MeterProvider`` with
     OTLP/HTTP export and sets it as the global provider. Reads
-    ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` from the environment in that case
-    (raises ``KeyError`` if not set). Pass a ``MeterProvider`` explicitly to
-    use a custom provider without touching the global state (useful in tests).
+    ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` from the environment in that case,
+    skipping configuration if it isn't set. Pass a ``MeterProvider``
+    explicitly to use a custom provider without touching the global state
+    (useful in tests).
     """
     if provider is None:
-        endpoint_url = os.environ["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"]
+        endpoint_url = os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+        if not endpoint_url:
+            logger.debug(
+                "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT not set, "
+                "skipping metrics configuration"
+            )
+            return
         exporter = OTLPMetricExporter(endpoint=endpoint_url)
         reader = PeriodicExportingMetricReader(exporter, export_interval_millis=500)
         vcs_attributes = resolve_vcs_attributes(
@@ -76,7 +84,7 @@ def record_telemetry_received() -> None:
         _metrics.telemetry_packets_received.add(1)
 
 
-def record_command_sent() -> None:
-    """Record one drive command sent to the car."""
+def record_command_sent(command: Command) -> None:
+    """Record one drive command sent to the car, attributed by command name."""
     if _metrics.commands_sent is not None:
-        _metrics.commands_sent.add(1)
+        _metrics.commands_sent.add(1, {"command.name": command.name})
