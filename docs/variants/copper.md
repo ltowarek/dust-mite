@@ -115,13 +115,19 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 |---|---|---|
 | `dust_mite_frames_sent` | {frame} | Camera frames sent over WebSocket (counter) |
 
-**Streamer pipeline metrics** (emitted by [controller/src/controller/metrics.py](../../controller/src/controller/metrics.py)):
+**Controller package metrics** (emitted by [controller/src/controller/metrics.py](../../controller/src/controller/metrics.py)):
 
-| Metric | Unit | Description |
-|---|---|---|
-| `dust_mite_frames_processed` | {frame} | Camera frames processed (counter) |
-| `dust_mite_telemetry_packets_received` | {packet} | Telemetry packets from the car (counter) |
-| `dust_mite_commands_sent` | {command} | Drive commands sent (counter) |
+| Metric | Unit | Description | Emitted by |
+|---|---|---|---|
+| `dust_mite_frames_processed` | {frame} | Camera frames processed (counter) | `dust-mite-streamer` |
+| `dust_mite_telemetry_packets_received` | {packet} | Telemetry packets from the car (counter) | `dust-mite-streamer` |
+| `dust_mite_commands_sent` | {command} | Drive commands sent, attributed by `command.name` (counter) | `dust-mite-streamer`, `dust-mite-controller` |
+
+`dust_mite_commands_sent` is emitted by both the streamer's autonomous
+obstacle avoidance and the gamepad CLI's operator input; split them on
+`service_name`. A run of `BRAKE` between two identical steering commands
+from `dust-mite-controller` means the input backend read a still-held key
+as released.
 
 **Web browser metrics** (emitted by [web/src/metrics.js](../../web/src/metrics.js)):
 

@@ -19,6 +19,7 @@ import websockets.sync.client
 import websockets.sync.server
 from opentelemetry import trace
 
+from .command import Command
 from .logging import configure_logging
 from .metrics import (
     configure_metrics,
@@ -310,7 +311,7 @@ def handle_drive_command(
             span.set_attribute("distance_ahead", telemetry["distance_ahead"])
             p = prepare_command_packet(command_packet)
             controller_client.send(json.dumps(p))
-            record_command_sent()
+            record_command_sent(Command(command_packet["command"]))
     return command_packet
 
 

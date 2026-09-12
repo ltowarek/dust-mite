@@ -13,6 +13,7 @@ from .input_backends import (
     KeyboardInputBackend,
 )
 from .logging import configure_logging
+from .metrics import configure_metrics
 from .senders import CommandSender, WebSocketCommandSender
 from .tracing import configure_tracing
 
@@ -50,6 +51,7 @@ def main() -> None:
     """Run the main entry point."""
     configure_tracing("dust-mite-controller")
     configure_logging("dust-mite-controller")
+    configure_metrics("dust-mite-controller")
     console_handler = _configure_console_logging()
     controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
     input_backend_name = InputBackendName(os.environ["CONTROLLER_INPUT_BACKEND"])
