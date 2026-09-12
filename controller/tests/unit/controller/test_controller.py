@@ -1,6 +1,18 @@
+import logging
+
 from controller.command import Command
-from controller.controller import control
+from controller.controller import _configure_console_logging, control
 from controller.senders import InMemoryCommandSender
+
+
+class TestConfigureConsoleLogging:
+    def test_attaches_a_stream_handler_to_the_root_logger(
+        self, root_logger: logging.Logger
+    ) -> None:
+        handler = _configure_console_logging()
+
+        assert handler in root_logger.handlers
+        assert isinstance(handler, logging.StreamHandler)
 
 
 class FakeInputBackend:
