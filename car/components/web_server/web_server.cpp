@@ -438,7 +438,10 @@ static const httpd_uri_t telemetry = {
 static httpd_handle_t start_web_server() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.lru_purge_enable = true;
-  config.max_open_sockets = 3;
+  // The streamer holds one socket per endpoint and a CLI controller adds a fourth; past this
+  // cap, lru_purge_enable closes the oldest session without a WebSocket close frame. 7 is the
+  // most that LWIP_MAX_SOCKETS (10) allows, after the 3 sockets httpd reserves internally.
+  config.max_open_sockets = 7;
   // 8 KB is insufficient for root_get_handler with tracing_extract + StartSpan.
   config.stack_size = 16384;
 

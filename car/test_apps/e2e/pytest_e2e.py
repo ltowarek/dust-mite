@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import time
 
@@ -15,6 +16,41 @@ COMMAND_TURN_LEFT = 4
 COMMAND_TURN_RIGHT = 5
 COMMAND_LOOK_HORIZONTALLY = 6
 COMMAND_LOOK_VERTICALLY = 7
+
+# Mirrored from config.max_open_sockets in web_server.cpp
+MAX_OPEN_SOCKETS = 7
+
+
+def test_keeps_max_open_sockets_concurrent_connections_open(dut: Dut) -> None:
+    """MAX_OPEN_SOCKETS concurrent clients all stay connected.
+
+    Past the cap, httpd's LRU purge closes the least recently used session
+    without a WebSocket close frame, which clients see as a dropped connection
+    (issue #140). No command frames are sent, so the car does not move.
+    """
+    ip = get_dut_ip(dut)
+    dut.expect(r'Registering URI handlers', timeout=70)
+
+    async def run():
+        async with contextlib.AsyncExitStack() as stack:
+            connections = [
+                await stack.enter_async_context(websockets.connect(f'ws://{ip}/'))
+                for _ in range(MAX_OPEN_SOCKETS)
+            ]
+            # Let the client notice a purge that was triggered by a later accept.
+            await asyncio.sleep(2)
+
+            dropped = []
+            for index, ws in enumerate(connections):
+                try:
+                    await asyncio.wait_for(await ws.ping(), timeout=5)
+                except websockets.ConnectionClosed:
+                    dropped.append(index)
+        return dropped
+
+    dropped = asyncio.run(run())
+    assert dropped == [], \
+        f'car closed connections {dropped} of {MAX_OPEN_SOCKETS} opened concurrently'
 
 
 def test_advance_and_brake(dut: Dut) -> None:
