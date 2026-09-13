@@ -65,7 +65,7 @@
 - Steering is skid-steering, with left/right drive commands generated from host-side input.
 - On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to `CONTROLLER_CLIENT_URI`. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected.
 - On the Linux host, `streamer.py` reads camera frames from `STREAM_CLIENT_URI`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and publishes packets to a local WebSocket server at `ws://localhost:8765`.
-- `streamer.py` can also send automatic brake commands to `CONTROLLER_CLIENT_URI` when `distance_ahead` is below the configured threshold.
+- `streamer.py` accepts drive commands on `ws://localhost:8765/drive` and forwards them to `CONTROLLER_CLIENT_URI` through a collision monitor, which turns `ADVANCE` into `BRAKE` while `distance_ahead` is below 5 cm, until it is at least 10 cm again. It holds one connection per car endpoint, shared by every client.
 - The web page served by the JavaScript devcontainer connects to `ws://localhost:8765` and displays the processed camera stream with live telemetry.
 
 ### Metrics

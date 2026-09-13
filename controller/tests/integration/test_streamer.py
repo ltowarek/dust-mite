@@ -16,24 +16,25 @@ import websockets.sync.client
 import websockets.sync.connection
 import websockets.sync.server
 
+from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
-from controller.streamer import CarFeeds, server_handler
-
-from .conftest import LocalServer
+from controller.streamer import CarFeeds, CommandMux, server_handler
 
 _WAIT_TIMEOUT_S = 10
 _FEED_INTERVAL_S = 0.05
 _CLEAR_DISTANCE_CM = 100
 _OBSTACLE_DISTANCE_CM = 3
+_SPEED = 50
 
 
 @dataclasses.dataclass
-class FakeCarFeed:
-    """A car endpoint that keeps pushing messages to every connected client."""
+class FakeCarEndpoint:
+    """A car endpoint that counts its connections."""
 
     server: websockets.sync.server.Server
     open_connections: int = 0
     peak_connections: int = 0
+    received: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     @property
     def uri(self) -> str:
@@ -56,27 +57,54 @@ def _serve(
 
 
 @contextlib.contextmanager
-def _fake_car_feed(message: Callable[[], dict[str, Any]]) -> Iterator[FakeCarFeed]:
+def _fake_car_endpoint(
+    serve_client: Callable[
+        [websockets.sync.server.ServerConnection, FakeCarEndpoint], None
+    ],
+) -> Iterator[FakeCarEndpoint]:
     lock = threading.Lock()
-    feed: FakeCarFeed
+    endpoint: FakeCarEndpoint
 
     def handler(websocket: websockets.sync.server.ServerConnection) -> None:
         with lock:
-            feed.open_connections += 1
-            feed.peak_connections = max(feed.peak_connections, feed.open_connections)
+            endpoint.open_connections += 1
+            endpoint.peak_connections = max(
+                endpoint.peak_connections, endpoint.open_connections
+            )
         try:
-            while True:
-                websocket.send(json.dumps(message()))
-                time.sleep(_FEED_INTERVAL_S)
+            serve_client(websocket, endpoint)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
             with lock:
-                feed.open_connections -= 1
+                endpoint.open_connections -= 1
 
     with _serve(handler) as server:
-        feed = FakeCarFeed(server)
-        yield feed
+        endpoint = FakeCarEndpoint(server)
+        yield endpoint
+
+
+def _fake_car_feed(
+    message: Callable[[], dict[str, Any]],
+) -> contextlib.AbstractContextManager[FakeCarEndpoint]:
+    def push_messages(
+        websocket: websockets.sync.server.ServerConnection, _: FakeCarEndpoint
+    ) -> None:
+        while True:
+            websocket.send(json.dumps(message()))
+            time.sleep(_FEED_INTERVAL_S)
+
+    return _fake_car_endpoint(push_messages)
+
+
+def _fake_car_control() -> contextlib.AbstractContextManager[FakeCarEndpoint]:
+    def record_commands(
+        websocket: websockets.sync.server.ServerConnection, endpoint: FakeCarEndpoint
+    ) -> None:
+        for message in websocket:
+            endpoint.received.append(json.loads(message))
+
+    return _fake_car_endpoint(record_commands)
 
 
 def _camera_frame() -> dict[str, Any]:
@@ -90,23 +118,30 @@ def _telemetry(distance_ahead: int) -> Callable[[], dict[str, Any]]:
 
 
 @pytest.fixture
-def camera_feed() -> Generator[FakeCarFeed, None, None]:
+def camera_feed() -> Generator[FakeCarEndpoint, None, None]:
     with _fake_car_feed(_camera_frame) as feed:
         yield feed
 
 
 @pytest.fixture
-def telemetry_feed() -> Generator[FakeCarFeed, None, None]:
+def telemetry_feed() -> Generator[FakeCarEndpoint, None, None]:
     with _fake_car_feed(_telemetry(_CLEAR_DISTANCE_CM)) as feed:
         yield feed
 
 
+@pytest.fixture
+def car_control() -> Generator[FakeCarEndpoint, None, None]:
+    with _fake_car_control() as control:
+        yield control
+
+
 @contextlib.contextmanager
 def _streamer(
-    camera_uri: str, telemetry_uri: str
+    camera: FakeCarEndpoint, telemetry: FakeCarEndpoint, control: FakeCarEndpoint
 ) -> Iterator[websockets.sync.server.Server]:
-    feeds = CarFeeds.connect(stream_uri=camera_uri, telemetry_uri=telemetry_uri)
-    with _serve(functools.partial(server_handler, feeds)) as server:
+    feeds = CarFeeds.connect(stream_uri=camera.uri, telemetry_uri=telemetry.uri)
+    mux = CommandMux(control.uri, feeds.telemetry, CollisionMonitor())
+    with _serve(functools.partial(server_handler, feeds, mux)) as server:
         yield server
 
 
@@ -134,31 +169,31 @@ def _wait_for(condition: Callable[[], bool]) -> bool:
     return True
 
 
-def test_dashboard_receives_camera_and_telemetry(
-    camera_feed: FakeCarFeed,
-    telemetry_feed: FakeCarFeed,
-    local_server: LocalServer,
-    monkeypatch: pytest.MonkeyPatch,
+def _send_command(
+    websocket: websockets.sync.connection.Connection, command: Command
 ) -> None:
-    monkeypatch.setenv("CONTROLLER_CLIENT_URI", local_server.uri)
+    websocket.send(json.dumps({"command": command.value, "value": _SPEED}))
 
+
+def test_dashboard_receives_camera_and_telemetry(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
     with (
-        _streamer(camera_feed.uri, telemetry_feed.uri) as streamer,
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
         websockets.sync.client.connect(_uri(streamer)) as dashboard,
     ):
         _receive_types(dashboard, {"stream", "telemetry"})
 
 
 def test_dashboards_share_one_car_connection_per_feed(
-    camera_feed: FakeCarFeed,
-    telemetry_feed: FakeCarFeed,
-    local_server: LocalServer,
-    monkeypatch: pytest.MonkeyPatch,
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
 ) -> None:
-    monkeypatch.setenv("CONTROLLER_CLIENT_URI", local_server.uri)
-
     with (
-        _streamer(camera_feed.uri, telemetry_feed.uri) as streamer,
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
         websockets.sync.client.connect(_uri(streamer)) as first,
         websockets.sync.client.connect(_uri(streamer)) as second,
     ):
@@ -167,17 +202,15 @@ def test_dashboards_share_one_car_connection_per_feed(
 
     assert camera_feed.peak_connections == 1
     assert telemetry_feed.peak_connections == 1
+    assert car_control.peak_connections == 0
 
 
 def test_car_feeds_disconnect_after_the_last_dashboard_leaves(
-    camera_feed: FakeCarFeed,
-    telemetry_feed: FakeCarFeed,
-    local_server: LocalServer,
-    monkeypatch: pytest.MonkeyPatch,
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
 ) -> None:
-    monkeypatch.setenv("CONTROLLER_CLIENT_URI", local_server.uri)
-
-    with _streamer(camera_feed.uri, telemetry_feed.uri) as streamer:
+    with _streamer(camera_feed, telemetry_feed, car_control) as streamer:
         with websockets.sync.client.connect(_uri(streamer)) as dashboard:
             _receive_types(dashboard, {"stream", "telemetry"})
 
@@ -185,18 +218,54 @@ def test_car_feeds_disconnect_after_the_last_dashboard_leaves(
         assert _wait_for(lambda: telemetry_feed.open_connections == 0)
 
 
-def test_brakes_when_an_obstacle_is_ahead(
-    camera_feed: FakeCarFeed,
-    local_server: LocalServer,
-    monkeypatch: pytest.MonkeyPatch,
+def test_forwards_drive_commands_to_the_car(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
 ) -> None:
-    monkeypatch.setenv("CONTROLLER_CLIENT_URI", local_server.uri)
+    with (
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(_uri(streamer, "/drive")) as driver,
+    ):
+        _send_command(driver, Command.ADVANCE)
+        assert _wait_for(lambda: bool(car_control.received))
+
+    assert car_control.received[0]["command"] == Command.ADVANCE.value
+    assert car_control.received[0]["value"] == _SPEED
+
+
+def test_drivers_share_one_control_connection(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    with (
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(_uri(streamer, "/drive")) as first,
+        websockets.sync.client.connect(_uri(streamer, "/drive")) as second,
+    ):
+        _send_command(first, Command.ADVANCE)
+        _send_command(second, Command.RETREAT)
+        assert _wait_for(lambda: len(car_control.received) == 2)  # noqa: PLR2004
+
+    assert car_control.peak_connections == 1
+
+
+def test_brakes_instead_of_advancing_into_an_obstacle(
+    camera_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    def received_brake() -> bool:
+        return any(c["command"] == Command.BRAKE.value for c in car_control.received)
 
     with (
         _fake_car_feed(_telemetry(_OBSTACLE_DISTANCE_CM)) as telemetry_feed,
-        _streamer(camera_feed.uri, telemetry_feed.uri) as streamer,
-        websockets.sync.client.connect(_uri(streamer)),
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(_uri(streamer, "/drive")) as driver,
     ):
-        assert local_server.message_received.wait(timeout=_WAIT_TIMEOUT_S)
 
-    assert local_server.received[0]["command"] == Command.BRAKE.value
+        def advance_until_braked() -> bool:
+            _send_command(driver, Command.ADVANCE)
+            return received_brake()
+
+        assert _wait_for(advance_until_braked)
