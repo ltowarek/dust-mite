@@ -246,6 +246,7 @@ class CommandArbiter:
     releases it. Every command goes through `collision_monitor` first and is
     then published on `commands`. While a driver holds the claim, the arbiter
     keeps `collision_monitor` fed from the telemetry feed.
+    `collision_state` carries whether the monitor is stopping the car.
     """
 
     def __init__(
@@ -260,6 +261,9 @@ class CommandArbiter:
         self._collision_monitor = collision_monitor
         self._lock = threading.Lock()
         self._claimed = False
+        # Race: only changes are published, so a client that subscribes after
+        # the latest change sees no collision state until the next one.
+        self.collision_state = Subject()
 
     @contextlib.contextmanager
     def claim(self) -> Iterator[Callable[[dict[str, Any]], None]]:
@@ -275,6 +279,9 @@ class CommandArbiter:
             with self._telemetry.subscription(self._on_telemetry):
                 yield self._submit
         finally:
+            if self._collision_monitor.stopping:
+                self._collision_monitor.reset()
+                self._publish_collision_state()
             with self._lock:
                 self._claimed = False
 
@@ -291,7 +298,18 @@ class CommandArbiter:
             record_command_sent(command)
 
     def _on_telemetry(self, message: dict[str, Any]) -> None:
-        self._collision_monitor.update(message["data"]["distance_ahead"])
+        if self._collision_monitor.update(message["data"]["distance_ahead"]):
+            self._publish_collision_state()
+
+    def _publish_collision_state(self) -> None:
+        self.collision_state.publish(
+            inject_trace_context(
+                {
+                    "type": "collision_monitor",
+                    "stopping": self._collision_monitor.stopping,
+                }
+            )
+        )
 
 
 class _Outbox:
@@ -303,7 +321,7 @@ class _Outbox:
     shares.
     """
 
-    def __init__(self, *feeds: CarFeed) -> None:
+    def __init__(self, *feeds: CarFeed | Subject) -> None:
         self._feeds = feeds
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
@@ -364,7 +382,7 @@ def server_handler(
         if path == CAMERA_PATH:
             _serve_camera(websocket, camera)
         elif path == TELEMETRY_PATH:
-            _serve_telemetry(websocket, telemetry)
+            _serve_telemetry(websocket, telemetry, arbiter.collision_state)
         elif path == DRIVE_PATH:
             _serve_driver(arbiter, websocket)
         else:
@@ -393,9 +411,11 @@ def _serve_camera(
 
 
 def _serve_telemetry(
-    websocket: websockets.sync.server.ServerConnection, telemetry: CarFeed
+    websocket: websockets.sync.server.ServerConnection,
+    telemetry: CarFeed,
+    collision_state: Subject,
 ) -> None:
-    with _Outbox(telemetry) as outbox:
+    with _Outbox(telemetry, collision_state) as outbox:
         _send_until_closed(websocket, outbox)
 
 
