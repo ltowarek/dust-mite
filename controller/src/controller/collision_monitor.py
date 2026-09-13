@@ -47,6 +47,11 @@ class CollisionMonitor:
             self._stopping = stopping
             return changed
 
+    def reset(self) -> None:
+        """Clear the stopping state."""
+        with self._lock:
+            self._stopping = False
+
     def filter(self, command_packet: dict[str, Any]) -> dict[str, Any]:
         """Return the command to send to the car in place of `command_packet`."""
         if self.stopping and command_packet.get("command") == Command.ADVANCE.value:

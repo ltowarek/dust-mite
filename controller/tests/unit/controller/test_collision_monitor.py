@@ -46,6 +46,13 @@ class TestCollisionMonitorUpdate:
         assert changed is True
         assert monitor.stopping is False
 
+    def test_reset_clears_stopping(self) -> None:
+        monitor = _stopping_monitor()
+
+        monitor.reset()
+
+        assert monitor.stopping is False
+
     def test_ignores_a_reading_with_no_echo(self) -> None:
         monitor = _stopping_monitor()
 

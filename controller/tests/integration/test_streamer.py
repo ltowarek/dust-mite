@@ -295,3 +295,29 @@ def test_brakes_instead_of_advancing_into_an_obstacle(
             return received_brake()
 
         assert _wait_for(advance_until_braked)
+
+
+def _receive_collision_state(
+    websocket: websockets.sync.connection.Connection,
+) -> bool:
+    deadline = time.monotonic() + _WAIT_TIMEOUT_S
+    while True:
+        message = json.loads(websocket.recv(timeout=deadline - time.monotonic()))
+        if message["type"] == "collision_monitor":
+            return bool(message["stopping"])
+
+
+def test_publishes_collision_monitor_state_on_the_telemetry_endpoint(
+    camera_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    with (
+        _fake_car_feed(_telemetry(_OBSTACLE_DISTANCE_CM)) as telemetry_feed,
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(_uri(streamer, "/telemetry")) as client,
+    ):
+        # Only changes are published, so subscribe before a driver attaches.
+        _receive_types(client, {"telemetry"})
+        with websockets.sync.client.connect(_uri(streamer, "/drive")):
+            assert _receive_collision_state(client) is True
+

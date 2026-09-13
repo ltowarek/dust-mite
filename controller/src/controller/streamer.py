@@ -229,6 +229,7 @@ class CommandMux:
     Every command goes through `collision_monitor` first. While at least one
     driver is attached, the mux holds the one control connection to the car
     and keeps `collision_monitor` fed from the telemetry feed.
+    `collision_state` carries whether the monitor is stopping the car.
     """
 
     def __init__(
@@ -245,6 +246,9 @@ class CommandMux:
         self._drivers = 0
         self._attached = contextlib.ExitStack()
         self._control: ClientConnection | None = None
+        # Race: only changes are published, so a client that subscribes after
+        # the latest change sees no collision state until the next one.
+        self.collision_state = Subject()
 
     @contextlib.contextmanager
     def driver(self) -> Iterator[Callable[[dict[str, Any]], None]]:
@@ -288,9 +292,23 @@ class CommandMux:
             if self._drivers == 0:
                 self._control = None
                 self._attached.close()
+                if self._collision_monitor.stopping:
+                    self._collision_monitor.reset()
+                    self._publish_collision_state()
 
     def _on_telemetry(self, message: dict[str, Any]) -> None:
-        self._collision_monitor.update(message["data"]["distance_ahead"])
+        if self._collision_monitor.update(message["data"]["distance_ahead"]):
+            self._publish_collision_state()
+
+    def _publish_collision_state(self) -> None:
+        self.collision_state.publish(
+            inject_trace_context(
+                {
+                    "type": "collision_monitor",
+                    "stopping": self._collision_monitor.stopping,
+                }
+            )
+        )
 
 
 class _LatestMessages:
@@ -336,9 +354,9 @@ def server_handler(
 
     try:
         if path == CAMERA_PATH:
-            _serve_feed(feeds.camera, websocket)
+            _serve_feed(websocket, feeds.camera)
         elif path == TELEMETRY_PATH:
-            _serve_feed(feeds.telemetry, websocket)
+            _serve_feed(websocket, feeds.telemetry, mux.collision_state)
         elif path == DRIVE_PATH:
             _serve_driver(mux, websocket)
         else:
@@ -357,10 +375,12 @@ def _serve_driver(
 
 
 def _serve_feed(
-    feed: Subject, websocket: websockets.sync.server.ServerConnection
+    websocket: websockets.sync.server.ServerConnection, *subjects: Subject
 ) -> None:
     outbox = _LatestMessages()
-    with feed.subscription(outbox.put):
+    with contextlib.ExitStack() as subscriptions:
+        for subject in subjects:
+            subscriptions.enter_context(subject.subscription(outbox.put))
         while websocket.close_code is None:
             for message in outbox.take(timeout=_OUTBOX_POLL_S):
                 websocket.send(json.dumps(message))
