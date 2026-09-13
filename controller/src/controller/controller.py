@@ -55,10 +55,10 @@ def main() -> None:
     configure_logging("dust-mite-controller")
     configure_metrics("dust-mite-controller")
     console_handler = _configure_console_logging()
-    controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
+    streamer_drive_uri = os.environ["STREAMER_DRIVE_URI"]
     input_backend_name = InputBackendName(os.environ["CONTROLLER_INPUT_BACKEND"])
 
-    with WebSocketCommandSender(controller_client_uri) as sender:
+    with WebSocketCommandSender(streamer_drive_uri) as sender:
         if input_backend_name is InputBackendName.KEYBOARD:
 
             def run(window: curses.window) -> None:

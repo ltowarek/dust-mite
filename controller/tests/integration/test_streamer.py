@@ -18,6 +18,7 @@ import websockets.sync.server
 
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
+from controller.senders import WebSocketCommandSender
 from controller.streamer import CarFeeds, CommandMux, server_handler
 
 _WAIT_TIMEOUT_S = 10
@@ -321,3 +322,17 @@ def test_publishes_collision_monitor_state_on_the_telemetry_endpoint(
         with websockets.sync.client.connect(_uri(streamer, "/drive")):
             assert _receive_collision_state(client) is True
 
+
+def test_the_controller_cli_drives_through_the_streamer(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    with (
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        WebSocketCommandSender(_uri(streamer, "/drive")) as sender,
+    ):
+        sender.send(Command.TURN_LEFT, _SPEED)
+        assert _wait_for(lambda: bool(car_control.received))
+
+    assert car_control.received[0]["command"] == Command.TURN_LEFT.value

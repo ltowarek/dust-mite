@@ -43,8 +43,8 @@
 	- Turn on the robot.
 - Host setup:
 	- Python devcontainer:
-		- In one terminal, run `controller`.
-		- In another terminal, run `streamer`.
+		- In one terminal, run `streamer`.
+		- In another terminal, run `controller` (it connects to the streamer, so start `streamer` first).
 	- JavaScript devcontainer:
 		- Run `./scripts/run_dev_server.sh`.
 		- Open `http://localhost:5173` in a web browser (the page connects to the streamer at `ws://localhost:8765`).
@@ -63,7 +63,7 @@
 
 - In `Copper`, the ESP32 handles motor actuation and exposes three WebSocket endpoints: `/` (control), `/stream` (camera), and `/telemetry` (telemetry).
 - Steering is skid-steering, with left/right drive commands generated from host-side input.
-- On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to `CONTROLLER_CLIENT_URI`. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected.
+- On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to the streamer's `/drive` endpoint (`STREAMER_DRIVE_URI`), like the web page, so the same collision monitor applies. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected.
 - On the Linux host, `streamer.py` reads camera frames from `STREAM_CLIENT_URI`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and serves them from a local WebSocket server with one endpoint per channel: `ws://localhost:8765/camera` (processed camera frames), `ws://localhost:8765/telemetry` (telemetry), and `ws://localhost:8765/drive` (drive commands in).
 - `streamer.py` accepts drive commands on `ws://localhost:8765/drive` and forwards them to `CONTROLLER_CLIENT_URI` through a collision monitor, which turns `ADVANCE` into `BRAKE` while `distance_ahead` is below 5 cm, until it is at least 10 cm again, and publishes whether it is stopping the car on `/telemetry` as a `collision_monitor` message. It holds one connection per car endpoint, shared by every client.
 - The web page served by the JavaScript devcontainer opens `/camera` and `/telemetry` on the streamer and displays the processed camera stream with live telemetry.
