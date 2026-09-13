@@ -19,6 +19,7 @@ from websockets.frames import Close, CloseCode
 
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
+from controller.senders import DriveConnectionClosedError, WebSocketCommandSender
 from controller.streamer import (
     DRIVER_ALREADY_CONNECTED,
     CarFeed,
@@ -375,3 +376,44 @@ def test_publishes_collision_monitor_state_on_the_telemetry_endpoint(
         _receive_types(client, {"telemetry"})
         with websockets.sync.client.connect(_uri(streamer, "/drive")):
             assert _receive_collision_state(client) is True
+
+
+def test_the_controller_cli_drives_through_the_streamer(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    with (
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        WebSocketCommandSender(_uri(streamer, "/drive")) as sender,
+    ):
+        sender.send(Command.TURN_LEFT, _SPEED)
+        assert _wait_for(lambda: bool(car_control.received))
+
+    assert car_control.received[0]["command"] == Command.TURN_LEFT.value
+
+
+def _keep_sending(sender: WebSocketCommandSender) -> None:
+    deadline = time.monotonic() + _WAIT_TIMEOUT_S
+    while time.monotonic() < deadline:
+        sender.send(Command.BRAKE, None)
+        time.sleep(_FEED_INTERVAL_S)
+
+
+def test_tells_a_refused_cli_why(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    with (
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(_uri(streamer, "/drive")) as first,
+    ):
+        _send_command(first, Command.ADVANCE)
+        assert _wait_for(lambda: bool(car_control.received))
+
+        with (
+            WebSocketCommandSender(_uri(streamer, "/drive")) as second,
+            pytest.raises(DriveConnectionClosedError, match=DRIVER_ALREADY_CONNECTED),
+        ):
+            _keep_sending(second)

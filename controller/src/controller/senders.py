@@ -4,6 +4,7 @@ import json
 from types import TracebackType
 from typing import Protocol, Self
 
+import websockets.exceptions
 import websockets.sync.client
 from opentelemetry import trace
 
@@ -23,6 +24,10 @@ class _Connection(Protocol):
 
     def send(self, message: str, /) -> None: ...
     def close(self) -> None: ...
+
+
+class DriveConnectionClosedError(Exception):
+    """The connection commands are sent over was closed, with the reason given."""
 
 
 class CommandSender(Protocol):
@@ -81,7 +86,11 @@ class WebSocketCommandSender:
         payload = {"command": command.value, "value": value}
         payload = inject_trace_context(payload)
 
-        self._ws_conn.send(json.dumps(payload))
+        try:
+            self._ws_conn.send(json.dumps(payload))
+        except websockets.exceptions.ConnectionClosed as e:
+            reason = e.rcvd.reason if e.rcvd is not None else ""
+            raise DriveConnectionClosedError(reason or "connection lost") from e
         record_command_sent(command)
 
 
