@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { WebSocketServer } from "ws";
+import { Command } from "../../src/command.js";
 
 let wss;
 
@@ -53,4 +54,45 @@ test("renders the camera and telemetry feeds from their own sockets", async ({ p
   await expect(page.locator("#distance_ahead")).toHaveText("150 cm");
   await expect(page.locator("#rssi")).toHaveText("-50 dBm");
   await expect(page.locator("#image")).toHaveAttribute("src", "data:image/jpeg;base64,dGVzdA==");
+});
+
+async function openDriveSocket(page) {
+  const drive = connectionTo("/drive");
+  await page.goto("http://localhost:5173");
+
+  const received = [];
+  (await drive).on("message", (data) => received.push(JSON.parse(data.toString())));
+  await page.locator("body").focus();
+  return received;
+}
+
+test("holding W advances, releasing brakes", async ({ page }) => {
+  const received = await openDriveSocket(page);
+
+  await page.keyboard.down("KeyW");
+  await expect.poll(() => received.at(-1)).toEqual({ command: Command.ADVANCE, value: 50 });
+
+  await page.keyboard.up("KeyW");
+  await expect.poll(() => received.at(-1)).toEqual({ command: Command.BRAKE, value: null });
+});
+
+test("moving focus away from the page while a key is held stops the car", async ({ page }) => {
+  const received = await openDriveSocket(page);
+
+  await page.keyboard.down("KeyD");
+  await expect.poll(() => received.at(-1)).toEqual({ command: Command.TURN_RIGHT, value: 50 });
+
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await expect.poll(() => received.at(-1)).toEqual({ command: Command.BRAKE, value: null });
+});
+
+test("shows why the page cannot drive when the streamer refuses it", async ({ page }) => {
+  const drive = connectionTo("/drive");
+  await page.goto("http://localhost:5173");
+
+  (await drive).close(1013, "another driver is connected");
+
+  await expect(page.locator("#drive_status")).toHaveText(
+    "Not driving: another driver is connected",
+  );
 });
