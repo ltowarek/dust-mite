@@ -10,7 +10,7 @@ import os
 import queue
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from types import TracebackType
 from typing import Any, Self
 
@@ -20,7 +20,9 @@ import websockets.exceptions
 import websockets.sync.client
 import websockets.sync.server
 from opentelemetry import trace
+from websockets.frames import CloseCode
 
+from .collision_monitor import CollisionMonitor
 from .command import Command
 from .logging import configure_logging
 from .metrics import (
@@ -219,6 +221,79 @@ class CarFeed:
                 self._subject.publish(message)
 
 
+@contextlib.contextmanager
+def send_commands_to_car(uri: str, commands: Subject) -> Iterator[None]:
+    """Send each command published on `commands` to the car while the context is open.
+
+    The car's one control connection stays open for the whole context, so
+    every driver's commands share it.
+    """
+    with (
+        ClientConnection(uri, "w") as connection,
+        commands.subscription(lambda command: connection.send(json.dumps(command))),
+    ):
+        yield
+
+
+class DriverAlreadyConnectedError(Exception):
+    """Another driver already holds the CommandArbiter."""
+
+
+class CommandArbiter:
+    """Decides which drive commands reach the car.
+
+    One driver at a time may claim it; another is refused until the first
+    releases it. Every command goes through `collision_monitor` first and is
+    then published on `commands`. While a driver holds the claim, the arbiter
+    keeps `collision_monitor` fed from the telemetry feed.
+    """
+
+    def __init__(
+        self,
+        commands: Subject,
+        telemetry: CarFeed,
+        collision_monitor: CollisionMonitor,
+    ) -> None:
+        """Initialize the object."""
+        self._commands = commands
+        self._telemetry = telemetry
+        self._collision_monitor = collision_monitor
+        self._lock = threading.Lock()
+        self._claimed = False
+
+    @contextlib.contextmanager
+    def claim(self) -> Iterator[Callable[[dict[str, Any]], None]]:
+        """Hold the arbiter for the context; yield a function that sends commands.
+
+        Raises `DriverAlreadyConnectedError` if another driver holds it.
+        """
+        with self._lock:
+            if self._claimed:
+                raise DriverAlreadyConnectedError
+            self._claimed = True
+        try:
+            with self._telemetry.subscription(self._on_telemetry):
+                yield self._submit
+        finally:
+            with self._lock:
+                self._claimed = False
+
+    def _submit(self, command_packet: dict[str, Any]) -> None:
+        operator_context = extract_trace_context(command_packet)
+        command_packet = self._collision_monitor.filter(command_packet)
+        command = Command(command_packet["command"])
+        with tracer.start_as_current_span(
+            "streamer.handle_drive_command", context=operator_context
+        ) as span:
+            span.set_attribute("network.protocol.name", "websocket")
+            span.set_attribute("command_name", command.name)
+            self._commands.publish(prepare_command_packet(command_packet))
+            record_command_sent(command)
+
+    def _on_telemetry(self, message: dict[str, Any]) -> None:
+        self._collision_monitor.update(message["data"]["distance_ahead"])
+
+
 class _Outbox:
     """One client's view of some feeds, keeping the newest message of each type.
 
@@ -263,40 +338,56 @@ class _Outbox:
             self._condition.notify()
 
 
+DRIVE_PATH = "/drive"
+
+DRIVER_ALREADY_CONNECTED = "another driver is connected"
+
+
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
     camera: CarFeed,
     telemetry: CarFeed,
+    arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
 ) -> None:
     """WebSocket handler for incoming requests."""
     span = trace.get_current_span()
     span.set_attribute("network.protocol.name", "websocket")
 
-    remote_address = websocket.remote_address[0]
-    logger.info("Server connection from: %s", remote_address)
+    path = websocket.request.path if websocket.request is not None else "/"
+    span.set_attribute("url.path", path)
+    logger.info("Server connection from: %s to %s", websocket.remote_address[0], path)
 
-    controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
-    span.set_attribute("controller_client_uri", controller_client_uri)
+    try:
+        if path == DRIVE_PATH:
+            _serve_driver(arbiter, websocket)
+        else:
+            _serve_dashboard(camera, telemetry, websocket)
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    logger.info("Server connection closed")
 
-    with (
-        ClientConnection(controller_client_uri, "w") as controller_client,
-        _Outbox(camera, telemetry) as outbox,
-    ):
-        last_command: dict[str, Any] | None = None
-        try:
-            while websocket.close_code is None:
-                for message in outbox.take(timeout=_OUTBOX_POLL_S):
-                    websocket.send(json.dumps(message))
-                    if message["type"] == "telemetry":
-                        last_command = handle_drive_command(
-                            controller_client, message["data"], last_command
-                        )
-        except websockets.exceptions.ConnectionClosed:
-            pass
-        logger.info("Server connection closed")
 
-    logger.debug("Server handler finished")
+def _serve_driver(
+    arbiter: CommandArbiter, websocket: websockets.sync.server.ServerConnection
+) -> None:
+    try:
+        with arbiter.claim() as submit:
+            for message in websocket:
+                submit(json.loads(message))
+    except DriverAlreadyConnectedError:
+        websocket.close(CloseCode.TRY_AGAIN_LATER, DRIVER_ALREADY_CONNECTED)
+
+
+def _serve_dashboard(
+    camera: CarFeed,
+    telemetry: CarFeed,
+    websocket: websockets.sync.server.ServerConnection,
+) -> None:
+    with _Outbox(camera, telemetry) as outbox:
+        while websocket.close_code is None:
+            for message in outbox.take(timeout=_OUTBOX_POLL_S):
+                websocket.send(json.dumps(message))
 
 
 def camera_message(raw: str | bytes) -> dict[str, Any]:
@@ -352,41 +443,6 @@ def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
     return inject_trace_context(packet)
 
 
-def handle_drive_command(
-    controller_client: ClientConnection,
-    telemetry: dict[str, Any],
-    last_command: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Compute a drive command and send it to the controller if the command changed."""
-    # TODO: Make it opt-in, so user can drive as he wants
-    command_packet = drive_car(telemetry)
-    if command_packet == last_command:
-        return last_command
-    if command_packet is not None:
-        with tracer.start_as_current_span("streamer.handle_drive_command") as span:
-            span.set_attribute("network.protocol.name", "websocket")
-            span.set_attribute("distance_ahead", telemetry["distance_ahead"])
-            p = prepare_command_packet(command_packet)
-            controller_client.send(json.dumps(p))
-            record_command_sent(Command(command_packet["command"]))
-    return command_packet
-
-
-def drive_car(telemetry: dict[str, Any]) -> dict[str, Any] | None:
-    """Update car's state based on telemetry."""
-    # TODO: Get also current state of the car i.e. commands and their values
-    # If new state is the same as the old state then
-    # there is no need to update the state and send anything
-    # Maybe CONTROLLER_CLIENT_URI should send new state after receiving commands
-
-    min_distance = 5
-    if telemetry["distance_ahead"] >= 0 and telemetry["distance_ahead"] < min_distance:
-        # TODO: Integrate with controller.py
-        return {"command": 3, "value": None}
-
-    return None
-
-
 def prepare_command_packet(command: dict[str, Any]) -> dict[str, Any]:
     """Build a drive command packet with trace context."""
     return inject_trace_context(command)
@@ -398,11 +454,16 @@ def main() -> None:
     configure_logging("dust-mite-streamer")
     configure_metrics("dust-mite-streamer")
     configure_profiling("dust-mite-streamer")
+    commands = Subject()
     camera = CarFeed(os.environ["STREAM_CLIENT_URI"], camera_message)
     telemetry = CarFeed(os.environ["TELEMETRY_CLIENT_URI"], telemetry_message)
-    handler = functools.partial(server_handler, camera, telemetry)
+    arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
+    handler = functools.partial(server_handler, camera, telemetry, arbiter)
     try:
-        with websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server:  # noqa: S104 - intentional, streamer must accept connections from all interfaces
+        with (
+            send_commands_to_car(os.environ["CONTROLLER_CLIENT_URI"], commands),
+            websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
+        ):
             logger.info("Starting server")
             server.serve_forever()
     except KeyboardInterrupt:
