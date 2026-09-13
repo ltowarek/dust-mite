@@ -30,9 +30,12 @@ def _configure_console_logging() -> logging.Handler:
 
 
 def control(input_backend: InputBackend, sender: CommandSender) -> None:
-    """Read input in a loop and send commands to the car."""
+    """Read input in a loop and send commands to the car.
+
+    Every command except a repeated BRAKE is sent on each poll, so a held
+    command keeps the car's drive-command watchdog from braking.
+    """
     last_command = Command.BRAKE
-    last_value: int | None = None
 
     while True:
         result = input_backend.poll()
@@ -40,11 +43,10 @@ def control(input_backend: InputBackend, sender: CommandSender) -> None:
             break
         command, value = result
 
-        if (command != last_command) or (value != last_value):
-            logger.debug("Sending new command with value: %s - %s", command.name, value)
+        if command != Command.BRAKE or last_command != Command.BRAKE:
+            logger.debug("Sending command with value: %s - %s", command.name, value)
             sender.send(command, value)
-            last_command = command
-            last_value = value
+        last_command = command
 
 
 def main() -> None:

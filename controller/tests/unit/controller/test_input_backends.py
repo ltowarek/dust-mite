@@ -271,4 +271,8 @@ class TestKeyboardInputBackend:
 
         control(KeyboardInputBackend(window), sender)
 
-        assert sender.sent == [(Command.TURN_LEFT, 50), (Command.TURN_RIGHT, 50)]
+        assert sender.sent == [
+            (Command.TURN_LEFT, 50),
+            (Command.TURN_LEFT, 50),
+            (Command.TURN_RIGHT, 50),
+        ]
