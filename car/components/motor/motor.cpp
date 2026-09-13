@@ -15,6 +15,13 @@ static const char* TAG = "motor";
 #define MOTOR_PWM_FREQ_HZ 1000
 #define MOTOR_PWM_PERIOD_TICKS (MOTOR_PWM_RESOLUTION_HZ / MOTOR_PWM_FREQ_HZ)
 
+// A dropped or lost BRAKE, or a dead sender, must not leave the car driving.
+// LOOK_* commands hold a servo position on their own and must not reset this.
+//
+// Every sender must resend a held command faster than this interval, not
+// just on change.
+#define DRIVE_COMMAND_WATCHDOG_MS 1000
+
 typedef struct {
   int gpio_in1;
   int gpio_in2;
@@ -41,13 +48,39 @@ static motor_t* motors[4] = {&m1, &m2, &m3, &m4};
 static QueueHandle_t g_command_queue = NULL;
 static TaskHandle_t g_command_task_handle = NULL;
 
+static bool is_drive_command(char command) {
+  return command == COMMAND_ADVANCE || command == COMMAND_RETREAT || command == COMMAND_TURN_LEFT ||
+         command == COMMAND_TURN_RIGHT;
+}
+
 void command_task(void* p) {
   command_packet_t packet = {0, 0};
+  bool watchdog_armed = false;
+  TickType_t watchdog_deadline = 0;
+
   while (true) {
-    if (xQueueReceive(g_command_queue, &packet, portMAX_DELAY) != pdPASS) {
-      ESP_LOGE(TAG, "xQueueReceive failed");
-      return;
+    TickType_t wait_ticks = portMAX_DELAY;
+    if (watchdog_armed) {
+      TickType_t now = xTaskGetTickCount();
+      wait_ticks = (watchdog_deadline > now) ? (watchdog_deadline - now) : 0;
     }
+
+    if (xQueueReceive(g_command_queue, &packet, wait_ticks) != pdPASS) {
+      // Only reachable once the watchdog is armed and its deadline has passed:
+      // with no deadline, wait_ticks is portMAX_DELAY and this branch is not taken.
+      ESP_LOGW(TAG, "Drive command watchdog expired, braking");
+      car_brake();
+      watchdog_armed = false;
+      continue;
+    }
+
+    if (is_drive_command(packet.command)) {
+      watchdog_armed = true;
+      watchdog_deadline = xTaskGetTickCount() + pdMS_TO_TICKS(DRIVE_COMMAND_WATCHDOG_MS);
+    } else if (packet.command == COMMAND_BRAKE) {
+      watchdog_armed = false;
+    }
+
     if (packet.command != 0) {
       switch (packet.command) {
         case COMMAND_ADVANCE:
