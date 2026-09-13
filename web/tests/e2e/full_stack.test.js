@@ -22,7 +22,7 @@ test("connects to Python streamer", async ({ page }) => {
         ws.addEventListener("error", () => resolve(ws.readyState));
         setTimeout(() => resolve(ws.readyState), 5000);
       }),
-    wsUrl,
+    `${wsUrl}/telemetry`,
   );
 
   expect(readyState).toBe(1); // WebSocket.OPEN

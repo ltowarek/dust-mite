@@ -338,6 +338,8 @@ class _Outbox:
             self._condition.notify()
 
 
+CAMERA_PATH = "/camera"
+TELEMETRY_PATH = "/telemetry"
 DRIVE_PATH = "/drive"
 
 DRIVER_ALREADY_CONNECTED = "another driver is connected"
@@ -350,19 +352,23 @@ def server_handler(
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
 ) -> None:
-    """WebSocket handler for incoming requests."""
+    """WebSocket handler for incoming requests, routed by path."""
     span = trace.get_current_span()
     span.set_attribute("network.protocol.name", "websocket")
 
-    path = websocket.request.path if websocket.request is not None else "/"
+    path = websocket.request.path if websocket.request is not None else ""
     span.set_attribute("url.path", path)
     logger.info("Server connection from: %s to %s", websocket.remote_address[0], path)
 
     try:
-        if path == DRIVE_PATH:
+        if path == CAMERA_PATH:
+            _serve_camera(websocket, camera)
+        elif path == TELEMETRY_PATH:
+            _serve_telemetry(websocket, telemetry)
+        elif path == DRIVE_PATH:
             _serve_driver(arbiter, websocket)
         else:
-            _serve_dashboard(camera, telemetry, websocket)
+            websocket.close(CloseCode.POLICY_VIOLATION, f"unknown path: {path}")
     except websockets.exceptions.ConnectionClosed:
         pass
     logger.info("Server connection closed")
@@ -379,15 +385,26 @@ def _serve_driver(
         websocket.close(CloseCode.TRY_AGAIN_LATER, DRIVER_ALREADY_CONNECTED)
 
 
-def _serve_dashboard(
-    camera: CarFeed,
-    telemetry: CarFeed,
-    websocket: websockets.sync.server.ServerConnection,
+def _serve_camera(
+    websocket: websockets.sync.server.ServerConnection, camera: CarFeed
 ) -> None:
-    with _Outbox(camera, telemetry) as outbox:
-        while websocket.close_code is None:
-            for message in outbox.take(timeout=_OUTBOX_POLL_S):
-                websocket.send(json.dumps(message))
+    with _Outbox(camera) as outbox:
+        _send_until_closed(websocket, outbox)
+
+
+def _serve_telemetry(
+    websocket: websockets.sync.server.ServerConnection, telemetry: CarFeed
+) -> None:
+    with _Outbox(telemetry) as outbox:
+        _send_until_closed(websocket, outbox)
+
+
+def _send_until_closed(
+    websocket: websockets.sync.server.ServerConnection, outbox: _Outbox
+) -> None:
+    while websocket.close_code is None:
+        for message in outbox.take(timeout=_OUTBOX_POLL_S):
+            websocket.send(json.dumps(message))
 
 
 def camera_message(raw: str | bytes) -> dict[str, Any]:
