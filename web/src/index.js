@@ -133,6 +133,7 @@ window.addEventListener("DOMContentLoaded", () => {
     magnetometer: document.getElementById("magnetometer"),
     gyroscope: document.getElementById("gyroscope"),
     distance_ahead: document.getElementById("distance_ahead"),
+    collision_monitor: document.getElementById("collision_monitor"),
   };
 
   openStreamerSocket(`${streamerUrl}/camera`, elements);
