@@ -11,22 +11,30 @@ test.afterAll(() => {
   wss.close();
 });
 
-test("renders stream and telemetry from WebSocket", async ({ page }) => {
-  const clientConnected = new Promise((resolve) => {
-    wss.on("connection", resolve);
+function connectionTo(path) {
+  return new Promise((resolve) => {
+    wss.on("connection", (ws, request) => {
+      if (request.url === path) {
+        resolve(ws);
+      }
+    });
   });
+}
+
+test("renders the camera and telemetry feeds from their own sockets", async ({ page }) => {
+  const camera = connectionTo("/camera");
+  const telemetry = connectionTo("/telemetry");
 
   await page.goto("http://localhost:5173");
-  const ws = await clientConnected;
 
-  ws.send(
+  (await camera).send(
     JSON.stringify({
       type: "stream",
       data: "dGVzdA==",
     }),
   );
 
-  ws.send(
+  (await telemetry).send(
     JSON.stringify({
       type: "telemetry",
       data: {

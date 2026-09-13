@@ -21,6 +21,7 @@ import websockets.exceptions
 import websockets.sync.client
 import websockets.sync.server
 from opentelemetry import trace
+from websockets.frames import CloseCode
 
 from .collision_monitor import CollisionMonitor
 from .command import Command
@@ -316,6 +317,8 @@ class _LatestMessages:
             return messages
 
 
+CAMERA_PATH = "/camera"
+TELEMETRY_PATH = "/telemetry"
 DRIVE_PATH = "/drive"
 
 
@@ -323,19 +326,23 @@ DRIVE_PATH = "/drive"
 def server_handler(
     feeds: CarFeeds, mux: CommandMux, websocket: websockets.sync.server.ServerConnection
 ) -> None:
-    """WebSocket handler for incoming requests."""
+    """WebSocket handler for incoming requests, routed by path."""
     span = trace.get_current_span()
     span.set_attribute("network.protocol.name", "websocket")
 
-    path = websocket.request.path if websocket.request is not None else "/"
+    path = websocket.request.path if websocket.request is not None else ""
     span.set_attribute("url.path", path)
     logger.info("Server connection from: %s to %s", websocket.remote_address[0], path)
 
     try:
-        if path == DRIVE_PATH:
+        if path == CAMERA_PATH:
+            _serve_feed(feeds.camera, websocket)
+        elif path == TELEMETRY_PATH:
+            _serve_feed(feeds.telemetry, websocket)
+        elif path == DRIVE_PATH:
             _serve_driver(mux, websocket)
         else:
-            _serve_dashboard(feeds, websocket)
+            websocket.close(CloseCode.POLICY_VIOLATION, f"unknown path: {path}")
     except websockets.exceptions.ConnectionClosed:
         pass
     logger.info("Server connection closed")
@@ -349,14 +356,11 @@ def _serve_driver(
             submit(json.loads(message))
 
 
-def _serve_dashboard(
-    feeds: CarFeeds, websocket: websockets.sync.server.ServerConnection
+def _serve_feed(
+    feed: Subject, websocket: websockets.sync.server.ServerConnection
 ) -> None:
     outbox = _LatestMessages()
-    with (
-        feeds.camera.subscription(outbox.put),
-        feeds.telemetry.subscription(outbox.put),
-    ):
+    with feed.subscription(outbox.put):
         while websocket.close_code is None:
             for message in outbox.take(timeout=_OUTBOX_POLL_S):
                 websocket.send(json.dumps(message))

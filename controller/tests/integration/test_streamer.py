@@ -145,7 +145,7 @@ def _streamer(
         yield server
 
 
-def _uri(server: websockets.sync.server.Server, path: str = "/") -> str:
+def _uri(server: websockets.sync.server.Server, path: str) -> str:
     host, port = server.socket.getsockname()[:2]
     return f"ws://{host}:{port}{path}"
 
@@ -175,47 +175,73 @@ def _send_command(
     websocket.send(json.dumps({"command": command.value, "value": _SPEED}))
 
 
-def test_dashboard_receives_camera_and_telemetry(
+def test_camera_endpoint_streams_camera_frames(
     camera_feed: FakeCarEndpoint,
     telemetry_feed: FakeCarEndpoint,
     car_control: FakeCarEndpoint,
 ) -> None:
     with (
         _streamer(camera_feed, telemetry_feed, car_control) as streamer,
-        websockets.sync.client.connect(_uri(streamer)) as dashboard,
+        websockets.sync.client.connect(_uri(streamer, "/camera")) as client,
     ):
-        _receive_types(dashboard, {"stream", "telemetry"})
+        _receive_types(client, {"stream"})
+
+    assert telemetry_feed.peak_connections == 0
 
 
-def test_dashboards_share_one_car_connection_per_feed(
+def test_telemetry_endpoint_streams_telemetry(
     camera_feed: FakeCarEndpoint,
     telemetry_feed: FakeCarEndpoint,
     car_control: FakeCarEndpoint,
 ) -> None:
     with (
         _streamer(camera_feed, telemetry_feed, car_control) as streamer,
-        websockets.sync.client.connect(_uri(streamer)) as first,
-        websockets.sync.client.connect(_uri(streamer)) as second,
+        websockets.sync.client.connect(_uri(streamer, "/telemetry")) as client,
     ):
-        _receive_types(first, {"stream", "telemetry"})
-        _receive_types(second, {"stream", "telemetry"})
+        _receive_types(client, {"telemetry"})
+
+    assert camera_feed.peak_connections == 0
+
+
+def test_clients_share_one_car_connection_per_feed(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    with (
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(_uri(streamer, "/camera")) as first,
+        websockets.sync.client.connect(_uri(streamer, "/camera")) as second,
+    ):
+        _receive_types(first, {"stream"})
+        _receive_types(second, {"stream"})
 
     assert camera_feed.peak_connections == 1
-    assert telemetry_feed.peak_connections == 1
-    assert car_control.peak_connections == 0
 
 
-def test_car_feeds_disconnect_after_the_last_dashboard_leaves(
+def test_car_feed_disconnects_after_the_last_client_leaves(
     camera_feed: FakeCarEndpoint,
     telemetry_feed: FakeCarEndpoint,
     car_control: FakeCarEndpoint,
 ) -> None:
     with _streamer(camera_feed, telemetry_feed, car_control) as streamer:
-        with websockets.sync.client.connect(_uri(streamer)) as dashboard:
-            _receive_types(dashboard, {"stream", "telemetry"})
+        with websockets.sync.client.connect(_uri(streamer, "/camera")) as client:
+            _receive_types(client, {"stream"})
 
         assert _wait_for(lambda: camera_feed.open_connections == 0)
-        assert _wait_for(lambda: telemetry_feed.open_connections == 0)
+
+
+def test_closes_a_connection_to_an_unknown_path(
+    camera_feed: FakeCarEndpoint,
+    telemetry_feed: FakeCarEndpoint,
+    car_control: FakeCarEndpoint,
+) -> None:
+    with (
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(_uri(streamer, "/")) as client,
+        pytest.raises(websockets.exceptions.ConnectionClosedError),
+    ):
+        client.recv(timeout=_WAIT_TIMEOUT_S)
 
 
 def test_forwards_drive_commands_to_the_car(
