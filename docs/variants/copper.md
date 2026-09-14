@@ -1,6 +1,6 @@
 # Copper
 
-`Copper` is a dust-mite variant built around an ESP32-S3 4WD chassis platform, with host-side control and visualization running on Linux. The ESP32 provides control, camera, and telemetry WebSocket endpoints, while Python services bridge robot data and DualSense input to a local browser dashboard.
+`Copper` is a dust-mite variant built around an ESP32-S3 4WD chassis platform, with host-side control and visualization running on Linux. The ESP32 provides control, camera, and telemetry WebSocket endpoints. A Python streamer bridges them to a local browser dashboard, which can drive the car from the keyboard or a gamepad; a Python CLI (DualSense or terminal keyboard) is another way to drive.
 
 ## Images
 
@@ -43,12 +43,12 @@
 	- Turn on the robot.
 - Host setup:
 	- Python devcontainer:
-		- In one terminal, run `controller`.
-		- In another terminal, run `streamer`.
+		- In one terminal, run `streamer`.
+		- In another terminal, run `controller` (it connects to the streamer, so start `streamer` first).
 	- JavaScript devcontainer:
 		- Run `./scripts/run_dev_server.sh`.
-		- Open `http://localhost:5173` in a web browser (the page connects to `ws://localhost:8765`).
-- After successful setup, the robot can be controlled with the DualSense controller, and telemetry plus camera feed can be monitored on the web page.
+		- Open `http://localhost:5173` in a web browser (the page connects to the streamer at `ws://localhost:8765`).
+- After successful setup, the robot can be driven from the web page (keyboard or a gamepad) or with the DualSense controller, and telemetry plus camera feed can be monitored on the web page.
 
 
 ## HW notes
@@ -63,10 +63,11 @@
 
 - In `Copper`, the ESP32 handles motor actuation and exposes three WebSocket endpoints: `/` (control), `/stream` (camera), and `/telemetry` (telemetry).
 - Steering is skid-steering, with left/right drive commands generated from host-side input.
-- On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to `CONTROLLER_CLIENT_URI`. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected.
-- On the Linux host, `streamer.py` reads camera frames from `STREAM_CLIENT_URI`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and publishes packets to a local WebSocket server at `ws://localhost:8765`.
-- `streamer.py` can also send automatic brake commands to `CONTROLLER_CLIENT_URI` when `distance_ahead` is below the configured threshold.
-- The web page served by the JavaScript devcontainer connects to `ws://localhost:8765` and displays the processed camera stream with live telemetry.
+- On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to the streamer's `/drive` endpoint (`STREAMER_DRIVE_URI`), like the web page, so the same collision monitor applies. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected.
+- On the Linux host, `streamer.py` reads camera frames from `STREAM_CLIENT_URI`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and serves them from a local WebSocket server with one endpoint per channel: `ws://localhost:8765/camera` (processed camera frames), `ws://localhost:8765/telemetry` (telemetry), and `ws://localhost:8765/drive` (drive commands in).
+- `streamer.py` accepts drive commands on `ws://localhost:8765/drive` and forwards them to `CONTROLLER_CLIENT_URI` through a collision monitor, which turns `ADVANCE` into `BRAKE` while `distance_ahead` is below 5 cm, until it is at least 10 cm again, and publishes whether it is stopping the car on `/telemetry` as a `collision_monitor` message. It holds one connection per car endpoint, shared by every client.
+- The web page served by the JavaScript devcontainer opens `/camera` and `/telemetry` on the streamer and displays the processed camera stream with live telemetry.
+- The web page also drives the car over the streamer's `/drive` endpoint: W/A/S/D from the keyboard, or a DualSense or similar controller through the Gamepad API. It sends the held command every 100 ms, then `BRAKE` once when every key is released or the page loses focus.
 
 ### Metrics
 
@@ -123,11 +124,15 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | `dust_mite_telemetry_packets_received` | {packet} | Telemetry packets from the car (counter) | `dust-mite-streamer` |
 | `dust_mite_commands_sent` | {command} | Drive commands sent, attributed by `command.name` (counter) | `dust-mite-streamer`, `dust-mite-controller` |
 
-`dust_mite_commands_sent` is emitted by both the streamer's autonomous
-obstacle avoidance and the gamepad CLI's operator input; split them on
-`service_name`. A run of `BRAKE` between two identical steering commands
-from `dust-mite-controller` means the input backend read a still-held key
-as released.
+`dust_mite_commands_sent` from `dust-mite-streamer` counts every command
+the streamer sends to the car, from any `/drive` client, after the collision
+monitor. From `dust-mite-controller` it counts what the CLI sends to the
+streamer, before the collision monitor, so the CLI's commands appear under
+both services; split them on `service_name`. A run of `BRAKE` between two
+identical steering commands from `dust-mite-controller` means the input
+backend read a still-held key as released. A `BRAKE` from
+`dust-mite-streamer` with no matching one from a client means the collision
+monitor turned an `ADVANCE` into it.
 
 **Web browser metrics** (emitted by [web/src/metrics.js](../../web/src/metrics.js)):
 
@@ -147,13 +152,16 @@ graph LR
         subgraph Linux_PC[Linux PC]
             subgraph Controller
                 PC_BT[Bluetooth]
-                PC_CTRL_WS["WebSocket Client [/]"]
+                PC_CTRL_WS["WebSocket Client [/drive]"]
             end
             subgraph Streamer
-                PC_STR_WS_CTRL["WebSocket Client [/]"]
                 PC_STR_WS_STREAM["WebSocket Client [/stream]"]
                 PC_STR_WS_TEL["WebSocket Client [/telemetry]"]
-                PC_STR_WS_WEB["WebSocket Server [/]"]
+                PC_STR_WS_CTRL["WebSocket Client [/]"]
+                PC_STR_MUX["CommandMux + CollisionMonitor"]
+                PC_STR_WS_CAMERA["WebSocket Server [/camera]"]
+                PC_STR_WS_TEL_OUT["WebSocket Server [/telemetry]"]
+                PC_STR_WS_DRIVE["WebSocket Server [/drive]"]
             end
             PC_WEB[Web page]
         end
@@ -169,10 +177,17 @@ graph LR
     end
 
     DS_BT --> PC_BT
-    PC_STR_WS_WEB --> PC_WEB
-    PC_CTRL_WS --> ESP_WS_CTRL
+    PC_CTRL_WS -- "drive commands" --> PC_STR_WS_DRIVE
+    PC_WEB -- "drive commands" --> PC_STR_WS_DRIVE
+    PC_STR_WS_CAMERA --> PC_WEB
+    PC_STR_WS_TEL_OUT --> PC_WEB
     ESP_WS_STREAM --> PC_STR_WS_STREAM
+    PC_STR_WS_STREAM --> PC_STR_WS_CAMERA
     ESP_WS_TEL --> PC_STR_WS_TEL
+    PC_STR_WS_TEL --> PC_STR_WS_TEL_OUT
+    PC_STR_WS_TEL --> PC_STR_MUX
+    PC_STR_WS_DRIVE --> PC_STR_MUX
+    PC_STR_MUX --> PC_STR_WS_CTRL
     PC_STR_WS_CTRL --> ESP_WS_CTRL
     ESP_WS_CTRL --> ESP_MOTOR
     ESP_TEL --> ESP_WS_TEL

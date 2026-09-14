@@ -4,7 +4,7 @@
 #include "freertos/queue.h"
 
 extern "C" void app_main(void) {
-  QueueHandle_t command_queue = xQueueCreate(2, sizeof(command_packet_t));
+  QueueHandle_t command_queue = xQueueCreate(1, sizeof(command_packet_t));
   motor_setup(command_queue);  // also calls servo_init() internally
 
   UNITY_BEGIN();

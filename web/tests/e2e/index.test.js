@@ -11,22 +11,30 @@ test.afterAll(() => {
   wss.close();
 });
 
-test("renders stream and telemetry from WebSocket", async ({ page }) => {
-  const clientConnected = new Promise((resolve) => {
-    wss.on("connection", resolve);
+function connectionTo(path) {
+  return new Promise((resolve) => {
+    wss.on("connection", (ws, request) => {
+      if (request.url === path) {
+        resolve(ws);
+      }
+    });
   });
+}
+
+test("renders the camera and telemetry feeds from their own sockets", async ({ page }) => {
+  const camera = connectionTo("/camera");
+  const telemetry = connectionTo("/telemetry");
 
   await page.goto("http://localhost:5173");
-  const ws = await clientConnected;
 
-  ws.send(
+  (await camera).send(
     JSON.stringify({
       type: "stream",
       data: "dGVzdA==",
     }),
   );
 
-  ws.send(
+  (await telemetry).send(
     JSON.stringify({
       type: "telemetry",
       data: {
@@ -45,4 +53,34 @@ test("renders stream and telemetry from WebSocket", async ({ page }) => {
   await expect(page.locator("#distance_ahead")).toHaveText("150 cm");
   await expect(page.locator("#rssi")).toHaveText("-50 dBm");
   await expect(page.locator("#image")).toHaveAttribute("src", "data:image/jpeg;base64,dGVzdA==");
+});
+
+async function openDriveSocket(page) {
+  const drive = connectionTo("/drive");
+  await page.goto("http://localhost:5173");
+
+  const received = [];
+  (await drive).on("message", (data) => received.push(JSON.parse(data.toString())));
+  await page.locator("body").focus();
+  return received;
+}
+
+test("holding W advances, releasing brakes", async ({ page }) => {
+  const received = await openDriveSocket(page);
+
+  await page.keyboard.down("KeyW");
+  await expect.poll(() => received.at(-1)).toEqual({ command: 1, value: 50 });
+
+  await page.keyboard.up("KeyW");
+  await expect.poll(() => received.at(-1)).toEqual({ command: 3, value: null });
+});
+
+test("moving focus away from the page while a key is held stops the car", async ({ page }) => {
+  const received = await openDriveSocket(page);
+
+  await page.keyboard.down("KeyD");
+  await expect.poll(() => received.at(-1)).toEqual({ command: 5, value: 50 });
+
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await expect.poll(() => received.at(-1)).toEqual({ command: 3, value: null });
 });

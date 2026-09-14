@@ -156,8 +156,10 @@ static esp_err_t root_get_handler(httpd_req_t* req) {
         start_opts);
     auto scope = opentelemetry::trace::Scope(span);
 
-    if (xQueueSendToBack(g_command_queue, &packet, portMAX_DELAY) != pdPASS) {
-      ESP_LOGE(TAG, "xQueueSendToBack failed");
+    // The command queue is a depth-1 mailbox: the latest command wins and this
+    // handler never blocks on a full queue.
+    if (xQueueOverwrite(g_command_queue, &packet) != pdPASS) {
+      ESP_LOGE(TAG, "xQueueOverwrite failed");
       span->SetStatus(opentelemetry::trace::StatusCode::kError, "queue send failed");
       span->End();
       free(buf);

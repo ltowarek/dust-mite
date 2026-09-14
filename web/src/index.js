@@ -5,6 +5,7 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { DriveController } from "./drive.js";
 import {
   buildUncaughtErrorLogRecord,
   buildWsAbnormalCloseLogRecord,
@@ -42,19 +43,8 @@ window.addEventListener("error", (event) => {
   );
 });
 
-window.addEventListener("DOMContentLoaded", () => {
-  const socket = new WebSocket(import.meta.env.VITE_WS_URL ?? "ws://localhost:8765");
-
-  const elements = {
-    image: document.getElementById("image"),
-    timestamp: document.getElementById("timestamp"),
-    rssi: document.getElementById("rssi"),
-    speed: document.getElementById("speed"),
-    accelerometer: document.getElementById("accelerometer"),
-    magnetometer: document.getElementById("magnetometer"),
-    gyroscope: document.getElementById("gyroscope"),
-    distance_ahead: document.getElementById("distance_ahead"),
-  };
+function openStreamerSocket(url, elements) {
+  const socket = new WebSocket(url);
 
   let connectionSpan = null;
   let connectionContext = null;
@@ -127,4 +117,30 @@ window.addEventListener("DOMContentLoaded", () => {
       connectionSpan.end();
     }
   });
+
+  return socket;
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  const streamerUrl = import.meta.env.VITE_WS_URL ?? "ws://localhost:8765";
+
+  const elements = {
+    image: document.getElementById("image"),
+    timestamp: document.getElementById("timestamp"),
+    rssi: document.getElementById("rssi"),
+    speed: document.getElementById("speed"),
+    accelerometer: document.getElementById("accelerometer"),
+    magnetometer: document.getElementById("magnetometer"),
+    gyroscope: document.getElementById("gyroscope"),
+    distance_ahead: document.getElementById("distance_ahead"),
+    collision_monitor: document.getElementById("collision_monitor"),
+  };
+
+  openStreamerSocket(`${streamerUrl}/camera`, elements);
+  openStreamerSocket(`${streamerUrl}/telemetry`, elements);
+
+  const driveSocket = openStreamerSocket(`${streamerUrl}/drive`, elements);
+  const driveController = new DriveController(driveSocket);
+  driveController.start();
+  driveSocket.addEventListener("close", () => driveController.stop());
 });
