@@ -123,6 +123,7 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | `dust_mite_frames_processed` | {frame} | Camera frames processed (counter) | `dust-mite-streamer` |
 | `dust_mite_telemetry_packets_received` | {packet} | Telemetry packets from the car (counter) | `dust-mite-streamer` |
 | `dust_mite_commands_sent` | {command} | Drive commands sent, attributed by `command.name` (counter) | `dust-mite-streamer`, `dust-mite-controller` |
+| `dust_mite_commands_blocked` | {command} | Drive commands the collision monitor replaced with `BRAKE`, attributed by the requested `command.name` (counter) | `dust-mite-streamer` |
 
 `dust_mite_commands_sent` from `dust-mite-streamer` counts every command
 the streamer sends to the car, from any `/drive` client, after the collision
@@ -130,9 +131,10 @@ monitor. From `dust-mite-controller` it counts what the CLI sends to the
 streamer, before the collision monitor, so the CLI's commands appear under
 both services; split them on `service_name`. A run of `BRAKE` between two
 identical steering commands from `dust-mite-controller` means the input
-backend read a still-held key as released. A `BRAKE` from
-`dust-mite-streamer` with no matching one from a client means the collision
-monitor turned an `ADVANCE` into it.
+backend read a still-held key as released. Each `BRAKE` the collision
+monitor substitutes for an `ADVANCE` is also counted in
+`dust_mite_commands_blocked`, and its `streamer.handle_drive_command` span
+carries both `operator_command_name` and `command_name`.
 
 **Web browser metrics** (emitted by [web/src/metrics.js](../../web/src/metrics.js)):
 

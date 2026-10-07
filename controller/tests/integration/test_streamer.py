@@ -15,10 +15,14 @@ import websockets.exceptions
 import websockets.sync.client
 import websockets.sync.connection
 import websockets.sync.server
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics._internal.point import NumberDataPoint
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from websockets.frames import Close, CloseCode
 
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
+from controller.metrics import configure_metrics
 from controller.senders import DriveConnectionClosedError, WebSocketCommandSender
 from controller.streamer import (
     DRIVER_ALREADY_CONNECTED,
@@ -333,10 +337,30 @@ def test_accepts_a_new_driver_after_the_previous_one_leaves(
         assert _wait_for(turn_left_as_a_new_driver)
 
 
+def _blocked_commands(reader: InMemoryMetricReader) -> dict[str, int]:
+    data = reader.get_metrics_data()
+    blocked: dict[str, int] = {}
+    if data is None:
+        return blocked
+    for resource_metrics in data.resource_metrics:
+        for scope_metrics in resource_metrics.scope_metrics:
+            for metric in scope_metrics.metrics:
+                if metric.name != "dust_mite_commands_blocked":
+                    continue
+                for point in metric.data.data_points:
+                    if isinstance(point, NumberDataPoint) and point.attributes:
+                        name = str(point.attributes["command.name"])
+                        blocked[name] = blocked.get(name, 0) + int(point.value)
+    return blocked
+
+
 def test_brakes_instead_of_advancing_into_an_obstacle(
     camera_feed: FakeCarEndpoint,
     car_control: FakeCarEndpoint,
 ) -> None:
+    reader = InMemoryMetricReader()
+    configure_metrics("test-streamer", MeterProvider(metric_readers=[reader]))
+
     def received_brake() -> bool:
         return any(c["command"] == Command.BRAKE.value for c in car_control.received)
 
@@ -351,6 +375,8 @@ def test_brakes_instead_of_advancing_into_an_obstacle(
             return received_brake()
 
         assert _wait_for(advance_until_braked)
+
+    assert set(_blocked_commands(reader)) == {Command.ADVANCE.name}
 
 
 def _receive_collision_state(

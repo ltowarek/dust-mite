@@ -6,6 +6,7 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from controller.command import Command
 from controller.metrics import (
     configure_metrics,
+    record_command_blocked,
     record_command_sent,
     record_frame,
     record_telemetry_received,
@@ -86,6 +87,16 @@ def test_record_command_sent_attributes_by_command_name(
     assert _counter_values_by_command(reader, "dust_mite_commands_sent") == {
         "TURN_LEFT": 1,
         "BRAKE": 2,
+    }
+
+
+def test_record_command_blocked_attributes_by_command_name(
+    reader: InMemoryMetricReader,
+) -> None:
+    record_command_blocked(Command.ADVANCE)
+
+    assert _counter_values_by_command(reader, "dust_mite_commands_blocked") == {
+        "ADVANCE": 1,
     }
 
 

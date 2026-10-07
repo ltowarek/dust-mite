@@ -23,6 +23,7 @@ _metrics: SimpleNamespace = SimpleNamespace(
     frames_processed=None,
     telemetry_packets_received=None,
     commands_sent=None,
+    commands_blocked=None,
 )
 
 
@@ -70,6 +71,11 @@ def configure_metrics(service_name: str, provider: MeterProvider | None = None) 
         unit="{command}",
         description="Number of drive commands sent to the car",
     )
+    _metrics.commands_blocked = meter.create_counter(
+        "dust_mite_commands_blocked",
+        unit="{command}",
+        description="Number of drive commands the collision monitor replaced",
+    )
 
 
 def record_frame() -> None:
@@ -88,3 +94,9 @@ def record_command_sent(command: Command) -> None:
     """Record one drive command sent to the car, attributed by command name."""
     if _metrics.commands_sent is not None:
         _metrics.commands_sent.add(1, {"command.name": command.name})
+
+
+def record_command_blocked(command: Command) -> None:
+    """Record one drive command the collision monitor replaced, by its name."""
+    if _metrics.commands_blocked is not None:
+        _metrics.commands_blocked.add(1, {"command.name": command.name})

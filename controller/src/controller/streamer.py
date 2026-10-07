@@ -27,6 +27,7 @@ from .command import Command
 from .logging import configure_logging
 from .metrics import (
     configure_metrics,
+    record_command_blocked,
     record_command_sent,
     record_frame,
     record_telemetry_received,
@@ -287,13 +288,20 @@ class CommandArbiter:
 
     def _submit(self, command_packet: dict[str, Any]) -> None:
         operator_context = extract_trace_context(command_packet)
-        command_packet = self._collision_monitor.filter(command_packet)
-        command = Command(command_packet["command"])
         with tracer.start_as_current_span(
             "streamer.handle_drive_command", context=operator_context
         ) as span:
+            requested = Command(command_packet["command"])
+            command_packet = self._collision_monitor.filter(command_packet)
+            command = Command(command_packet["command"])
             span.set_attribute("network.protocol.name", "websocket")
+            span.set_attribute("operator_command_name", requested.name)
             span.set_attribute("command_name", command.name)
+            span.set_attribute(
+                "collision_monitor.stopping", self._collision_monitor.stopping
+            )
+            if command != requested:
+                record_command_blocked(requested)
             self._commands.publish(prepare_command_packet(command_packet))
             record_command_sent(command)
 
