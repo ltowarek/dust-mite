@@ -59,6 +59,7 @@ struct ws_endpoint_t {
   QueueHandle_t req_queue = NULL;
   QueueHandle_t closed_queue = NULL;
   QueueSetHandle_t wait_set = NULL;
+  QueueHandle_t sent_queue = NULL;
   ws_connection_t owner;
   std::atomic<void*> served{nullptr};
 };
@@ -66,6 +67,7 @@ struct ws_endpoint_t {
 static ws_endpoint_t g_stream;
 static ws_endpoint_t g_telemetry;
 
+constexpr uint32_t WS_SEND_ABANDONED = 0;
 
 static void ws_endpoint_init(ws_endpoint_t& endpoint, QueueHandle_t data_queue) {
   endpoint.data_queue = data_queue;
@@ -75,6 +77,7 @@ static void ws_endpoint_init(ws_endpoint_t& endpoint, QueueHandle_t data_queue) 
                                       uxQueueSpacesAvailable(endpoint.closed_queue));
   xQueueAddToSet(endpoint.data_queue, endpoint.wait_set);
   xQueueAddToSet(endpoint.closed_queue, endpoint.wait_set);
+  endpoint.sent_queue = xQueueCreate(1, sizeof(uint32_t));
 }
 
 static esp_err_t ws_refuse_if_busy(httpd_req_t* req) {
@@ -109,6 +112,7 @@ static void ws_close_session(httpd_handle_t hd, int sockfd) {
     }
     if (token == endpoint->served.load()) {
       xQueueOverwrite(endpoint->closed_queue, &token);
+      xQueueOverwrite(endpoint->sent_queue, &WS_SEND_ABANDONED);
     }
   }
   close(sockfd);
@@ -135,10 +139,10 @@ struct ws_send_work_t {
   ws_connection_t connection;
   char* payload;
   size_t len;
-  SemaphoreHandle_t done;
+  QueueHandle_t sent_queue;
+  uint32_t seq;
 };
 
-static SemaphoreHandle_t g_stream_send_done = NULL;
 constexpr int WS_SEND_DONE_TIMEOUT_MS = 10000;
 
 static void ws_send_work(void* arg) {
@@ -152,15 +156,19 @@ static void ws_send_work(void* arg) {
       ESP_LOGW(TAG, "httpd_ws_send_frame_async failed on fd %d", work->connection.fd);
     }
   }
-  if (work->done != nullptr) {
-    xSemaphoreGive(work->done);
-  }
+  xQueueOverwrite(work->sent_queue, &work->seq);
   cJSON_free(work->payload);
   free(work);
 }
 
-static esp_err_t ws_queue_send(const ws_connection_t& connection, char* payload, size_t len,
-                               SemaphoreHandle_t done = nullptr) {
+static esp_err_t ws_queue_send(const ws_endpoint_t& endpoint, const ws_connection_t& connection,
+                               char* payload, size_t len, uint32_t* seq) {
+  static std::atomic<uint32_t> next_seq{WS_SEND_ABANDONED + 1};
+  *seq = next_seq.fetch_add(1);
+  if (*seq == WS_SEND_ABANDONED) {
+    *seq = next_seq.fetch_add(1);
+  }
+  xQueueReset(endpoint.sent_queue);
   auto* work = static_cast<ws_send_work_t*>(malloc(sizeof(ws_send_work_t)));
   if (work == NULL) {
     cJSON_free(payload);
@@ -169,13 +177,25 @@ static esp_err_t ws_queue_send(const ws_connection_t& connection, char* payload,
   work->connection = connection;
   work->payload = payload;
   work->len = len;
-  work->done = done;
+  work->sent_queue = endpoint.sent_queue;
+  work->seq = *seq;
   esp_err_t ret = httpd_queue_work(connection.hd, ws_send_work, work);
   if (ret != ESP_OK) {
     cJSON_free(payload);
     free(work);
   }
   return ret;
+}
+
+static void ws_wait_until_sent(const ws_endpoint_t& endpoint, uint32_t seq) {
+  uint32_t sent = 0;
+  while (xQueueReceive(endpoint.sent_queue, &sent, pdMS_TO_TICKS(WS_SEND_DONE_TIMEOUT_MS)) ==
+         pdPASS) {
+    if (sent == seq || sent == WS_SEND_ABANDONED) {
+      return;
+    }
+  }
+  ESP_LOGW(TAG, "Timed out waiting for a send to finish");
 }
 
 static esp_err_t root_get_handler(httpd_req_t* req) {
@@ -359,7 +379,8 @@ void ws_stream_task(void* p) {
     size_t payload_len = strlen(packet_json_str);
     send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
 
-    esp_err_t ret = ws_queue_send(connection, packet_json_str, payload_len, g_stream_send_done);
+    uint32_t seq = 0;
+    esp_err_t ret = ws_queue_send(g_stream, connection, packet_json_str, payload_len, &seq);
     if (ret != ESP_OK) {
       ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
@@ -370,10 +391,7 @@ void ws_stream_task(void* p) {
 
     web_server_metrics_update();
     esp_camera_fb_return(frame);
-
-    if (xSemaphoreTake(g_stream_send_done, pdMS_TO_TICKS(WS_SEND_DONE_TIMEOUT_MS)) != pdTRUE) {
-      ESP_LOGW(TAG, "Timed out waiting for a stream frame send to finish");
-    }
+    ws_wait_until_sent(g_stream, seq);
     send_span->End();
   }
   ESP_LOGW(TAG, "Stream task stopped");
@@ -463,7 +481,8 @@ void ws_telemetry_task(void* p) {
     size_t payload_len = strlen(packet_json_str);
     send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
 
-    esp_err_t ret = ws_queue_send(connection, packet_json_str, payload_len);
+    uint32_t seq = 0;
+    esp_err_t ret = ws_queue_send(g_telemetry, connection, packet_json_str, payload_len, &seq);
     if (ret != ESP_OK) {
       ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
@@ -471,6 +490,7 @@ void ws_telemetry_task(void* p) {
       continue;
     }
 
+    ws_wait_until_sent(g_telemetry, seq);
     send_span->End();
   }
   ESP_LOGW(TAG, "Telemetry task stopped");
@@ -543,7 +563,6 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
   g_command_queue = command_queue;
   ws_endpoint_init(g_stream, frame_queue);
   ws_endpoint_init(g_telemetry, telemetry_queue);
-  g_stream_send_done = xSemaphoreCreateBinary();
 
   {
     // Allocate ws_stream_task stack from PSRAM: base64 encoding of VGA JPEG frames plus
