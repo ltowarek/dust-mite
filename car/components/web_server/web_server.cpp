@@ -8,6 +8,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include <stdio.h>
+#include <unistd.h>
 #include "esp_err.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -62,6 +63,12 @@ static bool ws_connection_is_live(const ws_connection_t& connection) {
 static ws_connection_t g_stream_owner;
 static ws_connection_t g_telemetry_owner;
 
+constexpr UBaseType_t WS_CLOSED_QUEUE_LENGTH = 2;
+static QueueHandle_t g_stream_closed = NULL;
+static QueueHandle_t g_telemetry_closed = NULL;
+static QueueSetHandle_t g_stream_wait_set = NULL;
+static QueueSetHandle_t g_telemetry_wait_set = NULL;
+
 static esp_err_t ws_refuse_if_busy(httpd_req_t* req, const ws_connection_t& owner) {
   if (!ws_connection_is_live(owner)) {
     return ESP_OK;
@@ -78,6 +85,34 @@ static esp_err_t ws_hand_over(httpd_req_t* req, ws_connection_t& owner, QueueHan
   httpd_sess_set_ctx(owner.hd, owner.fd, owner.token, ws_keep_token);
   xQueueOverwrite(queue, &owner);
   return ESP_OK;
+}
+
+static void ws_close_session(httpd_handle_t hd, int sockfd) {
+  void* token = httpd_sess_get_ctx(hd, sockfd);
+  if (token != nullptr && token == g_stream_owner.token) {
+    g_stream_owner = {};
+    xQueueSendToBack(g_stream_closed, &token, 0);
+  } else if (token != nullptr && token == g_telemetry_owner.token) {
+    g_telemetry_owner = {};
+    xQueueSendToBack(g_telemetry_closed, &token, 0);
+  }
+  close(sockfd);
+}
+
+static bool ws_wait_for_item(QueueSetHandle_t wait_set, QueueHandle_t data_queue,
+                             QueueHandle_t closed_queue, const ws_connection_t& connection,
+                             void* item) {
+  while (true) {
+    QueueSetMemberHandle_t ready = xQueueSelectFromSet(wait_set, portMAX_DELAY);
+    if (ready == data_queue) {
+      return xQueueReceive(data_queue, item, 0) == pdPASS;
+    }
+    void* closed = nullptr;
+    xQueueReceive(closed_queue, &closed, 0);
+    if (closed == connection.token) {
+      return false;
+    }
+  }
 }
 
 struct ws_send_work_t {
@@ -267,14 +302,7 @@ void ws_stream_task(void* p) {
       ESP_LOGI(TAG, "Stream started");
     }
 
-    bool stopped = false;
-    while (xQueueReceive(g_frame_queue, &frame, pdMS_TO_TICKS(100)) != pdPASS) {
-      if (!ws_connection_is_live(connection)) {
-        stopped = true;
-        break;
-      }
-    }
-    if (stopped) {
+    if (!ws_wait_for_item(g_stream_wait_set, g_frame_queue, g_stream_closed, connection, &frame)) {
       teardown();
       continue;
     }
@@ -402,14 +430,8 @@ void ws_telemetry_task(void* p) {
     }
 
     telemetry_packet_t packet = {};
-    bool stopped = false;
-    while (xQueueReceive(g_telemetry_packet_queue, &packet, pdMS_TO_TICKS(100)) != pdPASS) {
-      if (!ws_connection_is_live(connection)) {
-        stopped = true;
-        break;
-      }
-    }
-    if (stopped) {
+    if (!ws_wait_for_item(g_telemetry_wait_set, g_telemetry_packet_queue, g_telemetry_closed,
+                          connection, &packet)) {
       teardown();
       continue;
     }
@@ -471,6 +493,7 @@ static httpd_handle_t start_web_server() {
   config.max_open_sockets = 7;
   // 8 KB is insufficient for root_get_handler with tracing_extract + StartSpan.
   config.stack_size = 16384;
+  config.close_fn = ws_close_session;
 
   ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
   esp_err_t err = httpd_start(&server, &config);
@@ -519,6 +542,17 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
   g_stream_req_queue = xQueueCreate(1, sizeof(ws_connection_t));
   g_telemetry_req_queue = xQueueCreate(1, sizeof(ws_connection_t));
   g_stream_send_done = xSemaphoreCreateBinary();
+
+  g_stream_closed = xQueueCreate(WS_CLOSED_QUEUE_LENGTH, sizeof(void*));
+  g_stream_wait_set =
+      xQueueCreateSet(uxQueueSpacesAvailable(g_frame_queue) + WS_CLOSED_QUEUE_LENGTH);
+  xQueueAddToSet(g_frame_queue, g_stream_wait_set);
+  xQueueAddToSet(g_stream_closed, g_stream_wait_set);
+  g_telemetry_closed = xQueueCreate(WS_CLOSED_QUEUE_LENGTH, sizeof(void*));
+  g_telemetry_wait_set =
+      xQueueCreateSet(uxQueueSpacesAvailable(g_telemetry_packet_queue) + WS_CLOSED_QUEUE_LENGTH);
+  xQueueAddToSet(g_telemetry_packet_queue, g_telemetry_wait_set);
+  xQueueAddToSet(g_telemetry_closed, g_telemetry_wait_set);
 
   {
     // Allocate ws_stream_task stack from PSRAM: base64 encoding of VGA JPEG frames plus
