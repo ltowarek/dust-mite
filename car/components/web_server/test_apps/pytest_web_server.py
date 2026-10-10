@@ -17,19 +17,8 @@ from websockets.sync.client import connect
 CLOSE_BUDGET_S = 2.0
 CLOSE_TIMEOUT_S = 10.0
 FIRST_FRAME_BUDGET_S = 2.0
-BUSY_RETRY_INTERVAL_S = 0.1
 
 BRAKE = 3
-COMMAND_COUNT = 150
-COMMAND_INTERVAL_S = 0.1
-COMMAND_DELAY_BUDGET_S = 1.0
-SLOW_READ_INTERVAL_S = 0.3
-SLOW_READ_RCVBUF_BYTES = 8192
-STALLED_RCVBUF_BYTES = 1024
-STALL_SETTLE_S = 60.0
-STALLED_OPEN_TIMEOUT_S = 20.0
-STALLED_COMMAND_BUDGET_S = 20.0
-STALLED_COMMAND_VALUE = 7
 
 
 def _close_in_background(ws) -> tuple[threading.Event, float]:
@@ -52,9 +41,24 @@ def _is_busy(error: InvalidStatus) -> bool:
     return error.response.status_code == 503
 
 
+def _connect_through_small_window(ip: str, path: str, rcvbuf_bytes: int):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, rcvbuf_bytes)
+    sock.settimeout(8)
+    sock.connect((ip, 80))
+    return connect(
+        f'ws://{ip}{path}', sock=sock, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S, max_queue=1
+    )
+
+
+def _expect_brake(dut: Dut, value: int, timeout: float) -> None:
+    dut.expect(rf'JSON=\{{"command": {BRAKE}, "value": {value}\}}', timeout=timeout)
+
+
 def _connect_when_free(url: str):
     """Each endpoint serves one connection and refuses others with 503, so a reconnect retries
     until the car has processed the previous connection's close."""
+    busy_retry_interval_s = 0.1
     deadline = time.monotonic() + CLOSE_TIMEOUT_S
     while True:
         try:
@@ -62,7 +66,7 @@ def _connect_when_free(url: str):
         except InvalidStatus as e:
             if not _is_busy(e) or time.monotonic() > deadline:
                 raise
-            time.sleep(BUSY_RETRY_INTERVAL_S)
+            time.sleep(busy_retry_interval_s)
 
 
 def test_web_server_endpoints_reachable(dut: Dut) -> None:
@@ -172,21 +176,20 @@ def test_stream_answers_ping_mid_stream(dut: Dut) -> None:
 
 
 def test_command_not_delayed_by_slow_stream_reader(dut: Dut) -> None:
+    command_count = 150
+    command_interval_s = 0.1
+    command_delay_budget_s = 1.0
+    slow_read_interval_s = 0.3
+    slow_read_rcvbuf_bytes = 8192
     ip = get_dut_ip(dut)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, SLOW_READ_RCVBUF_BYTES)
-    sock.settimeout(8)
-    sock.connect((ip, 80))
-    stream = connect(
-        f'ws://{ip}/stream', sock=sock, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S, max_queue=1
-    )
+    stream = _connect_through_small_window(ip, '/stream', slow_read_rcvbuf_bytes)
     stop = threading.Event()
 
     def _read_slowly() -> None:
         while not stop.is_set():
             stream.recv(timeout=8)
-            stop.wait(SLOW_READ_INTERVAL_S)
+            stop.wait(slow_read_interval_s)
 
     reader = threading.Thread(target=_read_slowly, daemon=True)
     reader.start()
@@ -195,27 +198,27 @@ def test_command_not_delayed_by_slow_stream_reader(dut: Dut) -> None:
     sent_at: dict[int, float] = {}
 
     def _send_commands() -> None:
-        for value in range(COMMAND_COUNT):
+        for value in range(command_count):
             sent_at[value] = time.monotonic()
             control.send(json.dumps({'command': BRAKE, 'value': value}))
-            time.sleep(COMMAND_INTERVAL_S)
+            time.sleep(command_interval_s)
 
     sender = threading.Thread(target=_send_commands, daemon=True)
     sender.start()
 
     delays = []
     try:
-        for value in range(COMMAND_COUNT):
-            dut.expect(rf'JSON=\{{"command": {BRAKE}, "value": {value}\}}', timeout=15)
+        for value in range(command_count):
+            _expect_brake(dut, value, timeout=15)
             delays.append(time.monotonic() - sent_at[value])
     finally:
         stop.set()
-        sender.join(timeout=COMMAND_COUNT * COMMAND_INTERVAL_S + 5)
+        sender.join(timeout=command_count * command_interval_s + 5)
         _close_in_background(control)
         _close_in_background(stream)
 
     worst = max(delays)
-    assert worst < COMMAND_DELAY_BUDGET_S, (
+    assert worst < command_delay_budget_s, (
         f'drive command took {worst:.2f}s to reach the car while /stream was read slowly; '
         f'commands are queued behind camera frames on the httpd task (delays: {delays})'
     )
@@ -242,27 +245,23 @@ def test_second_connection_refused_before_upgrade(dut: Dut, path: str) -> None:
 
 
 def test_command_still_read_after_close_while_telemetry_send_stalls(dut: Dut) -> None:
+    stalled_rcvbuf_bytes = 1024
+    stall_settle_s = 60.0
+    stalled_open_timeout_s = 30.0
+    stalled_command_budget_s = 30.0
+    stalled_command_value = 7
     ip = get_dut_ip(dut)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, STALLED_RCVBUF_BYTES)
-    sock.settimeout(8)
-    sock.connect((ip, 80))
-    stalled = connect(
-        f'ws://{ip}/telemetry', sock=sock, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S, max_queue=1
-    )
-    time.sleep(STALL_SETTLE_S)
+    stalled = _connect_through_small_window(ip, '/telemetry', stalled_rcvbuf_bytes)
+    time.sleep(stall_settle_s)
 
     try:
-        with connect(f'ws://{ip}/', open_timeout=STALLED_OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S):
+        with connect(f'ws://{ip}/', open_timeout=stalled_open_timeout_s, close_timeout=CLOSE_TIMEOUT_S):
             pass
         with connect(
-            f'ws://{ip}/', open_timeout=STALLED_OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S
+            f'ws://{ip}/', open_timeout=stalled_open_timeout_s, close_timeout=CLOSE_TIMEOUT_S
         ) as control:
-            control.send(json.dumps({'command': BRAKE, 'value': STALLED_COMMAND_VALUE}))
-            dut.expect(
-                rf'JSON=\{{"command": {BRAKE}, "value": {STALLED_COMMAND_VALUE}\}}',
-                timeout=STALLED_COMMAND_BUDGET_S,
-            )
+            control.send(json.dumps({'command': BRAKE, 'value': stalled_command_value}))
+            _expect_brake(dut, stalled_command_value, timeout=stalled_command_budget_s)
     finally:
         _close_in_background(stalled)
