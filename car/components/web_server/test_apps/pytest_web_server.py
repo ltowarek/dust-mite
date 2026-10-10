@@ -7,14 +7,17 @@ import struct
 import threading
 import time
 
+import pytest
 import websockets
 from helpers import get_dut_ip
 from pytest_embedded import Dut
+from websockets.exceptions import InvalidStatus
 from websockets.sync.client import connect
 
 CLOSE_BUDGET_S = 2.0
 CLOSE_TIMEOUT_S = 10.0
 FIRST_FRAME_BUDGET_S = 2.0
+BUSY_RETRY_INTERVAL_S = 0.1
 
 
 def _close_in_background(ws) -> tuple[threading.Event, float]:
@@ -31,6 +34,23 @@ def _close_in_background(ws) -> tuple[threading.Event, float]:
     started = time.monotonic()
     threading.Thread(target=_close, daemon=True).start()
     return done, started
+
+
+def _is_busy(error: InvalidStatus) -> bool:
+    return error.response.status_code == 503
+
+
+def _connect_when_free(url: str):
+    """Each endpoint serves one connection and refuses others with 503, so a reconnect retries
+    until the car has processed the previous connection's close."""
+    deadline = time.monotonic() + CLOSE_TIMEOUT_S
+    while True:
+        try:
+            return connect(url, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
+        except InvalidStatus as e:
+            if not _is_busy(e) or time.monotonic() > deadline:
+                raise
+            time.sleep(BUSY_RETRY_INTERVAL_S)
 
 
 def test_web_server_endpoints_reachable(dut: Dut) -> None:
@@ -72,7 +92,7 @@ def test_stream_reconnect_receives_data_while_previous_closes(dut: Dut) -> None:
         first.recv(timeout=8)
     _close_in_background(first)
 
-    second = connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
+    second = _connect_when_free(f'ws://{ip}/stream')
     try:
         frame = second.recv(timeout=FIRST_FRAME_BUDGET_S)
     finally:
@@ -84,12 +104,24 @@ def test_stream_reconnect_receives_data_while_previous_closes(dut: Dut) -> None:
 def test_stream_survives_connect_close_churn(dut: Dut) -> None:
     ip = get_dut_ip(dut)
 
+    churned = []
     for _ in range(6):
-        ws = connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-        _close_in_background(ws)
+        try:
+            ws = connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
+        except InvalidStatus as e:
+            assert _is_busy(e), f'churned /stream refused with {e.response.status_code}'
+            continue
+        churned.append((ws, _close_in_background(ws)[0]))
 
-    with connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S) as ws:
+    with _connect_when_free(f'ws://{ip}/stream') as ws:
         assert ws.recv(timeout=FIRST_FRAME_BUDGET_S), 'no frame after connect/close churn'
+
+    for ws, done in churned:
+        assert done.wait(CLOSE_TIMEOUT_S + CLOSE_BUDGET_S), 'churned /stream close did not finish'
+    unanswered = sum(ws.protocol.close_rcvd is None for ws, _ in churned)
+    assert unanswered == 0, (
+        f'{unanswered} of {len(churned)} churned /stream connections were dropped without a CLOSE reply'
+    )
 
 
 def test_stream_recovers_after_lru_purge(dut: Dut) -> None:
@@ -103,7 +135,7 @@ def test_stream_recovers_after_lru_purge(dut: Dut) -> None:
     for ws in [*held, fourth]:
         _close_in_background(ws)
 
-    with connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S) as ws:
+    with _connect_when_free(f'ws://{ip}/stream') as ws:
         assert ws.recv(timeout=FIRST_FRAME_BUDGET_S), 'no frame after an LRU purge'
 
 
@@ -125,3 +157,23 @@ def test_stream_answers_ping_mid_stream(dut: Dut) -> None:
         return frames
 
     assert asyncio.run(run()) > 0, 'no frames received'
+
+
+@pytest.mark.parametrize('path', ['/stream', '/telemetry'])
+def test_second_connection_refused_before_upgrade(dut: Dut, path: str) -> None:
+    ip = get_dut_ip(dut)
+
+    served = connect(f'ws://{ip}{path}', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
+    try:
+        for _ in range(2):
+            with pytest.raises(InvalidStatus) as refused:
+                connect(f'ws://{ip}{path}', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
+            assert _is_busy(refused.value), (
+                f'second {path} got {refused.value.response.status_code}, not 503'
+            )
+    finally:
+        done, _ = _close_in_background(served)
+    assert done.wait(CLOSE_TIMEOUT_S + CLOSE_BUDGET_S), f'served {path} close did not finish'
+
+    with _connect_when_free(f'ws://{ip}{path}'):
+        pass

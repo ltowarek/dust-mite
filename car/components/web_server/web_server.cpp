@@ -59,7 +59,26 @@ static bool ws_connection_is_live(const ws_connection_t& connection) {
          httpd_sess_get_ctx(connection.hd, connection.fd) == connection.token;
 }
 
-constexpr int WS_QUEUE_SEND_TIMEOUT_MS = 100;
+static ws_connection_t g_stream_owner;
+static ws_connection_t g_telemetry_owner;
+
+static esp_err_t ws_refuse_if_busy(httpd_req_t* req, const ws_connection_t& owner) {
+  if (!ws_connection_is_live(owner)) {
+    return ESP_OK;
+  }
+  ESP_LOGW(TAG, "Refusing %s: already serving a connection", req->uri);
+  httpd_resp_set_status(req, "503 Service Unavailable");
+  httpd_resp_send(req, NULL, 0);
+  return ESP_FAIL;
+}
+
+static esp_err_t ws_hand_over(httpd_req_t* req, ws_connection_t& owner, QueueHandle_t queue) {
+  ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+  owner = {req->handle, httpd_req_to_sockfd(req), ws_next_token()};
+  httpd_sess_set_ctx(owner.hd, owner.fd, owner.token, ws_keep_token);
+  xQueueOverwrite(queue, &owner);
+  return ESP_OK;
+}
 
 struct ws_send_work_t {
   ws_connection_t connection;
@@ -186,19 +205,16 @@ static const httpd_uri_t root = {
     .is_websocket = true,
     .handle_ws_control_frames = false,
     .supported_subprotocol = NULL,
+    .ws_pre_handshake_cb = NULL,
     .ws_post_handshake_cb = NULL,
 };
 
+static esp_err_t stream_pre_handshake(httpd_req_t* req) {
+  return ws_refuse_if_busy(req, g_stream_owner);
+}
+
 static esp_err_t stream_handle_handshake(httpd_req_t* req) {
-  ESP_LOGI(TAG, "Handshake done, the new connection was opened");
-  ws_connection_t connection = {req->handle, httpd_req_to_sockfd(req), ws_next_token()};
-  httpd_sess_set_ctx(connection.hd, connection.fd, connection.token, ws_keep_token);
-  if (xQueueSendToBack(g_stream_req_queue, &connection, pdMS_TO_TICKS(WS_QUEUE_SEND_TIMEOUT_MS)) !=
-      pdPASS) {
-    ESP_LOGE(TAG, "xQueueSendToBack(g_stream_req_queue) failed");
-    return ESP_FAIL;
-  }
-  return ESP_OK;
+  return ws_hand_over(req, g_stream_owner, g_stream_req_queue);
 }
 
 static esp_err_t stream_get_handler(httpd_req_t* req) {
@@ -321,19 +337,16 @@ static const httpd_uri_t stream = {
     .is_websocket = true,
     .handle_ws_control_frames = false,
     .supported_subprotocol = NULL,
+    .ws_pre_handshake_cb = stream_pre_handshake,
     .ws_post_handshake_cb = stream_handle_handshake,
 };
 
+static esp_err_t telemetry_pre_handshake(httpd_req_t* req) {
+  return ws_refuse_if_busy(req, g_telemetry_owner);
+}
+
 static esp_err_t telemetry_handle_handshake(httpd_req_t* req) {
-  ESP_LOGI(TAG, "Handshake done, the new connection was opened");
-  ws_connection_t connection = {req->handle, httpd_req_to_sockfd(req), ws_next_token()};
-  httpd_sess_set_ctx(connection.hd, connection.fd, connection.token, ws_keep_token);
-  if (xQueueSendToBack(g_telemetry_req_queue, &connection,
-                       pdMS_TO_TICKS(WS_QUEUE_SEND_TIMEOUT_MS)) != pdPASS) {
-    ESP_LOGE(TAG, "xQueueSendToBack(g_telemetry_req_queue) failed");
-    return ESP_FAIL;
-  }
-  return ESP_OK;
+  return ws_hand_over(req, g_telemetry_owner, g_telemetry_req_queue);
 }
 
 static esp_err_t telemetry_get_handler(httpd_req_t* req) {
@@ -434,6 +447,7 @@ static const httpd_uri_t telemetry = {
     .is_websocket = true,
     .handle_ws_control_frames = false,
     .supported_subprotocol = NULL,
+    .ws_pre_handshake_cb = telemetry_pre_handshake,
     .ws_post_handshake_cb = telemetry_handle_handshake,
 };
 
