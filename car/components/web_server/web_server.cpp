@@ -363,7 +363,6 @@ void ws_stream_task(void* p) {
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "alloc failed");
       send_span->End();
       esp_camera_fb_return(frame);
-      teardown();
       continue;
     }
     mbedtls_base64_encode((unsigned char*)b64_buf, b64_len + 1, &b64_len, frame->buf, frame->len);
