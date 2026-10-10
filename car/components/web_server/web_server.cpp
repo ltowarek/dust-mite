@@ -34,12 +34,6 @@ static httpd_handle_t server = NULL;
 
 static QueueHandle_t g_command_queue = NULL;
 
-static QueueHandle_t g_frame_queue = NULL;
-static QueueHandle_t g_stream_req_queue = NULL;
-
-static QueueHandle_t g_telemetry_packet_queue = NULL;
-static QueueHandle_t g_telemetry_req_queue = NULL;
-
 struct ws_connection_t {
   httpd_handle_t hd = nullptr;
   int fd = -1;
@@ -60,17 +54,31 @@ static bool ws_connection_is_live(const ws_connection_t& connection) {
          httpd_sess_get_ctx(connection.hd, connection.fd) == connection.token;
 }
 
-static ws_connection_t g_stream_owner;
-static ws_connection_t g_telemetry_owner;
+struct ws_endpoint_t {
+  QueueHandle_t data_queue = NULL;
+  QueueHandle_t req_queue = NULL;
+  QueueHandle_t closed_queue = NULL;
+  QueueSetHandle_t wait_set = NULL;
+  ws_connection_t owner;
+};
+
+static ws_endpoint_t g_stream;
+static ws_endpoint_t g_telemetry;
 
 constexpr UBaseType_t WS_CLOSED_QUEUE_LENGTH = 2;
-static QueueHandle_t g_stream_closed = NULL;
-static QueueHandle_t g_telemetry_closed = NULL;
-static QueueSetHandle_t g_stream_wait_set = NULL;
-static QueueSetHandle_t g_telemetry_wait_set = NULL;
 
-static esp_err_t ws_refuse_if_busy(httpd_req_t* req, const ws_connection_t& owner) {
-  if (!ws_connection_is_live(owner)) {
+static void ws_endpoint_init(ws_endpoint_t& endpoint, QueueHandle_t data_queue) {
+  endpoint.data_queue = data_queue;
+  endpoint.req_queue = xQueueCreate(1, sizeof(ws_connection_t));
+  endpoint.closed_queue = xQueueCreate(WS_CLOSED_QUEUE_LENGTH, sizeof(void*));
+  endpoint.wait_set = xQueueCreateSet(uxQueueSpacesAvailable(data_queue) + WS_CLOSED_QUEUE_LENGTH);
+  xQueueAddToSet(endpoint.data_queue, endpoint.wait_set);
+  xQueueAddToSet(endpoint.closed_queue, endpoint.wait_set);
+}
+
+static esp_err_t ws_refuse_if_busy(httpd_req_t* req) {
+  const auto* endpoint = static_cast<const ws_endpoint_t*>(req->user_ctx);
+  if (!ws_connection_is_live(endpoint->owner)) {
     return ESP_OK;
   }
   ESP_LOGW(TAG, "Refusing %s: already serving a connection", req->uri);
@@ -79,36 +87,36 @@ static esp_err_t ws_refuse_if_busy(httpd_req_t* req, const ws_connection_t& owne
   return ESP_FAIL;
 }
 
-static esp_err_t ws_hand_over(httpd_req_t* req, ws_connection_t& owner, QueueHandle_t queue) {
+static esp_err_t ws_hand_over(httpd_req_t* req) {
   ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+  auto* endpoint = static_cast<ws_endpoint_t*>(req->user_ctx);
+  ws_connection_t& owner = endpoint->owner;
   owner = {req->handle, httpd_req_to_sockfd(req), ws_next_token()};
   httpd_sess_set_ctx(owner.hd, owner.fd, owner.token, ws_keep_token);
-  xQueueOverwrite(queue, &owner);
+  xQueueOverwrite(endpoint->req_queue, &owner);
   return ESP_OK;
 }
 
 static void ws_close_session(httpd_handle_t hd, int sockfd) {
   void* token = httpd_sess_get_ctx(hd, sockfd);
-  if (token != nullptr && token == g_stream_owner.token) {
-    g_stream_owner = {};
-    xQueueSendToBack(g_stream_closed, &token, 0);
-  } else if (token != nullptr && token == g_telemetry_owner.token) {
-    g_telemetry_owner = {};
-    xQueueSendToBack(g_telemetry_closed, &token, 0);
+  for (ws_endpoint_t* endpoint : {&g_stream, &g_telemetry}) {
+    if (token != nullptr && token == endpoint->owner.token) {
+      endpoint->owner = {};
+      xQueueSendToBack(endpoint->closed_queue, &token, 0);
+    }
   }
   close(sockfd);
 }
 
-static bool ws_wait_for_item(QueueSetHandle_t wait_set, QueueHandle_t data_queue,
-                             QueueHandle_t closed_queue, const ws_connection_t& connection,
+static bool ws_wait_for_item(const ws_endpoint_t& endpoint, const ws_connection_t& connection,
                              void* item) {
   while (true) {
-    QueueSetMemberHandle_t ready = xQueueSelectFromSet(wait_set, portMAX_DELAY);
-    if (ready == data_queue) {
-      return xQueueReceive(data_queue, item, 0) == pdPASS;
+    QueueSetMemberHandle_t ready = xQueueSelectFromSet(endpoint.wait_set, portMAX_DELAY);
+    if (ready == endpoint.data_queue) {
+      return xQueueReceive(endpoint.data_queue, item, 0) == pdPASS;
     }
     void* closed = nullptr;
-    xQueueReceive(closed_queue, &closed, 0);
+    xQueueReceive(endpoint.closed_queue, &closed, 0);
     if (closed == connection.token) {
       return false;
     }
@@ -253,14 +261,6 @@ static const httpd_uri_t root = {
     .ws_post_handshake_cb = NULL,
 };
 
-static esp_err_t stream_pre_handshake(httpd_req_t* req) {
-  return ws_refuse_if_busy(req, g_stream_owner);
-}
-
-static esp_err_t stream_handle_handshake(httpd_req_t* req) {
-  return ws_hand_over(req, g_stream_owner, g_stream_req_queue);
-}
-
 static esp_err_t stream_get_handler(httpd_req_t* req) {
   (void)req;
   return ESP_OK;
@@ -284,8 +284,8 @@ void ws_stream_task(void* p) {
   while (true) {
     if (!active) {
       ESP_LOGI(TAG, "Waiting for notification to start the stream");
-      if (xQueueReceive(g_stream_req_queue, &connection, portMAX_DELAY) != pdPASS) {
-        ESP_LOGE(TAG, "xQueueReceive(g_stream_req_queue) failed");
+      if (xQueueReceive(g_stream.req_queue, &connection, portMAX_DELAY) != pdPASS) {
+        ESP_LOGE(TAG, "xQueueReceive(g_stream.req_queue) failed");
         break;
       }
       if (!ws_connection_is_live(connection)) {
@@ -302,7 +302,7 @@ void ws_stream_task(void* p) {
       ESP_LOGI(TAG, "Stream started");
     }
 
-    if (!ws_wait_for_item(g_stream_wait_set, g_frame_queue, g_stream_closed, connection, &frame)) {
+    if (!ws_wait_for_item(g_stream, connection, &frame)) {
       teardown();
       continue;
     }
@@ -373,21 +373,13 @@ static const httpd_uri_t stream = {
     .uri = "/stream",
     .method = HTTP_GET,
     .handler = stream_get_handler,
-    .user_ctx = NULL,
+    .user_ctx = &g_stream,
     .is_websocket = true,
     .handle_ws_control_frames = false,
     .supported_subprotocol = NULL,
-    .ws_pre_handshake_cb = stream_pre_handshake,
-    .ws_post_handshake_cb = stream_handle_handshake,
+    .ws_pre_handshake_cb = ws_refuse_if_busy,
+    .ws_post_handshake_cb = ws_hand_over,
 };
-
-static esp_err_t telemetry_pre_handshake(httpd_req_t* req) {
-  return ws_refuse_if_busy(req, g_telemetry_owner);
-}
-
-static esp_err_t telemetry_handle_handshake(httpd_req_t* req) {
-  return ws_hand_over(req, g_telemetry_owner, g_telemetry_req_queue);
-}
 
 static esp_err_t telemetry_get_handler(httpd_req_t* req) {
   (void)req;
@@ -411,8 +403,8 @@ void ws_telemetry_task(void* p) {
   while (true) {
     if (!active) {
       ESP_LOGI(TAG, "Waiting for notification to start the telemetry");
-      if (xQueueReceive(g_telemetry_req_queue, &connection, portMAX_DELAY) != pdPASS) {
-        ESP_LOGE(TAG, "xQueueReceive(g_telemetry_req_queue) failed");
+      if (xQueueReceive(g_telemetry.req_queue, &connection, portMAX_DELAY) != pdPASS) {
+        ESP_LOGE(TAG, "xQueueReceive(g_telemetry.req_queue) failed");
         break;
       }
       if (!ws_connection_is_live(connection)) {
@@ -430,8 +422,7 @@ void ws_telemetry_task(void* p) {
     }
 
     telemetry_packet_t packet = {};
-    if (!ws_wait_for_item(g_telemetry_wait_set, g_telemetry_packet_queue, g_telemetry_closed,
-                          connection, &packet)) {
+    if (!ws_wait_for_item(g_telemetry, connection, &packet)) {
       teardown();
       continue;
     }
@@ -476,12 +467,12 @@ static const httpd_uri_t telemetry = {
     .uri = "/telemetry",
     .method = HTTP_GET,
     .handler = telemetry_get_handler,
-    .user_ctx = NULL,
+    .user_ctx = &g_telemetry,
     .is_websocket = true,
     .handle_ws_control_frames = false,
     .supported_subprotocol = NULL,
-    .ws_pre_handshake_cb = telemetry_pre_handshake,
-    .ws_post_handshake_cb = telemetry_handle_handshake,
+    .ws_pre_handshake_cb = ws_refuse_if_busy,
+    .ws_post_handshake_cb = ws_hand_over,
 };
 
 static httpd_handle_t start_web_server() {
@@ -535,24 +526,10 @@ static void web_server_handler_on_wifi_disconnect(void* arg, esp_event_base_t ev
 
 void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
                       QueueHandle_t telemetry_queue) {
-  g_frame_queue = frame_queue;
   g_command_queue = command_queue;
-  g_telemetry_packet_queue = telemetry_queue;
-
-  g_stream_req_queue = xQueueCreate(1, sizeof(ws_connection_t));
-  g_telemetry_req_queue = xQueueCreate(1, sizeof(ws_connection_t));
+  ws_endpoint_init(g_stream, frame_queue);
+  ws_endpoint_init(g_telemetry, telemetry_queue);
   g_stream_send_done = xSemaphoreCreateBinary();
-
-  g_stream_closed = xQueueCreate(WS_CLOSED_QUEUE_LENGTH, sizeof(void*));
-  g_stream_wait_set =
-      xQueueCreateSet(uxQueueSpacesAvailable(g_frame_queue) + WS_CLOSED_QUEUE_LENGTH);
-  xQueueAddToSet(g_frame_queue, g_stream_wait_set);
-  xQueueAddToSet(g_stream_closed, g_stream_wait_set);
-  g_telemetry_closed = xQueueCreate(WS_CLOSED_QUEUE_LENGTH, sizeof(void*));
-  g_telemetry_wait_set =
-      xQueueCreateSet(uxQueueSpacesAvailable(g_telemetry_packet_queue) + WS_CLOSED_QUEUE_LENGTH);
-  xQueueAddToSet(g_telemetry_packet_queue, g_telemetry_wait_set);
-  xQueueAddToSet(g_telemetry_closed, g_telemetry_wait_set);
 
   {
     // Allocate ws_stream_task stack from PSRAM: base64 encoding of VGA JPEG frames plus
