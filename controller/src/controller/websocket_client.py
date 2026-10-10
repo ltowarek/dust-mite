@@ -42,7 +42,12 @@ class ClientConnection:
         while not self._stop_event.is_set():
             try:
                 client = websockets.sync.client.connect(self._uri)
-            except (ConnectionRefusedError, OSError, TimeoutError) as e:
+            except (
+                ConnectionRefusedError,
+                OSError,
+                TimeoutError,
+                websockets.exceptions.InvalidStatus,
+            ) as e:
                 logger.warning("Failed to connect to the client: %s", e)
                 time.sleep(1)
                 continue
