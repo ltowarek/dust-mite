@@ -84,7 +84,11 @@ struct ws_send_work_t {
   ws_connection_t connection;
   char* payload;
   size_t len;
+  SemaphoreHandle_t done;
 };
+
+static SemaphoreHandle_t g_stream_send_done = NULL;
+constexpr int WS_SEND_DONE_TIMEOUT_MS = 10000;
 
 static void ws_send_work(void* arg) {
   auto* work = static_cast<ws_send_work_t*>(arg);
@@ -97,11 +101,15 @@ static void ws_send_work(void* arg) {
       ESP_LOGW(TAG, "httpd_ws_send_frame_async failed on fd %d", work->connection.fd);
     }
   }
+  if (work->done != nullptr) {
+    xSemaphoreGive(work->done);
+  }
   cJSON_free(work->payload);
   free(work);
 }
 
-static esp_err_t ws_queue_send(const ws_connection_t& connection, char* payload, size_t len) {
+static esp_err_t ws_queue_send(const ws_connection_t& connection, char* payload, size_t len,
+                               SemaphoreHandle_t done = nullptr) {
   auto* work = static_cast<ws_send_work_t*>(malloc(sizeof(ws_send_work_t)));
   if (work == NULL) {
     cJSON_free(payload);
@@ -110,6 +118,7 @@ static esp_err_t ws_queue_send(const ws_connection_t& connection, char* payload,
   work->connection = connection;
   work->payload = payload;
   work->len = len;
+  work->done = done;
   esp_err_t ret = httpd_queue_work(connection.hd, ws_send_work, work);
   if (ret != ESP_OK) {
     cJSON_free(payload);
@@ -311,7 +320,7 @@ void ws_stream_task(void* p) {
     size_t payload_len = strlen(packet_json_str);
     send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
 
-    esp_err_t ret = ws_queue_send(connection, packet_json_str, payload_len);
+    esp_err_t ret = ws_queue_send(connection, packet_json_str, payload_len, g_stream_send_done);
     if (ret != ESP_OK) {
       ESP_LOGE(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
@@ -321,9 +330,13 @@ void ws_stream_task(void* p) {
       continue;
     }
 
-    send_span->End();
     web_server_metrics_update();
     esp_camera_fb_return(frame);
+
+    if (xSemaphoreTake(g_stream_send_done, pdMS_TO_TICKS(WS_SEND_DONE_TIMEOUT_MS)) != pdTRUE) {
+      ESP_LOGW(TAG, "Timed out waiting for a stream frame send to finish");
+    }
+    send_span->End();
   }
   ESP_LOGW(TAG, "Stream task stopped");
   vTaskDelete(NULL);
@@ -507,6 +520,7 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
 
   g_stream_req_queue = xQueueCreate(1, sizeof(ws_connection_t));
   g_telemetry_req_queue = xQueueCreate(1, sizeof(ws_connection_t));
+  g_stream_send_done = xSemaphoreCreateBinary();
 
   {
     // Allocate ws_stream_task stack from PSRAM: base64 encoding of VGA JPEG frames plus

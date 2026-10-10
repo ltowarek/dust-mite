@@ -19,6 +19,13 @@ CLOSE_TIMEOUT_S = 10.0
 FIRST_FRAME_BUDGET_S = 2.0
 BUSY_RETRY_INTERVAL_S = 0.1
 
+BRAKE = 3
+COMMAND_COUNT = 150
+COMMAND_INTERVAL_S = 0.1
+COMMAND_DELAY_BUDGET_S = 1.0
+SLOW_READ_INTERVAL_S = 0.3
+SLOW_READ_RCVBUF_BYTES = 8192
+
 
 def _close_in_background(ws) -> tuple[threading.Event, float]:
     """Close off-thread: websockets.sync can block past close_timeout, and a test must
@@ -157,6 +164,56 @@ def test_stream_answers_ping_mid_stream(dut: Dut) -> None:
         return frames
 
     assert asyncio.run(run()) > 0, 'no frames received'
+
+
+def test_command_not_delayed_by_slow_stream_reader(dut: Dut) -> None:
+    ip = get_dut_ip(dut)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, SLOW_READ_RCVBUF_BYTES)
+    sock.settimeout(8)
+    sock.connect((ip, 80))
+    stream = connect(
+        f'ws://{ip}/stream', sock=sock, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S, max_queue=1
+    )
+    stop = threading.Event()
+
+    def _read_slowly() -> None:
+        while not stop.is_set():
+            stream.recv(timeout=8)
+            stop.wait(SLOW_READ_INTERVAL_S)
+
+    reader = threading.Thread(target=_read_slowly, daemon=True)
+    reader.start()
+
+    control = connect(f'ws://{ip}/', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
+    sent_at: dict[int, float] = {}
+
+    def _send_commands() -> None:
+        for value in range(COMMAND_COUNT):
+            sent_at[value] = time.monotonic()
+            control.send(json.dumps({'command': BRAKE, 'value': value}))
+            time.sleep(COMMAND_INTERVAL_S)
+
+    sender = threading.Thread(target=_send_commands, daemon=True)
+    sender.start()
+
+    delays = []
+    try:
+        for value in range(COMMAND_COUNT):
+            dut.expect(rf'JSON=\{{"command": {BRAKE}, "value": {value}\}}', timeout=15)
+            delays.append(time.monotonic() - sent_at[value])
+    finally:
+        stop.set()
+        sender.join(timeout=COMMAND_COUNT * COMMAND_INTERVAL_S + 5)
+        _close_in_background(control)
+        _close_in_background(stream)
+
+    worst = max(delays)
+    assert worst < COMMAND_DELAY_BUDGET_S, (
+        f'drive command took {worst:.2f}s to reach the car while /stream was read slowly; '
+        f'commands are queued behind camera frames on the httpd task (delays: {delays})'
+    )
 
 
 @pytest.mark.parametrize('path', ['/stream', '/telemetry'])

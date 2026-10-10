@@ -33,7 +33,7 @@ static i2c_master_bus_handle_t i2c_bus_init() {
 
 extern "C" void app_main(void) {
   QueueHandle_t command_queue = xQueueCreate(1, sizeof(command_packet_t));
-  QueueHandle_t frame_queue = xQueueCreate(2, sizeof(camera_fb_t*));
+  QueueHandle_t frame_queue = xQueueCreate(1, sizeof(camera_fb_t*));
   QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_packet_t));
 
 #ifndef CONFIG_WEB_SERVER_TEST_QEMU_MODE
