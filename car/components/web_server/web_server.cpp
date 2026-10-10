@@ -60,18 +60,19 @@ struct ws_endpoint_t {
   QueueHandle_t closed_queue = NULL;
   QueueSetHandle_t wait_set = NULL;
   ws_connection_t owner;
+  std::atomic<void*> served{nullptr};
 };
 
 static ws_endpoint_t g_stream;
 static ws_endpoint_t g_telemetry;
 
-constexpr UBaseType_t WS_CLOSED_QUEUE_LENGTH = 2;
 
 static void ws_endpoint_init(ws_endpoint_t& endpoint, QueueHandle_t data_queue) {
   endpoint.data_queue = data_queue;
   endpoint.req_queue = xQueueCreate(1, sizeof(ws_connection_t));
-  endpoint.closed_queue = xQueueCreate(WS_CLOSED_QUEUE_LENGTH, sizeof(void*));
-  endpoint.wait_set = xQueueCreateSet(uxQueueSpacesAvailable(data_queue) + WS_CLOSED_QUEUE_LENGTH);
+  endpoint.closed_queue = xQueueCreate(1, sizeof(void*));
+  endpoint.wait_set = xQueueCreateSet(uxQueueSpacesAvailable(data_queue) +
+                                      uxQueueSpacesAvailable(endpoint.closed_queue));
   xQueueAddToSet(endpoint.data_queue, endpoint.wait_set);
   xQueueAddToSet(endpoint.closed_queue, endpoint.wait_set);
 }
@@ -100,9 +101,14 @@ static esp_err_t ws_hand_over(httpd_req_t* req) {
 static void ws_close_session(httpd_handle_t hd, int sockfd) {
   void* token = httpd_sess_get_ctx(hd, sockfd);
   for (ws_endpoint_t* endpoint : {&g_stream, &g_telemetry}) {
-    if (token != nullptr && token == endpoint->owner.token) {
+    if (token == nullptr) {
+      continue;
+    }
+    if (token == endpoint->owner.token) {
       endpoint->owner = {};
-      xQueueSendToBack(endpoint->closed_queue, &token, 0);
+    }
+    if (token == endpoint->served.load()) {
+      xQueueOverwrite(endpoint->closed_queue, &token);
     }
   }
   close(sockfd);
@@ -113,11 +119,13 @@ static bool ws_wait_for_item(const ws_endpoint_t& endpoint, const ws_connection_
   while (true) {
     QueueSetMemberHandle_t ready = xQueueSelectFromSet(endpoint.wait_set, portMAX_DELAY);
     if (ready == endpoint.data_queue) {
-      return xQueueReceive(endpoint.data_queue, item, 0) == pdPASS;
+      if (xQueueReceive(endpoint.data_queue, item, 0) == pdPASS) {
+        return true;
+      }
+      continue;
     }
     void* closed = nullptr;
-    xQueueReceive(endpoint.closed_queue, &closed, 0);
-    if (closed == connection.token) {
+    if (xQueueReceive(endpoint.closed_queue, &closed, 0) == pdPASS && closed == connection.token) {
       return false;
     }
   }
@@ -275,6 +283,7 @@ void ws_stream_task(void* p) {
 
   auto teardown = [&]() {
     active = false;
+    g_stream.served = nullptr;
     camera_stop();
     ESP_LOGI(TAG, "Stream stopped");
     connection_span->End();
@@ -288,8 +297,10 @@ void ws_stream_task(void* p) {
         ESP_LOGE(TAG, "xQueueReceive(g_stream.req_queue) failed");
         break;
       }
+      g_stream.served = connection.token;
       if (!ws_connection_is_live(connection)) {
         ESP_LOGI(TAG, "Queued stream connection was closed before it started");
+        g_stream.served = nullptr;
         continue;
       }
       opentelemetry::trace::StartSpanOptions stream_opts;
@@ -394,6 +405,7 @@ void ws_telemetry_task(void* p) {
 
   auto teardown = [&]() {
     active = false;
+    g_telemetry.served = nullptr;
     telemetry_stop();
     ESP_LOGI(TAG, "Telemetry stopped");
     connection_span->End();
@@ -407,8 +419,10 @@ void ws_telemetry_task(void* p) {
         ESP_LOGE(TAG, "xQueueReceive(g_telemetry.req_queue) failed");
         break;
       }
+      g_telemetry.served = connection.token;
       if (!ws_connection_is_live(connection)) {
         ESP_LOGI(TAG, "Queued telemetry connection was closed before it started");
+        g_telemetry.served = nullptr;
         continue;
       }
       opentelemetry::trace::StartSpanOptions telemetry_opts;
