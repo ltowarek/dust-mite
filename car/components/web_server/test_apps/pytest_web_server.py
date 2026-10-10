@@ -25,6 +25,11 @@ COMMAND_INTERVAL_S = 0.1
 COMMAND_DELAY_BUDGET_S = 1.0
 SLOW_READ_INTERVAL_S = 0.3
 SLOW_READ_RCVBUF_BYTES = 8192
+STALLED_RCVBUF_BYTES = 1024
+STALL_SETTLE_S = 60.0
+STALLED_OPEN_TIMEOUT_S = 20.0
+STALLED_COMMAND_BUDGET_S = 20.0
+STALLED_COMMAND_VALUE = 7
 
 
 def _close_in_background(ws) -> tuple[threading.Event, float]:
@@ -234,3 +239,30 @@ def test_second_connection_refused_before_upgrade(dut: Dut, path: str) -> None:
 
     with _connect_when_free(f'ws://{ip}{path}'):
         pass
+
+
+def test_command_still_read_after_close_while_telemetry_send_stalls(dut: Dut) -> None:
+    ip = get_dut_ip(dut)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, STALLED_RCVBUF_BYTES)
+    sock.settimeout(8)
+    sock.connect((ip, 80))
+    stalled = connect(
+        f'ws://{ip}/telemetry', sock=sock, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S, max_queue=1
+    )
+    time.sleep(STALL_SETTLE_S)
+
+    try:
+        with connect(f'ws://{ip}/', open_timeout=STALLED_OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S):
+            pass
+        with connect(
+            f'ws://{ip}/', open_timeout=STALLED_OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S
+        ) as control:
+            control.send(json.dumps({'command': BRAKE, 'value': STALLED_COMMAND_VALUE}))
+            dut.expect(
+                rf'JSON=\{{"command": {BRAKE}, "value": {STALLED_COMMAND_VALUE}\}}',
+                timeout=STALLED_COMMAND_BUDGET_S,
+            )
+    finally:
+        _close_in_background(stalled)

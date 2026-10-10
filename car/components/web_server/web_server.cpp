@@ -322,11 +322,10 @@ void ws_stream_task(void* p) {
 
     esp_err_t ret = ws_queue_send(connection, packet_json_str, payload_len, g_stream_send_done);
     if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
+      ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
       send_span->End();
       esp_camera_fb_return(frame);
-      teardown();
       continue;
     }
 
@@ -439,10 +438,9 @@ void ws_telemetry_task(void* p) {
 
     esp_err_t ret = ws_queue_send(connection, packet_json_str, payload_len);
     if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
+      ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
       send_span->End();
-      teardown();
       continue;
     }
 

@@ -46,12 +46,12 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 6.0.1
+    version: 6.0.3
 direct_dependencies:
 - espressif/cjson
 - espressif/esp32-camera
 - espressif/esp_gcov
 - idf
-manifest_hash: 595d94262d66efbdaa38e418b85634f748cdccd56ef797b92113482ce0a83413
+manifest_hash: 92ed197d1050331c23c1a483e318f3b8053d1f73b56e33d4bbd22e2d421f1c5c
 target: esp32s3
 version: 3.0.0
