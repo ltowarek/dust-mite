@@ -1,4 +1,4 @@
-FROM espressif/idf:release-v6.0
+FROM espressif/idf:v6.0.3
 
 ARG USERNAME=dustmite
 ARG USER_UID=1040

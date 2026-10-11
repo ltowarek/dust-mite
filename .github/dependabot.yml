@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directories:
+      - /.devcontainer/cpp
+      - /car
+    schedule:
+      interval: weekly
+    groups:
+      espressif-idf:
+        patterns:
+          - espressif/idf
+        group-by: dependency-name
