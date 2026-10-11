@@ -25,11 +25,12 @@ extern "C" void app_main(void) {
   UNITY_BEGIN();
   unity_run_all_tests();
   UNITY_END();
-#ifdef CONFIG_TELEMETRY_TEST_COVERAGE
-  esp_gcov_dump();
-  printf("GCOV_DUMP_DONE\n");
-#endif
 }
 
 void setUp(void) {}
-void tearDown(void) {}
+
+void tearDown(void) {
+#ifdef CONFIG_TELEMETRY_TEST_COVERAGE
+  esp_gcov_dump();
+#endif
+}
