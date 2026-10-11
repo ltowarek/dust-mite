@@ -37,7 +37,7 @@ class CommandArbiter:
     def __init__(
         self,
         commands: Subject,
-        telemetry: CarFeed,
+        telemetry: CarFeed | Subject,
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""

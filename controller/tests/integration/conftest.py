@@ -1,11 +1,20 @@
 import dataclasses
 import json
 import threading
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from typing import Any
 
 import pytest
 import websockets.sync.server
+
+from .car_doubles import (
+    CLEAR_DISTANCE_CM,
+    CarEndpointSpy,
+    camera_frame,
+    car_control_spy,
+    car_feed_stub,
+    telemetry,
+)
 
 
 @dataclasses.dataclass
@@ -42,3 +51,21 @@ def local_server() -> Generator[LocalServer, None, None]:
         finally:
             server.shutdown()
             thread.join()
+
+
+@pytest.fixture
+def camera_feed() -> Iterator[CarEndpointSpy]:
+    with car_feed_stub(camera_frame) as feed:
+        yield feed
+
+
+@pytest.fixture
+def telemetry_feed() -> Iterator[CarEndpointSpy]:
+    with car_feed_stub(telemetry(CLEAR_DISTANCE_CM)) as feed:
+        yield feed
+
+
+@pytest.fixture
+def car_control() -> Iterator[CarEndpointSpy]:
+    with car_control_spy() as control:
+        yield control

@@ -1,8 +1,16 @@
 import pytest
+import websockets.exceptions
+from websockets.frames import Close, CloseCode
 
 from controller import senders
 from controller.command import Command
-from controller.senders import InMemoryCommandSender, WebSocketCommandSender
+from controller.senders import (
+    DriveConnectionClosedError,
+    InMemoryCommandSender,
+    WebSocketCommandSender,
+)
+
+_URI = "ws://example.invalid"
 
 
 class _RecordingConnection:
@@ -14,6 +22,20 @@ class _RecordingConnection:
     def send(self, payload: str, /) -> None:
         """Capture `payload` instead of writing it to a socket."""
         self.sent.append(payload)
+
+    def close(self) -> None:
+        """Accept the sender's teardown call."""
+
+
+class _ClosedConnection:
+    """Stand-in for a connection the streamer has already closed."""
+
+    def __init__(self, close: Close | None) -> None:
+        self._close = close
+
+    def send(self, _payload: str, /) -> None:
+        """Fail the way `websockets` does once the connection is closed."""
+        raise websockets.exceptions.ConnectionClosedError(self._close, None)
 
     def close(self) -> None:
         """Accept the sender's teardown call."""
@@ -39,10 +61,30 @@ class TestWebSocketCommandSender:
     ) -> None:
         recorded: list[Command] = []
         monkeypatch.setattr(senders, "record_command_sent", recorded.append)
-        sender = WebSocketCommandSender("ws://example.invalid")
-        sender._ws_conn = _RecordingConnection()  # noqa: SLF001
+        connection = _RecordingConnection()
 
-        sender.send(Command.TURN_LEFT, 50)
-        sender.send(Command.BRAKE, None)
+        with WebSocketCommandSender(_URI, lambda _: connection) as sender:
+            sender.send(Command.TURN_LEFT, 50)
+            sender.send(Command.BRAKE, None)
 
         assert recorded == [Command.TURN_LEFT, Command.BRAKE]
+
+    def test_says_why_the_streamer_closed_the_connection(self) -> None:
+        connection = _ClosedConnection(
+            Close(CloseCode.TRY_AGAIN_LATER, "another driver is connected")
+        )
+
+        with (
+            WebSocketCommandSender(_URI, lambda _: connection) as sender,
+            pytest.raises(DriveConnectionClosedError, match="another driver"),
+        ):
+            sender.send(Command.BRAKE, None)
+
+    def test_reports_a_lost_connection_without_a_reason(self) -> None:
+        connection = _ClosedConnection(None)
+
+        with (
+            WebSocketCommandSender(_URI, lambda _: connection) as sender,
+            pytest.raises(DriveConnectionClosedError, match="connection lost"),
+        ):
+            sender.send(Command.BRAKE, None)

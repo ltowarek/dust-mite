@@ -1,6 +1,7 @@
 """Command senders: destinations for driving commands from the gamepad CLI."""
 
 import json
+from collections.abc import Callable
 from types import TracebackType
 from typing import Protocol, Self
 
@@ -19,7 +20,8 @@ class _Connection(Protocol):
     """The subset of a `websockets` client connection the sender writes through.
 
     A structural type rather than `ClientConnection` itself, so tests can
-    exercise the send path with a plain fake instead of a live socket.
+    pass a test double through `WebSocketCommandSender`'s `connect` argument
+    instead of opening a live socket.
     """
 
     def send(self, message: str, /) -> None: ...
@@ -42,16 +44,22 @@ class WebSocketCommandSender:
     """Send commands to the car over a WebSocket connection.
 
     Use as a context manager: connects to `uri` on entry, closes on exit.
+    `connect` opens the connection; tests pass one that returns a test double.
     """
 
-    def __init__(self, uri: str) -> None:
+    def __init__(
+        self,
+        uri: str,
+        connect: Callable[[str], _Connection] = websockets.sync.client.connect,
+    ) -> None:
         """Initialize the object."""
         self._uri = uri
+        self._connect = connect
         self._ws_conn: _Connection | None = None
 
     def connect(self) -> None:
         """Connect to the car."""
-        self._ws_conn = websockets.sync.client.connect(self._uri)
+        self._ws_conn = self._connect(self._uri)
 
     def close(self) -> None:
         """Close the connection."""
