@@ -63,7 +63,7 @@ jobs:
             path: car/components/web_server/test_apps
             qemu: true
             sdkconfig_overlay: sdkconfig.defaults.qemu
-            pytest_pattern: pytest_web_server_qemu.py
+            pytest_pattern: pytest_web_server.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -200,7 +200,7 @@ jobs:
             pytest_pattern: pytest_telemetry_qemu.py
           - name: web_server
             component_path: components/web_server/test_apps
-            pytest_pattern: pytest_web_server_qemu.py
+            pytest_pattern: pytest_web_server.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -254,7 +254,7 @@ jobs:
             pytest_pattern: pytest_telemetry_qemu.py
           - name: web_server
             component_path: components/web_server/test_apps
-            pytest_pattern: pytest_web_server_qemu.py
+            pytest_pattern: pytest_web_server.py
 
     container:
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer

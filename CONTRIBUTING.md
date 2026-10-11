@@ -834,7 +834,7 @@ To run locally (from the `car/` directory in the C++ devcontainer):
 
 ```bash
 ./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu.py
-./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu.py
+./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server.py
 ```
 
 ### Car test types
@@ -915,6 +915,24 @@ idf_component_register(SRCS ${srcs} ...)
 This keeps each test file clean (no environment-awareness) and makes the QEMU vs hardware split explicit in one place.
 
 `app_main` may still need a single `#ifndef CONFIG_FOO_TEST_QEMU_MODE` guard to skip hardware peripheral initialisation that would abort on QEMU.
+
+#### Network tests in QEMU
+
+The web server test app runs its WebSocket tests in QEMU as well as on the car. In QEMU mode the
+app:
+
+- brings the network up on QEMU's emulated OpenCores Ethernet MAC (`CONFIG_ETH_USE_OPENETH`) instead
+  of Wi-Fi;
+- starts the real web server;
+- feeds it synthetic camera frames and telemetry packets from `main/qemu_peripherals.cpp`.
+
+The test app's `conftest.py` starts QEMU with 4 MB of PSRAM and user-mode networking, and forwards a
+free local port to the server's port 80. Tests take the server's address from the `car_address`
+fixture, which returns that port under QEMU and the car's IP address and port 80 on hardware.
+
+QEMU's user-mode network buffers whatever the client does not read, so it never throttles the
+car's sends. Tests that depend on a slow or stalled client are marked `@pytest.mark.dut` and
+skipped under QEMU.
 
 Build, flash, and run all component test apps in sequence:
 

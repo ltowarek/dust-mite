@@ -10,6 +10,9 @@
 #include "telemetry.hpp"
 #include "unity.h"
 #include "sdkconfig.h"
+#ifdef CONFIG_WEB_SERVER_TEST_QEMU_MODE
+#include "qemu_peripherals.hpp"
+#endif
 #ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
 extern "C" {
 #include "esp_gcov.h"
@@ -45,6 +48,10 @@ extern "C" void app_main(void) {
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
+#else
+  qemu_ethernet_setup();
+  web_server_setup(frame_queue, command_queue, telemetry_queue);
+  qemu_producers_setup(frame_queue, telemetry_queue);
 #endif
 
   UNITY_BEGIN();
