@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { updateStream, updateTelemetry } from "../../src/messages.js";
+import { updateCollisionMonitor, updateStream, updateTelemetry } from "../../src/messages.js";
 
 describe("updateStream", () => {
   test("sets image src to base64 JPEG data URI", () => {
@@ -54,5 +54,27 @@ describe("updateTelemetry", () => {
     expect(elements.magnetometer.innerText).toBe("100.50, 200.30, 50.20 G");
     expect(elements.gyroscope.innerText).toBe("0.50, 1.20, -0.30 degrees/s");
     expect(elements.distance_ahead.innerText).toBe("150 cm");
+  });
+});
+
+describe("updateCollisionMonitor", () => {
+  let elements;
+
+  beforeEach(() => {
+    document.body.innerHTML = '<p id="collision_monitor"></p>';
+    elements = { collision_monitor: document.getElementById("collision_monitor") };
+  });
+
+  test("shows a message while the collision monitor is stopping the car", () => {
+    updateCollisionMonitor(elements, true);
+
+    expect(elements.collision_monitor.innerText).toBe("Obstacle ahead - forward blocked");
+  });
+
+  test("clears the message once it stops", () => {
+    updateCollisionMonitor(elements, true);
+    updateCollisionMonitor(elements, false);
+
+    expect(elements.collision_monitor.innerText).toBe("");
   });
 });

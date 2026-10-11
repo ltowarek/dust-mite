@@ -22,7 +22,7 @@ test("connects to Python streamer", async ({ page }) => {
         ws.addEventListener("error", () => resolve(ws.readyState));
         setTimeout(() => resolve(ws.readyState), 5000);
       }),
-    wsUrl,
+    `${wsUrl}/telemetry`,
   );
 
   expect(readyState).toBe(1); // WebSocket.OPEN
@@ -65,6 +65,28 @@ test("exports frames_displayed metric", async ({ page, request }) => {
   const data = await response.json();
   expect(data.data.result.length).toBeGreaterThan(0);
   expect(Number(data.data.result[0].value[1])).toBeGreaterThan(0);
+});
+
+// Requires the car to be connected and sending telemetry, with its motors powered.
+test("driving from the keyboard reaches the car", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator("#rssi")).not.toHaveText("", { timeout: 10000 });
+
+  await page.locator("body").focus();
+  await page.keyboard.down("KeyW");
+
+  await expect(async () => {
+    const speed = Number.parseFloat(await page.locator("#speed").innerText());
+    expect(speed).toBeGreaterThan(0);
+  }).toPass({ timeout: 10000 });
+
+  await page.keyboard.up("KeyW");
+
+  await expect(async () => {
+    const speed = Number.parseFloat(await page.locator("#speed").innerText());
+    expect(speed).toBeLessThan(1.0);
+  }).toPass({ timeout: 5000 });
 });
 
 // Verifies that the browser's uncaught-error logging reaches Loki via the OTel Collector.

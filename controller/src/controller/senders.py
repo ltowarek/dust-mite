@@ -1,9 +1,11 @@
 """Command senders: destinations for driving commands from the gamepad CLI."""
 
 import json
+from collections.abc import Callable
 from types import TracebackType
 from typing import Protocol, Self
 
+import websockets.exceptions
 import websockets.sync.client
 from opentelemetry import trace
 
@@ -18,11 +20,16 @@ class _Connection(Protocol):
     """The subset of a `websockets` client connection the sender writes through.
 
     A structural type rather than `ClientConnection` itself, so tests can
-    exercise the send path with a plain fake instead of a live socket.
+    pass a test double through `WebSocketCommandSender`'s `connect` argument
+    instead of opening a live socket.
     """
 
     def send(self, message: str, /) -> None: ...
     def close(self) -> None: ...
+
+
+class DriveConnectionClosedError(Exception):
+    """The connection commands are sent over was closed, with the reason given."""
 
 
 class CommandSender(Protocol):
@@ -37,16 +44,22 @@ class WebSocketCommandSender:
     """Send commands to the car over a WebSocket connection.
 
     Use as a context manager: connects to `uri` on entry, closes on exit.
+    `connect` opens the connection; tests pass one that returns a test double.
     """
 
-    def __init__(self, uri: str) -> None:
+    def __init__(
+        self,
+        uri: str,
+        connect: Callable[[str], _Connection] = websockets.sync.client.connect,
+    ) -> None:
         """Initialize the object."""
         self._uri = uri
+        self._connect = connect
         self._ws_conn: _Connection | None = None
 
     def connect(self) -> None:
         """Connect to the car."""
-        self._ws_conn = websockets.sync.client.connect(self._uri)
+        self._ws_conn = self._connect(self._uri)
 
     def close(self) -> None:
         """Close the connection."""
@@ -81,7 +94,11 @@ class WebSocketCommandSender:
         payload = {"command": command.value, "value": value}
         payload = inject_trace_context(payload)
 
-        self._ws_conn.send(json.dumps(payload))
+        try:
+            self._ws_conn.send(json.dumps(payload))
+        except websockets.exceptions.ConnectionClosed as e:
+            reason = e.rcvd.reason if e.rcvd is not None else ""
+            raise DriveConnectionClosedError(reason or "connection lost") from e
         record_command_sent(command)
 
 

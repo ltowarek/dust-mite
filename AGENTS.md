@@ -64,6 +64,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes. When adding or removing a metric, update the metrics table in the relevant variant document under [docs/variants/](docs/variants/).
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Never skip or silence linters, formatters, or type checkers: fix the finding. The only exception, and how to mark it, is in [CONTRIBUTING.md#ground-rules](CONTRIBUTING.md#ground-rules).
 - Code comments should explain *why*, not restate *what* the code does. Do not annotate imports/includes with what they provide (e.g. no `#include "x.hpp"  // some_function`). State the fact or invariant itself, not how or when it was discovered — no "confirmed this session," "measured empirically," "has been observed to," or similar. Write what's true, not the investigation that found it.
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 - Before running a build/compile command (`idf.py build`/`reconfigure`, `docker compose build`, etc.), check `free -h` for available memory, not just that no other build is already running — background containers idling can hold enough RAM on their own to make the difference. Run one such command at a time; don't queue more until it finishes.

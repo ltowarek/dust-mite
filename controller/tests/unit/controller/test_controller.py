@@ -40,7 +40,8 @@ class TestControl:
 
         assert sender.sent == [(Command.ADVANCE, 50)]
 
-    def test_does_not_resend_unchanged_command(self) -> None:
+    def test_resends_an_unchanged_non_brake_command(self) -> None:
+        """Keeps the car's drive-command watchdog satisfied while a command is held."""
         input_backend = FakeInputBackend(
             [(Command.ADVANCE, 50), (Command.ADVANCE, 50), None]
         )
@@ -48,7 +49,17 @@ class TestControl:
 
         control(input_backend, sender)
 
-        assert sender.sent == [(Command.ADVANCE, 50)]
+        assert sender.sent == [(Command.ADVANCE, 50), (Command.ADVANCE, 50)]
+
+    def test_does_not_resend_repeated_brake(self) -> None:
+        input_backend = FakeInputBackend(
+            [(Command.ADVANCE, 50), (Command.BRAKE, None), (Command.BRAKE, None), None]
+        )
+        sender = InMemoryCommandSender()
+
+        control(input_backend, sender)
+
+        assert sender.sent == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
 
     def test_sends_again_when_value_changes(self) -> None:
         input_backend = FakeInputBackend(

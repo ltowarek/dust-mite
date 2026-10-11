@@ -1,34 +1,29 @@
-"""streamer module."""
+"""streamer module: serves the car's feeds and drive endpoint to local clients."""
 
 import base64
 import contextlib
-import datetime
+import functools
 import json
 import logging
 import os
-import queue
 import threading
-import time
 from types import TracebackType
 from typing import Any, Self
 
-import cv2
-import numpy as np
 import websockets.exceptions
-import websockets.sync.client
 import websockets.sync.server
 from opentelemetry import trace
+from websockets.frames import CloseCode
 
-from .command import Command
+from .car import CarFeed, camera_frame_jpeg, send_commands_to_car
+from .collision_monitor import CollisionMonitor
+from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .logging import configure_logging
-from .metrics import (
-    configure_metrics,
-    record_command_sent,
-    record_frame,
-    record_telemetry_received,
-)
+from .metrics import configure_metrics, record_telemetry_received
 from .profiling import configure_profiling
+from .subject import Subject
 from .tracing import configure_tracing, extract_trace_context, inject_trace_context
+from .vision import process_frame
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -36,109 +31,32 @@ logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
 
+# How long an idle client handler waits for a message before rechecking
+# whether its client has disconnected.
+_OUTBOX_POLL_S = 0.2
 
-class ClientConnection:
-    """Wrapper around Websocket client connection.
 
-    Mostly needed to handle/receive all messages from the client.
-    Even in case when receiver can't process all messages in time.
+class _Outbox:
+    """One client's view of some feeds, keeping the newest message of each type.
 
-    All messages that can't be processed will be discarded.
+    Use as a context manager: it subscribes to `feeds` on entry and
+    unsubscribes on exit. A client that falls behind skips stale camera
+    frames and telemetry instead of stalling the feed that every other client
+    shares.
     """
 
-    def __init__(self, uri: str, mode: str) -> None:
-        """Initialize the object."""
-        self._uri = uri
-        self._mode = mode
-        self._worker = threading.Thread(target=self._worker_main)
-        self._stop_event = threading.Event()
-        self._recv_queue: queue.Queue[str | bytes] = queue.Queue(1)
-        self._send_queue: queue.Queue[str | bytes] = queue.Queue(1)
-
-    def _worker_main(self) -> None:
-        while not self._stop_event.is_set():
-            try:
-                client = websockets.sync.client.connect(self._uri)
-            except (ConnectionRefusedError, OSError, TimeoutError) as e:
-                logger.warning("Failed to connect to the client: %s", e)
-                time.sleep(1)
-                continue
-
-            with client:
-                logger.info("Client connected: %s", self._uri)
-                keep_client_connection = True
-
-                while not self._stop_event.is_set() and keep_client_connection:
-                    # TODO: Rewrite with asyncio
-                    # So "w" and "r" can be supported at the same time
-                    if "w" in self._mode:
-                        try:
-                            self._send_frame(client)
-                        except websockets.exceptions.ConnectionClosed:
-                            logger.info("%s connection closed", self._uri)
-                            keep_client_connection = False
-
-                    if "r" in self._mode:
-                        try:
-                            self._recv_frame(client)
-                        except websockets.exceptions.ConnectionClosedOK:
-                            logger.info("%s connection closed", self._uri)
-                            keep_client_connection = False
-                        except websockets.exceptions.ConnectionClosedError as e:
-                            logger.info(
-                                "%s connection closed - error: %s", self._uri, e
-                            )
-                            keep_client_connection = False
-                        except TimeoutError:
-                            logger.warning("%s timed out", self._uri)
-                            continue
-
-        logger.debug("Client worker finished")
-
-    def _send_frame(self, client: websockets.sync.client.ClientConnection) -> None:
-        try:
-            send_frame = self._send_queue.get_nowait()
-        except queue.Empty:
-            return
-
-        try:
-            client.send(send_frame)
-        finally:
-            self._send_queue.task_done()
-
-    def _recv_frame(self, client: websockets.sync.client.ClientConnection) -> None:
-        recv_frame = client.recv(
-            timeout=datetime.timedelta(seconds=5).total_seconds(),
-        )
-        with contextlib.suppress(queue.Full):
-            self._recv_queue.put_nowait(recv_frame)
-
-    def connect(self) -> None:
-        """Connect to the client."""
-        logger.debug("Connecting to %s", self._uri)
-        self._worker.start()
-
-    def close(self) -> None:
-        """Connect the connection."""
-        logger.debug("Closing %s connection", self._uri)
-        self._stop_event.set()
-        self._worker.join()
-
-    def is_frame_available(self) -> bool:
-        """Return `True` if there is a frame ready to be received."""
-        return self._recv_queue.full()
-
-    def recv(self) -> str | bytes:
-        """Receive a frame."""
-        return self._recv_queue.get()
-
-    def send(self, frame: str | bytes) -> None:
-        """Send a frame."""
-        self._send_queue.put(frame)
+    def __init__(self, *feeds: CarFeed | Subject) -> None:
+        self._feeds = feeds
+        self._subscriptions = contextlib.ExitStack()
+        self._condition = threading.Condition()
+        self._pending: dict[str, dict[str, Any]] = {}
 
     def __enter__(self) -> Self:
-        """Open a connection in a context manager."""
-        self.connect()
+        # Unsubscribes from the feeds already entered if a later one fails.
+        with contextlib.ExitStack() as subscriptions:
+            for feed in self._feeds:
+                subscriptions.enter_context(feed.subscription(self._put))
+            self._subscriptions = subscriptions.pop_all()
         return self
 
     def __exit__(
@@ -147,106 +65,100 @@ class ClientConnection:
         exc_value: BaseException | None,
         exc_traceback: TracebackType | None,
     ) -> None:
-        """Close the connection in a context manager."""
-        self.close()
+        self._subscriptions.close()
+
+    def take(self, timeout: float) -> list[dict[str, Any]]:
+        with self._condition:
+            self._condition.wait_for(lambda: self._pending, timeout)
+            messages = list(self._pending.values())
+            self._pending.clear()
+            return messages
+
+    def _put(self, message: dict[str, Any]) -> None:
+        with self._condition:
+            self._pending[message["type"]] = message
+            self._condition.notify()
+
+
+CAMERA_PATH = "/camera"
+TELEMETRY_PATH = "/telemetry"
+DRIVE_PATH = "/drive"
 
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
-def server_handler(websocket: websockets.sync.server.ServerConnection) -> None:
-    """WebSocket handler for incoming requests."""
+def server_handler(
+    camera: CarFeed,
+    telemetry: CarFeed,
+    arbiter: CommandArbiter,
+    websocket: websockets.sync.server.ServerConnection,
+) -> None:
+    """WebSocket handler for incoming requests, routed by path."""
     span = trace.get_current_span()
     span.set_attribute("network.protocol.name", "websocket")
 
-    remote_address = websocket.remote_address[0]
-    logger.info("Server connection from: %s", remote_address)
+    path = websocket.request.path if websocket.request is not None else ""
+    span.set_attribute("url.path", path)
+    logger.info("Server connection from: %s to %s", websocket.remote_address[0], path)
 
-    telemetry_client_uri = os.environ["TELEMETRY_CLIENT_URI"]
-    controller_client_uri = os.environ["CONTROLLER_CLIENT_URI"]
-    stream_client_uri = os.environ["STREAM_CLIENT_URI"]
-    span.set_attribute("telemetry_client_uri", telemetry_client_uri)
-    span.set_attribute("controller_client_uri", controller_client_uri)
-    span.set_attribute("stream_client_uri", stream_client_uri)
-
-    with (
-        ClientConnection(stream_client_uri, "r") as stream_client,
-        ClientConnection(telemetry_client_uri, "r") as telemetry_client,
-        ClientConnection(controller_client_uri, "w") as controller_client,
-    ):
-        last_camera_frame: bytes = b""
-        last_telemetry: dict[str, Any] = {}
-        last_command: dict[str, Any] | None = None
-        try:
-            while True:
-                frame = handle_camera_frame(stream_client, websocket)
-                if frame is not None:
-                    last_camera_frame = frame
-
-                telemetry = handle_telemetry(telemetry_client, websocket)
-                if telemetry is not None:
-                    last_telemetry = telemetry
-
-                if last_camera_frame and last_telemetry:
-                    last_command = handle_drive_command(
-                        controller_client,
-                        last_camera_frame,
-                        last_telemetry,
-                        last_command,
-                    )
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("Server connection closed")
-
-    logger.debug("Server handler finished")
+    try:
+        if path == CAMERA_PATH:
+            _serve_camera(websocket, camera)
+        elif path == TELEMETRY_PATH:
+            _serve_telemetry(websocket, telemetry, arbiter.collision_state)
+        elif path == DRIVE_PATH:
+            _serve_driver(arbiter, websocket)
+        else:
+            websocket.close(CloseCode.POLICY_VIOLATION, f"unknown path: {path}")
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    logger.info("Server connection closed")
 
 
-def handle_camera_frame(
-    stream_client: ClientConnection,
+def _serve_driver(
+    arbiter: CommandArbiter, websocket: websockets.sync.server.ServerConnection
+) -> None:
+    try:
+        with arbiter.claim() as submit:
+            for message in websocket:
+                submit(json.loads(message))
+    except DriverAlreadyConnectedError as e:
+        websocket.close(CloseCode.TRY_AGAIN_LATER, str(e))
+
+
+def _serve_camera(
+    websocket: websockets.sync.server.ServerConnection, camera: CarFeed
+) -> None:
+    with _Outbox(camera) as outbox:
+        _send_until_closed(websocket, outbox)
+
+
+def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
-) -> bytes | None:
-    """Receive, process, and forward one camera frame if available.
+    telemetry: CarFeed,
+    collision_state: Subject,
+) -> None:
+    with _Outbox(telemetry, collision_state) as outbox:
+        _send_until_closed(websocket, outbox)
 
-    Returns the processed frame, or None if no frame was available.
-    Raises ConnectionClosed on disconnect.
-    """
-    if not stream_client.is_frame_available():
-        return None
-    packet: dict[str, Any] = json.loads(stream_client.recv())
+
+def _send_until_closed(
+    websocket: websockets.sync.server.ServerConnection, outbox: _Outbox
+) -> None:
+    while websocket.close_code is None:
+        for message in outbox.take(timeout=_OUTBOX_POLL_S):
+            websocket.send(json.dumps(message))
+
+
+def camera_message(raw: str | bytes) -> dict[str, Any]:
+    """Process one camera frame from the car into a client message."""
+    packet: dict[str, Any] = json.loads(raw)
     car_context = extract_trace_context(packet)
     with tracer.start_as_current_span(
-        "streamer.handle_camera_frame",
-        context=car_context,
-        record_exception=False,
-        set_status_on_exception=False,
+        "streamer.handle_camera_frame", context=car_context
     ) as span:
         span.set_attribute("network.protocol.name", "websocket")
-        frame: bytes = base64.b64decode(packet["data"])
-        frame = process_frame(frame)
-        p = prepare_camera_frame_packet(frame)
-        try:
-            websocket.send(json.dumps(p))
-        except websockets.exceptions.ConnectionClosed:
-            raise
-        except Exception as e:
-            span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-            raise
-    return frame
-
-
-@tracer.start_as_current_span("streamer.process_frame")
-def process_frame(frame: bytes) -> bytes:
-    """Process camera frame."""
-    span = trace.get_current_span()
-    span.set_attribute("input_size_bytes", len(frame))
-
-    arr = np.frombuffer(frame, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    result = cv2.imencode(".jpg", img)[1].tobytes()
-
-    span.set_attribute("output_size_bytes", len(result))
-    record_frame()
-    return result
+        frame = process_frame(camera_frame_jpeg(packet))
+        return prepare_camera_frame_packet(frame)
 
 
 def prepare_camera_frame_packet(frame: bytes) -> dict[str, Any]:
@@ -255,37 +167,16 @@ def prepare_camera_frame_packet(frame: bytes) -> dict[str, Any]:
     return inject_trace_context(packet)
 
 
-def handle_telemetry(
-    telemetry_client: ClientConnection,
-    websocket: websockets.sync.server.ServerConnection,
-) -> dict[str, Any] | None:
-    """Receive and forward one telemetry message if available.
-
-    Returns the telemetry dict, or None if no message was available.
-    Raises ConnectionClosed on disconnect.
-    """
-    if not telemetry_client.is_frame_available():
-        return None
-    telemetry: dict[str, Any] = json.loads(telemetry_client.recv())
+def telemetry_message(raw: str | bytes) -> dict[str, Any]:
+    """Turn one telemetry packet from the car into a client message."""
+    telemetry: dict[str, Any] = json.loads(raw)
     record_telemetry_received()
     car_context = extract_trace_context(telemetry)
     with tracer.start_as_current_span(
-        "streamer.handle_telemetry",
-        context=car_context,
-        record_exception=False,
-        set_status_on_exception=False,
+        "streamer.handle_telemetry", context=car_context
     ) as span:
         span.set_attribute("network.protocol.name", "websocket")
-        p = prepare_telemetry_packet(telemetry)
-        try:
-            websocket.send(json.dumps(p))
-        except websockets.exceptions.ConnectionClosed:
-            raise
-        except Exception as e:
-            span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-            raise
-    return telemetry
+        return prepare_telemetry_packet(telemetry)
 
 
 def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
@@ -294,55 +185,22 @@ def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
     return inject_trace_context(packet)
 
 
-def handle_drive_command(
-    controller_client: ClientConnection,
-    frame: bytes,
-    telemetry: dict[str, Any],
-    last_command: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Compute a drive command and send it to the controller if the command changed."""
-    # TODO: Make it opt-in, so user can drive as he wants
-    command_packet = drive_car(frame, telemetry)
-    if command_packet == last_command:
-        return last_command
-    if command_packet is not None:
-        with tracer.start_as_current_span("streamer.handle_drive_command") as span:
-            span.set_attribute("network.protocol.name", "websocket")
-            span.set_attribute("distance_ahead", telemetry["distance_ahead"])
-            p = prepare_command_packet(command_packet)
-            controller_client.send(json.dumps(p))
-            record_command_sent(Command(command_packet["command"]))
-    return command_packet
-
-
-def drive_car(_frame: bytes, telemetry: dict[str, Any]) -> dict[str, Any] | None:
-    """Update car's state based on camera frame and telemetry."""
-    # TODO: Get also current state of the car i.e. commands and their values
-    # If new state is the same as the old state then
-    # there is no need to update the state and send anything
-    # Maybe CONTROLLER_CLIENT_URI should send new state after receiving commands
-
-    min_distance = 5
-    if telemetry["distance_ahead"] >= 0 and telemetry["distance_ahead"] < min_distance:
-        # TODO: Integrate with controller.py
-        return {"command": 3, "value": None}
-
-    return None
-
-
-def prepare_command_packet(command: dict[str, Any]) -> dict[str, Any]:
-    """Build a drive command packet with trace context."""
-    return inject_trace_context(command)
-
-
 def main() -> None:
     """Run the main entry point."""
     configure_tracing("dust-mite-streamer")
     configure_logging("dust-mite-streamer")
     configure_metrics("dust-mite-streamer")
     configure_profiling("dust-mite-streamer")
+    commands = Subject()
+    camera = CarFeed(os.environ["STREAM_CLIENT_URI"], camera_message)
+    telemetry = CarFeed(os.environ["TELEMETRY_CLIENT_URI"], telemetry_message)
+    arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
+    handler = functools.partial(server_handler, camera, telemetry, arbiter)
     try:
-        with websockets.sync.server.serve(server_handler, "0.0.0.0", 8765) as server:  # noqa: S104 - intentional, streamer must accept connections from all interfaces
+        with (
+            send_commands_to_car(os.environ["CONTROLLER_CLIENT_URI"], commands),
+            websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
+        ):
             logger.info("Starting server")
             server.serve_forever()
     except KeyboardInterrupt:

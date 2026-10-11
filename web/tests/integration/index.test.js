@@ -14,6 +14,7 @@ describe("handleMessage", () => {
       <dd id="magnetometer"></dd>
       <dd id="gyroscope"></dd>
       <dd id="distance_ahead"></dd>
+      <p id="collision_monitor"></p>
     `;
     elements = {
       image: document.getElementById("image"),
@@ -24,6 +25,7 @@ describe("handleMessage", () => {
       magnetometer: document.getElementById("magnetometer"),
       gyroscope: document.getElementById("gyroscope"),
       distance_ahead: document.getElementById("distance_ahead"),
+      collision_monitor: document.getElementById("collision_monitor"),
     };
   });
 
@@ -59,5 +61,11 @@ describe("handleMessage", () => {
 
     expect(elements.image.src).toBe("");
     expect(elements.speed.textContent).toBe("");
+  });
+
+  test("routes collision_monitor message to the collision monitor element", () => {
+    handleMessage({ type: "collision_monitor", stopping: true }, elements);
+
+    expect(elements.collision_monitor.innerText).toBe("Obstacle ahead - forward blocked");
   });
 });
