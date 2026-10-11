@@ -289,7 +289,7 @@ auto scope = opentelemetry::trace::Scope(span);
 span->End();
 ```
 
-**Python streamer** — use the module-level `tracer` and helpers from `controller/src/controller/streamer.py` and `controller/src/controller/tracing.py`:
+**Python streamer** — give each module its own `tracer = trace.get_tracer(__name__)`, as `streamer.py`, `car.py`, `command_arbiter.py` and `vision.py` do, and use the helpers from `controller/src/controller/tracing.py`:
 
 ```python
 # Decorator — span wraps the entire function

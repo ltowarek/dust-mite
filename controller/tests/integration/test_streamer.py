@@ -20,19 +20,13 @@ from opentelemetry.sdk.metrics._internal.point import NumberDataPoint
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from websockets.frames import Close, CloseCode
 
+from controller.car import CarFeed, send_commands_to_car
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
+from controller.command_arbiter import DRIVER_ALREADY_CONNECTED, CommandArbiter
 from controller.metrics import configure_metrics
 from controller.senders import DriveConnectionClosedError, WebSocketCommandSender
-from controller.streamer import (
-    DRIVER_ALREADY_CONNECTED,
-    CarFeed,
-    CommandArbiter,
-    camera_message,
-    send_commands_to_car,
-    server_handler,
-    telemetry_message,
-)
+from controller.streamer import camera_message, server_handler, telemetry_message
 from controller.subject import Subject
 
 _WAIT_TIMEOUT_S = 10
