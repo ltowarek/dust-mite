@@ -781,7 +781,7 @@ component manager fetches it automatically:
 
 ```yaml
 dependencies:
-  idf: ">=6.0.0"
+  idf: ">=6.0.3"
   espressif/esp_gcov: "^1"
 ```
 

@@ -16,12 +16,21 @@ from typing import Any
 import cv2
 import numpy as np
 import websockets.exceptions
+import websockets.http11
 import websockets.sync.server
 
 WAIT_TIMEOUT_S = 10
 FEED_INTERVAL_S = 0.05
 CLEAR_DISTANCE_CM = 100
 OBSTACLE_DISTANCE_CM = 3
+
+ProcessRequest = (
+    Callable[
+        [websockets.sync.server.ServerConnection, websockets.http11.Request],
+        websockets.http11.Response | None,
+    ]
+    | None
+)
 
 
 @dataclasses.dataclass
@@ -42,8 +51,11 @@ class CarEndpointSpy:
 @contextlib.contextmanager
 def serve(
     handler: Callable[[websockets.sync.server.ServerConnection], None],
+    process_request: ProcessRequest = None,
 ) -> Iterator[websockets.sync.server.Server]:
-    with websockets.sync.server.serve(handler, "localhost", 0) as server:
+    with websockets.sync.server.serve(
+        handler, "localhost", 0, process_request=process_request
+    ) as server:
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
         try:
@@ -58,6 +70,7 @@ def car_endpoint_spy(
     serve_client: Callable[
         [websockets.sync.server.ServerConnection, CarEndpointSpy], None
     ],
+    process_request: ProcessRequest = None,
 ) -> Iterator[CarEndpointSpy]:
     lock = threading.Lock()
     endpoint: CarEndpointSpy
@@ -76,13 +89,14 @@ def car_endpoint_spy(
             with lock:
                 endpoint.open_connections -= 1
 
-    with serve(handler) as server:
+    with serve(handler, process_request) as server:
         endpoint = CarEndpointSpy(server)
         yield endpoint
 
 
 def car_feed_stub(
     message: Callable[[], dict[str, Any]],
+    process_request: ProcessRequest = None,
 ) -> contextlib.AbstractContextManager[CarEndpointSpy]:
     def push_messages(
         websocket: websockets.sync.server.ServerConnection, _: CarEndpointSpy
@@ -91,7 +105,7 @@ def car_feed_stub(
             websocket.send(json.dumps(message()))
             time.sleep(FEED_INTERVAL_S)
 
-    return car_endpoint_spy(push_messages)
+    return car_endpoint_spy(push_messages, process_request)
 
 
 def car_control_spy() -> contextlib.AbstractContextManager[CarEndpointSpy]:

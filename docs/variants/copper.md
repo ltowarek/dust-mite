@@ -62,6 +62,8 @@
 ## SW notes
 
 - In `Copper`, the ESP32 handles motor actuation and exposes three WebSocket endpoints: `/` (control), `/stream` (camera), and `/telemetry` (telemetry).
+- `/stream` and `/telemetry` each serve one client at a time. While one is connected, the ESP32 refuses another connection to the same endpoint with HTTP 503 before the WebSocket upgrade; the client retries until the first connection has closed.
+- The ESP32 keeps Wi-Fi power saving off (`WIFI_PS_NONE`). With ESP-IDF's default modem sleep, the radio dozes between access point beacons and the car can take several hundred milliseconds to answer, which delays drive commands.
 - Steering is skid-steering, with left/right drive commands generated from host-side input.
 - On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to the streamer's `/drive` endpoint (`STREAMER_DRIVE_URI`), like the web page, so the same collision monitor applies. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected. If another driver already holds `/drive`, the CLI exits with the streamer's reason.
 - On the Linux host, `streamer.py` reads camera frames from `STREAM_CLIENT_URI`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and serves them from a local WebSocket server with one endpoint per channel: `ws://localhost:8765/camera` (processed camera frames), `ws://localhost:8765/telemetry` (telemetry), and `ws://localhost:8765/drive` (drive commands in).
