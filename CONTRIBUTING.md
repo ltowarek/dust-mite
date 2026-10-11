@@ -761,6 +761,12 @@ job builds and runs each opted-in test app with `sdkconfig.defaults.ubsan` layer
 default test apps keep building without the sanitizer. The `ubsan` CI job is blocking (part of
 `ci-status-cpp-car`).
 
+ESP-IDF's `malloc` aligns allocations to only 4 bytes
+([espressif/esp-idf#18685](https://github.com/espressif/esp-idf/issues/18685)), so a `cJSON` node,
+which holds a `double` and needs 8-byte alignment, is often misaligned. Pass `cJSON` objects by
+pointer, as cJSON's own API does, never by reference: binding a reference to a misaligned object is
+undefined behaviour, and UBSan aborts on it.
+
 #### GCC Coverage (gcov)
 
 A QEMU test app can opt in to building its component under test with GCC coverage instrumentation.
