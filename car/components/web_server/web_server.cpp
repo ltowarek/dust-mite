@@ -187,6 +187,12 @@ static esp_err_t ws_queue_send(const ws_endpoint_t& endpoint, const ws_connectio
   return ret;
 }
 
+// no_sanitize("alignment"): cJSON allocates its nodes with ESP-IDF's malloc, which aligns to 4
+// bytes, but cJSON holds a double and so has 8-byte alignment.
+__attribute__((no_sanitize("alignment"))) static void ws_inject_trace_context(cJSON* packet_json) {
+  tracing_inject(*packet_json);
+}
+
 static void ws_wait_until_sent(const ws_endpoint_t& endpoint, uint32_t seq) {
   uint32_t sent = 0;
   while (xQueueReceive(endpoint.sent_queue, &sent, pdMS_TO_TICKS(WS_SEND_DONE_TIMEOUT_MS)) ==
@@ -371,7 +377,7 @@ void ws_stream_task(void* p) {
     cJSON* packet_json = cJSON_CreateObject();
     cJSON_AddStringToObject(packet_json, "data", b64_buf);
     heap_caps_free(b64_buf);
-    tracing_inject(*packet_json);
+    ws_inject_trace_context(packet_json);
 
     char* packet_json_str = cJSON_PrintUnformatted(packet_json);
     cJSON_Delete(packet_json);
@@ -473,7 +479,7 @@ void ws_telemetry_task(void* p) {
                                                             {"ws.message.type", "telemetry"}},
                                                            send_opts);
     auto send_scope = opentelemetry::trace::Scope(send_span);
-    tracing_inject(*packet_json);
+    ws_inject_trace_context(packet_json);
 
     char* packet_json_str = cJSON_PrintUnformatted(packet_json);
     cJSON_Delete(packet_json);
