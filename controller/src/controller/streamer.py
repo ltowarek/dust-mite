@@ -39,6 +39,10 @@ logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
 
+# How long a write-only connection waits for something to send before
+# rechecking whether it should stop.
+_SEND_WAIT_S = 0.2
+
 
 class ClientConnection:
     """Wrapper around Websocket client connection.
@@ -75,8 +79,11 @@ class ClientConnection:
                     # TODO: Rewrite with asyncio
                     # So "w" and "r" can be supported at the same time
                     if "w" in self._mode:
+                        # A read-write connection must not wait here, or it
+                        # would delay reading; a write-only one would spin.
+                        send_wait_s = 0 if "r" in self._mode else _SEND_WAIT_S
                         try:
-                            self._send_frame(client)
+                            self._send_frame(client, send_wait_s)
                         except websockets.exceptions.ConnectionClosed:
                             logger.info("%s connection closed", self._uri)
                             keep_client_connection = False
@@ -98,9 +105,11 @@ class ClientConnection:
 
         logger.debug("Client worker finished")
 
-    def _send_frame(self, client: websockets.sync.client.ClientConnection) -> None:
+    def _send_frame(
+        self, client: websockets.sync.client.ClientConnection, wait_s: float
+    ) -> None:
         try:
-            send_frame = self._send_queue.get_nowait()
+            send_frame = self._send_queue.get(timeout=wait_s)
         except queue.Empty:
             return
 
