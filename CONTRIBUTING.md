@@ -785,8 +785,9 @@ dependencies:
   espressif/esp_gcov: "^1"
 ```
 
-The test app's `main.cpp` calls `esp_gcov_dump()` after `UNITY_END()`. This streams `.gcda` data to
-the host via the AppTrace JTAG protocol, which the patched esp-qemu emulates:
+The test app's `main.cpp` calls `esp_gcov_dump()` from Unity's `tearDown()`, after every test case.
+This streams `.gcda` data to the host via the AppTrace JTAG protocol, which the patched esp-qemu
+emulates:
 
 ```cpp
 #ifdef CONFIG_<COMPONENT>_TEST_COVERAGE
@@ -795,10 +796,11 @@ extern "C" {
 }
 #endif
 ...
+void tearDown(void) {
 #ifdef CONFIG_<COMPONENT>_TEST_COVERAGE
   esp_gcov_dump();
-  printf("GCOV_DUMP_DONE\n");
 #endif
+}
 ```
 
 The `sdkconfig.defaults.coverage` overlay enables AppTrace transport and the `esp_gcov` driver in
@@ -816,9 +818,15 @@ AppTrace JTAG host: it sets `HOST_CONNECT` so the firmware unblocks, processes e
 command block (open/write/close), and writes `.gcda` files directly to the build host filesystem.
 No OpenOCD connection or separate decode step is needed.
 
-`run_coverage.sh` sets `COVERAGE_BUILD=1` when invoking pytest. The existing QEMU pytest files
-check this variable and wait for the `GCOV_DUMP_DONE` sentinel printed by `app_main` after
-`esp_gcov_dump()` returns, ensuring QEMU is not torn down before AppTrace file I/O completes.
+Dumping from `tearDown()` works whether the test cases run in a single boot, as in the telemetry
+test app, or each in its own boot, as in the web server test app (see
+[WebSocket tests](#websocket-tests)):
+
+- Unity prints a case's result, and the final summary, only after `tearDown()` returns. pytest waits
+  for that output, so QEMU is never torn down before AppTrace file I/O completes.
+- `esp_gcov` resets the counters after each dump, and each dump is merged into the `.gcda` files
+  already in the build directory, so counts add up across dumps and boots without being counted
+  twice.
 
 `run_coverage.sh` requires the patched QEMU binary via the `QEMU_PROG_PATH` environment variable.
 The devcontainer image builds the patched esp-qemu (`ltowarek/espressif-qemu@apptrace`) and sets
@@ -827,14 +835,14 @@ The devcontainer image builds the patched esp-qemu (`ltowarek/espressif-qemu@app
 Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
 size manageable. A dedicated `coverage` CI job builds each opted-in test app with
 `sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the standard QEMU
-pytest with `COVERAGE_BUILD=1` and `-apptrace file_io`, and uploads coverage data to Codecov. The
+pytest with `-apptrace file_io`, and uploads coverage data to Codecov. The
 `coverage` CI job is blocking (part of `ci-status-cpp-car`).
 
 To run locally (from the `car/` directory in the C++ devcontainer):
 
 ```bash
 ./scripts/run_coverage.sh components/telemetry/test_apps pytest_telemetry_qemu.py
-./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server_qemu.py
+./scripts/run_coverage.sh components/web_server/test_apps pytest_web_server.py
 ```
 
 ### Car test types
@@ -915,6 +923,37 @@ idf_component_register(SRCS ${srcs} ...)
 This keeps each test file clean (no environment-awareness) and makes the QEMU vs hardware split explicit in one place.
 
 `app_main` may still need a single `#ifndef CONFIG_FOO_TEST_QEMU_MODE` guard to skip hardware peripheral initialisation that would abort on QEMU.
+
+#### WebSocket tests
+
+The web server test app splits its WebSocket tests by what they need:
+
+- Unity cases in `main/test_web_server.cpp` connect to the real server from the same chip, over the
+  loopback interface, with `espressif/esp_websocket_client`. They run in QEMU and on the car. Client
+  and server sockets share the chip, so the test app raises `CONFIG_LWIP_MAX_SOCKETS`.
+- `pytest_web_server.py` covers what the chip cannot test itself: a smoke test that the endpoints
+  accept the Python `websockets` client the controller uses, and tests that need a client on another
+  machine that reads slowly or stops reading.
+
+`app_main` starts the Unity menu, and `pytest_web_server.py` runs each case after a reset
+(`dut.run_all_single_board_cases(reset=True)`), so no case inherits a connection that an earlier
+case is still closing.
+
+In QEMU mode the app:
+
+- brings the network up on QEMU's emulated OpenCores Ethernet MAC (`CONFIG_ETH_USE_OPENETH`) instead
+  of Wi-Fi;
+- starts the real web server;
+- feeds it synthetic camera frames and telemetry packets from `main/qemu_peripherals.cpp`.
+
+The test app's `conftest.py` starts QEMU with 4 MB of PSRAM and user-mode networking, and forwards a
+free local port to the server's port 80. The pytest tests take the server's address from the
+`car_address` fixture, which returns that port under QEMU and the car's IP address and port 80 on
+hardware.
+
+QEMU's user-mode network buffers whatever the client does not read, so it never throttles the
+car's sends. Tests that depend on a slow or stalled client are marked `@pytest.mark.dut` and
+skipped under QEMU.
 
 Build, flash, and run all component test apps in sequence:
 

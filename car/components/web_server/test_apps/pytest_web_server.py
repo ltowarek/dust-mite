@@ -1,24 +1,21 @@
 import asyncio
-import base64
 import json
-import os
 import socket
-import struct
 import threading
 import time
 
 import pytest
 import websockets
-from helpers import get_dut_ip
 from pytest_embedded import Dut
-from websockets.exceptions import InvalidStatus
 from websockets.sync.client import connect
 
-CLOSE_BUDGET_S = 2.0
 CLOSE_TIMEOUT_S = 10.0
-FIRST_FRAME_BUDGET_S = 2.0
 
 BRAKE = 3
+
+_SLOW_CLIENT_REASON = (
+    "QEMU's user-mode network buffers what the client does not read, so the car's sends are never throttled"
+)
 
 
 def _close_in_background(ws) -> tuple[threading.Event, float]:
@@ -37,17 +34,13 @@ def _close_in_background(ws) -> tuple[threading.Event, float]:
     return done, started
 
 
-def _is_busy(error: InvalidStatus) -> bool:
-    return error.response.status_code == 503
-
-
-def _connect_through_small_window(ip: str, path: str, rcvbuf_bytes: int):
+def _connect_through_small_window(host: str, port: int, path: str, rcvbuf_bytes: int):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, rcvbuf_bytes)
     sock.settimeout(8)
-    sock.connect((ip, 80))
+    sock.connect((host, port))
     return connect(
-        f'ws://{ip}{path}', sock=sock, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S, max_queue=1
+        f'ws://{host}:{port}{path}', sock=sock, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S, max_queue=1
     )
 
 
@@ -55,135 +48,34 @@ def _expect_brake(dut: Dut, value: int, timeout: float) -> None:
     dut.expect(rf'JSON=\{{"command": {BRAKE}, "value": {value}\}}', timeout=timeout)
 
 
-def _connect_when_free(url: str):
-    """Each endpoint serves one connection and refuses others with 503, so a reconnect retries
-    until the car has processed the previous connection's close."""
-    busy_retry_interval_s = 0.1
-    deadline = time.monotonic() + CLOSE_TIMEOUT_S
-    while True:
-        try:
-            return connect(url, open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-        except InvalidStatus as e:
-            if not _is_busy(e) or time.monotonic() > deadline:
-                raise
-            time.sleep(busy_retry_interval_s)
+def test_unity_cases_pass(dut: Dut) -> None:
+    dut.run_all_single_board_cases(reset=True, timeout=60)
 
 
-def test_web_server_endpoints_reachable(dut: Dut) -> None:
-    ip = get_dut_ip(dut)
+def test_web_server_endpoints_reachable(dut: Dut, car_address: tuple[str, int]) -> None:
+    host, port = car_address
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/') as ws:
+        async with websockets.connect(f'ws://{host}:{port}/') as ws:
             pass
-        async with websockets.connect(f'ws://{ip}/telemetry') as ws:
+        async with websockets.connect(f'ws://{host}:{port}/telemetry') as ws:
             pass
-        async with websockets.connect(f'ws://{ip}/stream') as ws:
+        async with websockets.connect(f'ws://{host}:{port}/stream') as ws:
             pass
 
     asyncio.run(run())
 
 
-def test_stream_close_handshake_completes_promptly(dut: Dut) -> None:
-    ip = get_dut_ip(dut)
-
-    ws = connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-    for _ in range(5):
-        ws.recv(timeout=8)
-
-    done, started = _close_in_background(ws)
-    replied = done.wait(CLOSE_BUDGET_S)
-    elapsed = time.monotonic() - started
-
-    assert replied, (
-        f'server did not reply to CLOSE within {CLOSE_BUDGET_S}s (waited {elapsed:.1f}s); '
-        'the streaming task is not servicing inbound frames'
-    )
-
-
-def test_stream_reconnect_receives_data_while_previous_closes(dut: Dut) -> None:
-    ip = get_dut_ip(dut)
-
-    first = connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-    for _ in range(5):
-        first.recv(timeout=8)
-    _close_in_background(first)
-
-    second = _connect_when_free(f'ws://{ip}/stream')
-    try:
-        frame = second.recv(timeout=FIRST_FRAME_BUDGET_S)
-    finally:
-        _close_in_background(second)
-
-    assert frame, 'reconnected /stream produced no frame'
-
-
-def test_stream_survives_connect_close_churn(dut: Dut) -> None:
-    ip = get_dut_ip(dut)
-
-    churned = []
-    for _ in range(6):
-        try:
-            ws = connect(f'ws://{ip}/stream', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-        except InvalidStatus as e:
-            assert _is_busy(e), f'churned /stream refused with {e.response.status_code}'
-            continue
-        churned.append((ws, _close_in_background(ws)[0]))
-
-    with _connect_when_free(f'ws://{ip}/stream') as ws:
-        assert ws.recv(timeout=FIRST_FRAME_BUDGET_S), 'no frame after connect/close churn'
-
-    for ws, done in churned:
-        assert done.wait(CLOSE_TIMEOUT_S + CLOSE_BUDGET_S), 'churned /stream close did not finish'
-    unanswered = sum(ws.protocol.close_rcvd is None for ws, _ in churned)
-    assert unanswered == 0, (
-        f'{unanswered} of {len(churned)} churned /stream connections were dropped without a CLOSE reply'
-    )
-
-
-def test_stream_recovers_after_lru_purge(dut: Dut) -> None:
-    ip = get_dut_ip(dut)
-
-    held = [
-        connect(f'ws://{ip}{path}', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-        for path in ('/', '/telemetry', '/stream')
-    ]
-    fourth = connect(f'ws://{ip}/', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-    for ws in [*held, fourth]:
-        _close_in_background(ws)
-
-    with _connect_when_free(f'ws://{ip}/stream') as ws:
-        assert ws.recv(timeout=FIRST_FRAME_BUDGET_S), 'no frame after an LRU purge'
-
-
-def test_stream_answers_ping_mid_stream(dut: Dut) -> None:
-    ip = get_dut_ip(dut)
-
-    async def run() -> int:
-        frames = 0
-        async with websockets.connect(
-            f'ws://{ip}/stream', open_timeout=8, ping_interval=2, ping_timeout=6
-        ) as ws:
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                msg = await asyncio.wait_for(ws.recv(), timeout=8)
-                frames += 1
-                assert msg.startswith('{') and msg.rstrip().endswith('}'), (
-                    f'malformed frame {frames}: {msg[:40]!r}...{msg[-20:]!r}'
-                )
-        return frames
-
-    assert asyncio.run(run()) > 0, 'no frames received'
-
-
-def test_command_not_delayed_by_slow_stream_reader(dut: Dut) -> None:
+@pytest.mark.dut(reason=_SLOW_CLIENT_REASON)
+def test_command_not_delayed_by_slow_stream_reader(dut: Dut, car_address: tuple[str, int]) -> None:
     command_count = 150
     command_interval_s = 0.1
     command_delay_budget_s = 1.0
     slow_read_interval_s = 0.3
     slow_read_rcvbuf_bytes = 8192
-    ip = get_dut_ip(dut)
+    host, port = car_address
 
-    stream = _connect_through_small_window(ip, '/stream', slow_read_rcvbuf_bytes)
+    stream = _connect_through_small_window(host, port, '/stream', slow_read_rcvbuf_bytes)
     stop = threading.Event()
 
     def _read_slowly() -> None:
@@ -194,7 +86,7 @@ def test_command_not_delayed_by_slow_stream_reader(dut: Dut) -> None:
     reader = threading.Thread(target=_read_slowly, daemon=True)
     reader.start()
 
-    control = connect(f'ws://{ip}/', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
+    control = connect(f'ws://{host}:{port}/', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
     sent_at: dict[int, float] = {}
 
     def _send_commands() -> None:
@@ -224,42 +116,23 @@ def test_command_not_delayed_by_slow_stream_reader(dut: Dut) -> None:
     )
 
 
-@pytest.mark.parametrize('path', ['/stream', '/telemetry'])
-def test_second_connection_refused_before_upgrade(dut: Dut, path: str) -> None:
-    ip = get_dut_ip(dut)
-
-    served = connect(f'ws://{ip}{path}', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-    try:
-        for _ in range(2):
-            with pytest.raises(InvalidStatus) as refused:
-                connect(f'ws://{ip}{path}', open_timeout=8, close_timeout=CLOSE_TIMEOUT_S)
-            assert _is_busy(refused.value), (
-                f'second {path} got {refused.value.response.status_code}, not 503'
-            )
-    finally:
-        done, _ = _close_in_background(served)
-    assert done.wait(CLOSE_TIMEOUT_S + CLOSE_BUDGET_S), f'served {path} close did not finish'
-
-    with _connect_when_free(f'ws://{ip}{path}'):
-        pass
-
-
-def test_command_still_read_after_close_while_telemetry_send_stalls(dut: Dut) -> None:
+@pytest.mark.dut(reason=_SLOW_CLIENT_REASON)
+def test_command_still_read_after_close_while_telemetry_send_stalls(dut: Dut, car_address: tuple[str, int]) -> None:
     stalled_rcvbuf_bytes = 1024
     stall_settle_s = 60.0
     stalled_open_timeout_s = 30.0
     stalled_command_budget_s = 30.0
     stalled_command_value = 7
-    ip = get_dut_ip(dut)
+    host, port = car_address
 
-    stalled = _connect_through_small_window(ip, '/telemetry', stalled_rcvbuf_bytes)
+    stalled = _connect_through_small_window(host, port, '/telemetry', stalled_rcvbuf_bytes)
     time.sleep(stall_settle_s)
 
     try:
-        with connect(f'ws://{ip}/', open_timeout=stalled_open_timeout_s, close_timeout=CLOSE_TIMEOUT_S):
+        with connect(f'ws://{host}:{port}/', open_timeout=stalled_open_timeout_s, close_timeout=CLOSE_TIMEOUT_S):
             pass
         with connect(
-            f'ws://{ip}/', open_timeout=stalled_open_timeout_s, close_timeout=CLOSE_TIMEOUT_S
+            f'ws://{host}:{port}/', open_timeout=stalled_open_timeout_s, close_timeout=CLOSE_TIMEOUT_S
         ) as control:
             control.send(json.dumps({'command': BRAKE, 'value': stalled_command_value}))
             _expect_brake(dut, stalled_command_value, timeout=stalled_command_budget_s)

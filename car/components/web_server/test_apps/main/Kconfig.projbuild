@@ -1,12 +1,13 @@
 menu "Web server test configuration"
 
 config WEB_SERVER_TEST_QEMU_MODE
-    bool "Skip hardware and network init (QEMU mode)"
+    bool "Run the web server on QEMU's emulated Ethernet (QEMU mode)"
     default n
     help
-        When enabled, skips WiFi, motor, tracing, and web server setup so the
-        test binary runs under QEMU. Hardware-dependent test cases report
-        TEST_IGNORE instead of blocking on missing peripherals.
+        When enabled, skips the motor, tracing, Wi-Fi, camera and telemetry
+        setup, brings the network up on QEMU's OpenCores Ethernet MAC instead,
+        and feeds the web server synthetic camera frames and telemetry
+        packets, so the WebSocket tests run against the real server in QEMU.
 
 config WEB_SERVER_TEST_UBSAN
     bool "Build web_server with UndefinedBehaviorSanitizer"
@@ -21,10 +22,10 @@ config WEB_SERVER_TEST_COVERAGE
     default n
     help
         Compiles the web_server component under test with --coverage.  After
-        the test run, app_main calls esp_gcov_dump() which streams .gcda
-        data to the host via the AppTrace JTAG protocol, then prints
-        GCOV_DUMP_DONE.  The patched esp-qemu emulates the AppTrace host
-        and writes .gcda files directly to the build directory.  Opt-in:
+        each test case, tearDown calls esp_gcov_dump() which streams .gcda
+        data to the host via the AppTrace JTAG protocol.  The patched esp-qemu
+        emulates the AppTrace host and writes .gcda files directly to the
+        build directory, adding to the counts of earlier boots.  Opt-in:
         only enabled by the dedicated coverage CI job/sdkconfig overlay.
 
 endmenu
