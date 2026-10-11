@@ -32,7 +32,7 @@ RUN git clone --depth 1 --branch apptrace \
     && rm -rf /tmp/espressif-qemu
 
 
-FROM espressif/idf:release-v6.0
+FROM espressif/idf:v6.0.3
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
