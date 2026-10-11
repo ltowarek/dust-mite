@@ -45,4 +45,3 @@ def car_address(request: pytest.FixtureRequest, dut: Dut, qemu_http_port: int) -
         dut.expect(r'eth ip: ', timeout=30)
         return '127.0.0.1', qemu_http_port
     return get_dut_ip(dut), 80
-

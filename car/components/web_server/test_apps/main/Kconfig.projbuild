@@ -22,10 +22,10 @@ config WEB_SERVER_TEST_COVERAGE
     default n
     help
         Compiles the web_server component under test with --coverage.  After
-        the test run, app_main calls esp_gcov_dump() which streams .gcda
-        data to the host via the AppTrace JTAG protocol, then prints
-        GCOV_DUMP_DONE.  The patched esp-qemu emulates the AppTrace host
-        and writes .gcda files directly to the build directory.  Opt-in:
+        each test case, tearDown calls esp_gcov_dump() which streams .gcda
+        data to the host via the AppTrace JTAG protocol.  The patched esp-qemu
+        emulates the AppTrace host and writes .gcda files directly to the
+        build directory, adding to the counts of earlier boots.  Opt-in:
         only enabled by the dedicated coverage CI job/sdkconfig overlay.
 
 endmenu

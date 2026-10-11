@@ -9,6 +9,7 @@
 #include "wifi.hpp"
 #include "telemetry.hpp"
 #include "unity.h"
+#include "esp_log.h"
 #include "sdkconfig.h"
 #ifdef CONFIG_WEB_SERVER_TEST_QEMU_MODE
 #include "qemu_peripherals.hpp"
@@ -48,20 +49,27 @@ extern "C" void app_main(void) {
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
+  // The server stops whenever the car loses Wi-Fi, so the cases start only once it has connected.
+  wifi_wait_for_ip();
 #else
   qemu_ethernet_setup();
   web_server_setup(frame_queue, command_queue, telemetry_queue);
   qemu_producers_setup(frame_queue, telemetry_queue);
 #endif
 
-  UNITY_BEGIN();
-  unity_run_all_tests();
-  UNITY_END();
-#ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
-  esp_gcov_dump();
-  printf("GCOV_DUMP_DONE\n");
-#endif
+  unity_run_menu();
 }
 
 void setUp(void) {}
-void tearDown(void) {}
+
+// Unity prints the result line one character at a time, so a log line from a server task that is
+// still closing a connection would land inside it and the runner would misread the result. A line
+// a task has already started is let finish before the result is printed.
+void tearDown(void) {
+  const int log_drain_ms = 100;
+  esp_log_level_set("*", ESP_LOG_NONE);
+  vTaskDelay(pdMS_TO_TICKS(log_drain_ms));
+#ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
+  esp_gcov_dump();
+#endif
+}
