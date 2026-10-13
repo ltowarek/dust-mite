@@ -945,6 +945,10 @@ The web server test app splits its WebSocket tests by what they need:
 (`dut.run_all_single_board_cases(reset=True)`), so no case inherits a connection that an earlier
 case is still closing.
 
+The runner selects each case by writing to the Unity menu. On the car, the test app therefore uses
+USB Serial/JTAG as its primary console: as the secondary console that port is output-only, so the
+menu would never read the runner's input. The QEMU overlay keeps UART0 as the primary console.
+
 In QEMU mode the app:
 
 - brings the network up on QEMU's emulated OpenCores Ethernet MAC (`CONFIG_ETH_USE_OPENETH`) instead
