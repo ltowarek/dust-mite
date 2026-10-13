@@ -32,7 +32,15 @@ RUN git clone --depth 1 --branch apptrace \
     && rm -rf /tmp/espressif-qemu
 
 
-FROM espressif/idf:v6.0.3
+# ESP-IDF releases containing release/v6.0 merge 1f8d24ceeb7 or release/v6.1
+# commit 83da0b33a5 ("fix(usb_phy): Fixed USB PHY clock during low-power modes")
+# hang every ESP32-S3 QEMU boot with the QEMU built above: USB Serial/JTAG init
+# busy-waits on I2C_MST_BBPLL_CAL_DONE, a bit Espressif's QEMU never sets
+# (https://github.com/espressif/qemu/issues/193). v6.0.3 and v6.1 predate it.
+# Before taking a later release, add the fix (espressif/qemu#195) to the
+# apptrace branch cloned above.
+# The digest keeps the image fixed even if Docker Hub re-pushes the tag.
+FROM espressif/idf:v6.0.3@sha256:54278f2c01e6e759502e2f04c9103589c17528923426f4d63193490c7a08f555
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
