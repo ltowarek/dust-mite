@@ -4,5 +4,5 @@ if(CONFIG_WEB_SERVER_TEST_QEMU_MODE)
 endif()
 idf_component_register(SRCS ${srcs}
                     INCLUDE_DIRS "."
-                    PRIV_REQUIRES unity web_server motor tracing wifi telemetry camera driver esp_eth esp_netif
+                    PRIV_REQUIRES unity web_server motor tracing wifi telemetry camera driver esp_eth esp_netif esp_event esp_wifi
                     WHOLE_ARCHIVE)
