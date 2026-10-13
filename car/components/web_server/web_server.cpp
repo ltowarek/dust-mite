@@ -147,6 +147,7 @@ static void ws_set_connection_attributes(opentelemetry::trace::Span& span,
   span.SetAttribute("url.scheme", "ws");
   span.SetAttribute("url.path", endpoint.path);
   span.SetAttribute("network.transport", "tcp");
+  span.SetAttribute("network.protocol.name", "websocket");
 }
 
 static bool ws_wait_for_item(const ws_endpoint_t& endpoint, const ws_connection_t& connection,
@@ -275,8 +276,7 @@ static esp_err_t drive_handler(httpd_req_t* req) {
     start_opts.parent = opentelemetry::trace::GetSpan(parent_ctx)->GetContext();
     auto span = esp_opentelemetry_tracer()->StartSpan(
         "ws.command.receive",
-        {{"network.protocol.name", "websocket"},
-         {"ws.message.type", "command"},
+        {{"ws.message.type", "command"},
          {"ws.message.size", static_cast<int64_t>(ws_pkt.len)},
          {"command.name", static_cast<int64_t>(packet.command)},
          {"command.value", static_cast<int64_t>(packet.value)}},
@@ -320,7 +320,7 @@ static ws_endpoint_t g_drive{.path = "/",
                              // StartSpan.
                              .stack_size = 16384,
                              .handler = drive_handler};
-static ws_endpoint_t g_stream{.path = "/stream",
+static ws_endpoint_t g_camera{.path = "/stream",
                               .port = WEB_SERVER_CAMERA_PORT,
                               .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 1,
                               .stack_size = 0,
@@ -330,7 +330,7 @@ static ws_endpoint_t g_telemetry{.path = "/telemetry",
                                  .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 2,
                                  .stack_size = 0,
                                  .handler = push_handler};
-static ws_endpoint_t* const g_endpoints[] = {&g_drive, &g_stream, &g_telemetry};
+static ws_endpoint_t* const g_endpoints[] = {&g_drive, &g_camera, &g_telemetry};
 
 void ws_stream_task(void* p) {
   ESP_LOGI(TAG, "Starting stream task");
@@ -341,7 +341,7 @@ void ws_stream_task(void* p) {
 
   auto teardown = [&]() {
     active = false;
-    g_stream.served = nullptr;
+    g_camera.served = nullptr;
     camera_stop();
     ESP_LOGI(TAG, "Stream stopped");
     connection_span->End();
@@ -351,27 +351,26 @@ void ws_stream_task(void* p) {
   while (true) {
     if (!active) {
       ESP_LOGI(TAG, "Waiting for notification to start the stream");
-      if (xQueueReceive(g_stream.req_queue, &connection, portMAX_DELAY) != pdPASS) {
-        ESP_LOGE(TAG, "xQueueReceive(g_stream.req_queue) failed");
+      if (xQueueReceive(g_camera.req_queue, &connection, portMAX_DELAY) != pdPASS) {
+        ESP_LOGE(TAG, "xQueueReceive(g_camera.req_queue) failed");
         break;
       }
-      g_stream.served = connection.token;
+      g_camera.served = connection.token;
       if (!ws_connection_is_live(connection)) {
         ESP_LOGI(TAG, "Queued stream connection was closed before it started");
-        g_stream.served = nullptr;
+        g_camera.served = nullptr;
         continue;
       }
       opentelemetry::trace::StartSpanOptions stream_opts;
       stream_opts.kind = opentelemetry::trace::SpanKind::kServer;
-      connection_span = esp_opentelemetry_tracer()->StartSpan(
-          "ws.stream.connection", {{"network.protocol.name", "websocket"}}, stream_opts);
-      ws_set_connection_attributes(*connection_span, g_stream, connection);
+      connection_span = esp_opentelemetry_tracer()->StartSpan("ws.stream.connection", stream_opts);
+      ws_set_connection_attributes(*connection_span, g_camera, connection);
       camera_start();
       active = true;
       ESP_LOGI(TAG, "Stream started");
     }
 
-    if (!ws_wait_for_item(g_stream, connection, &frame)) {
+    if (!ws_wait_for_item(g_camera, connection, &frame)) {
       teardown();
       continue;
     }
@@ -384,13 +383,11 @@ void ws_stream_task(void* p) {
     opentelemetry::trace::StartSpanOptions send_opts;
     send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
     send_opts.parent = connection_span->GetContext();
-    auto send_span =
-        esp_opentelemetry_tracer()->StartSpan("ws.stream.send",
-                                              {{"network.protocol.name", "websocket"},
-                                               {"ws.message.type", "stream"},
-                                               {"ws.frame.size", static_cast<int64_t>(frame->len)}},
-                                              send_opts);
-    ws_set_connection_attributes(*send_span, g_stream, connection);
+    auto send_span = esp_opentelemetry_tracer()->StartSpan(
+        "ws.stream.send",
+        {{"ws.message.type", "stream"}, {"ws.frame.size", static_cast<int64_t>(frame->len)}},
+        send_opts);
+    ws_set_connection_attributes(*send_span, g_camera, connection);
     auto send_scope = opentelemetry::trace::Scope(send_span);
 
     size_t b64_len = 0;
@@ -417,7 +414,7 @@ void ws_stream_task(void* p) {
     send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
 
     uint32_t seq = 0;
-    esp_err_t ret = ws_queue_send(g_stream, connection, packet_json_str, payload_len, &seq);
+    esp_err_t ret = ws_queue_send(g_camera, connection, packet_json_str, payload_len, &seq);
     if (ret != ESP_OK) {
       ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
@@ -428,7 +425,7 @@ void ws_stream_task(void* p) {
 
     web_server_metrics_update();
     esp_camera_fb_return(frame);
-    ws_wait_until_sent(g_stream, seq);
+    ws_wait_until_sent(g_camera, seq);
     send_span->End();
   }
   ESP_LOGW(TAG, "Stream task stopped");
@@ -465,8 +462,8 @@ void ws_telemetry_task(void* p) {
       }
       opentelemetry::trace::StartSpanOptions telemetry_opts;
       telemetry_opts.kind = opentelemetry::trace::SpanKind::kServer;
-      connection_span = esp_opentelemetry_tracer()->StartSpan(
-          "ws.telemetry.connection", {{"network.protocol.name", "websocket"}}, telemetry_opts);
+      connection_span =
+          esp_opentelemetry_tracer()->StartSpan("ws.telemetry.connection", telemetry_opts);
       ws_set_connection_attributes(*connection_span, g_telemetry, connection);
       telemetry_start();
       active = true;
@@ -489,8 +486,7 @@ void ws_telemetry_task(void* p) {
     send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
     send_opts.parent = connection_span->GetContext();
     auto send_span = esp_opentelemetry_tracer()->StartSpan(
-        "ws.telemetry.send",
-        {{"network.protocol.name", "websocket"}, {"ws.message.type", "telemetry"}}, send_opts);
+        "ws.telemetry.send", {{"ws.message.type", "telemetry"}}, send_opts);
     ws_set_connection_attributes(*send_span, g_telemetry, connection);
     auto send_scope = opentelemetry::trace::Scope(send_span);
     tracing_inject(packet_json);
@@ -602,7 +598,7 @@ static void web_server_handler_on_wifi_disconnect(void* arg, esp_event_base_t ev
 void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
                       QueueHandle_t telemetry_queue) {
   g_command_queue = command_queue;
-  ws_endpoint_init(g_stream, frame_queue);
+  ws_endpoint_init(g_camera, frame_queue);
   ws_endpoint_init(g_telemetry, telemetry_queue);
 
   {

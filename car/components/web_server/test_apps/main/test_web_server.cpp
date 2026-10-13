@@ -270,7 +270,7 @@ TEST_CASE("stream_replies_to_close_of_every_repeated_connection", "[web_server]"
                                 "repeated /stream connections were dropped without a CLOSE reply");
 }
 
-TEST_CASE("stream_serves_frames_while_drive_and_telemetry_are_held", "[web_server]") {
+TEST_CASE("camera_serves_frames_while_drive_and_telemetry_are_held", "[web_server]") {
   ws_connect_or_fail(DRIVE);
   ws_connect_or_fail(TELEMETRY);
 
@@ -371,7 +371,7 @@ TEST_CASE("drive_path_on_camera_port_is_not_found", "[web_server]") {
   TEST_ASSERT_EQUAL_INT(HTTP_NOT_FOUND, handshake_status_of({CAMERA.port, DRIVE.path}));
 }
 
-TEST_CASE("stream_path_on_telemetry_port_is_not_found", "[web_server]") {
+TEST_CASE("camera_path_on_telemetry_port_is_not_found", "[web_server]") {
   TEST_ASSERT_EQUAL_INT(HTTP_NOT_FOUND, handshake_status_of({TELEMETRY.port, CAMERA.path}));
 }
 

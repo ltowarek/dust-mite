@@ -72,7 +72,7 @@ class CarFeed:
 def send_commands_to_car(uri: str, commands: Subject) -> Iterator[None]:
     """Send each command published on `commands` to the car while the context is open.
 
-    The car's one control connection stays open for the whole context, so
+    The car's one Drive endpoint connection stays open for the whole context, so
     every driver's commands share it.
     """
     with (

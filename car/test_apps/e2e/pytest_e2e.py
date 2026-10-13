@@ -1,14 +1,15 @@
 import asyncio
-import contextlib
 import json
 import math
 import time
+from collections.abc import Callable
+from operator import attrgetter
 
 import pytest
 import websockets
 from pytest_embedded import Dut
 
-from helpers import car_endpoints, get_dut_ip
+from helpers import CarEndpoints, Endpoint, car_endpoints, get_dut_ip
 
 # Command constants mirrored from motor.hpp
 COMMAND_ADVANCE = 1
@@ -25,26 +26,46 @@ HTTP_SERVICE_UNAVAILABLE = 503
 DRIVE_COMMAND_WATCHDOG_MS = 1000
 
 
-@pytest.mark.parametrize('name', ['drive', 'camera', 'telemetry'])
-def test_second_connection_refused_while_first_stays_open(dut: Dut, name: str) -> None:
-    """Each endpoint serves one client and refuses a second with 503 before the upgrade.
+_ENDPOINTS = [pytest.param(attrgetter(name), id=name) for name in ('drive', 'camera', 'telemetry')]
 
-    No command frames are sent, so the car does not move.
-    """
-    endpoint = getattr(car_endpoints(get_dut_ip(dut)), name)
+
+async def _connect_twice(endpoint: Endpoint) -> tuple[int | None, bool]:
+    """Holds one connection, tries a second, and returns the second's refusal status and whether the first
+    still answers a ping afterwards. No command frames are sent, so the car does not move."""
+    async with websockets.connect(endpoint.uri) as first:
+        try:
+            async with websockets.connect(endpoint.uri):
+                status = None
+        except websockets.InvalidStatus as e:
+            status = e.response.status_code
+        try:
+            await asyncio.wait_for(await first.ping(), timeout=5)
+        except (websockets.ConnectionClosed, TimeoutError):
+            return status, False
+    return status, True
+
+
+@pytest.mark.parametrize('endpoint_of', _ENDPOINTS)
+def test_second_connection_refused_before_upgrade(dut: Dut, endpoint_of: Callable[[CarEndpoints], Endpoint]) -> None:
+    """Each endpoint serves one client and refuses a second with 503 before the WebSocket upgrade."""
+    endpoint = endpoint_of(car_endpoints(get_dut_ip(dut)))
     dut.expect(r'Serving every endpoint', timeout=70)
 
-    async def run():
-        async with websockets.connect(endpoint.uri) as first:
-            try:
-                async with websockets.connect(endpoint.uri):
-                    status = None
-            except websockets.InvalidStatus as e:
-                status = e.response.status_code
-            await asyncio.wait_for(await first.ping(), timeout=5)
-        return status
+    status, _ = asyncio.run(_connect_twice(endpoint))
 
-    assert asyncio.run(run()) == HTTP_SERVICE_UNAVAILABLE
+    assert status == HTTP_SERVICE_UNAVAILABLE
+
+
+@pytest.mark.parametrize('endpoint_of', _ENDPOINTS)
+def test_first_connection_stays_open_after_second_is_refused(
+    dut: Dut, endpoint_of: Callable[[CarEndpoints], Endpoint]
+) -> None:
+    endpoint = endpoint_of(car_endpoints(get_dut_ip(dut)))
+    dut.expect(r'Serving every endpoint', timeout=70)
+
+    _, first_open = asyncio.run(_connect_twice(endpoint))
+
+    assert first_open, f'refusing a second connection to {endpoint.path} closed the first one'
 
 
 def test_advance_and_brake(dut: Dut) -> None:
