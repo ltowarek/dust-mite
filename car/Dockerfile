@@ -1,4 +1,5 @@
-FROM espressif/idf:v6.0.3
+# Same ESP-IDF image as .devcontainer/cpp/Dockerfile, which explains the pin.
+FROM espressif/idf:v6.0.3@sha256:54278f2c01e6e759502e2f04c9103589c17528923426f4d63193490c7a08f555
 
 ARG USERNAME=dustmite
 ARG USER_UID=1040
