@@ -4,10 +4,11 @@ import json
 import math
 import time
 
+import pytest
 import websockets
 from pytest_embedded import Dut
 
-from helpers import get_dut_ip
+from helpers import car_endpoints, get_dut_ip
 
 # Command constants mirrored from motor.hpp
 COMMAND_ADVANCE = 1
@@ -18,43 +19,32 @@ COMMAND_TURN_RIGHT = 5
 COMMAND_LOOK_HORIZONTALLY = 6
 COMMAND_LOOK_VERTICALLY = 7
 
-# Mirrored from config.max_open_sockets in web_server.cpp
-MAX_OPEN_SOCKETS = 7
+HTTP_SERVICE_UNAVAILABLE = 503
 
 # Mirrored from DRIVE_COMMAND_WATCHDOG_MS in motor.cpp
 DRIVE_COMMAND_WATCHDOG_MS = 1000
 
 
-def test_keeps_max_open_sockets_concurrent_connections_open(dut: Dut) -> None:
-    """MAX_OPEN_SOCKETS concurrent clients all stay connected.
+@pytest.mark.parametrize('name', ['drive', 'camera', 'telemetry'])
+def test_second_connection_refused_while_first_stays_open(dut: Dut, name: str) -> None:
+    """Each endpoint serves one client and refuses a second with 503 before the upgrade.
 
-    Past the cap, httpd's LRU purge closes the least recently used session
-    without a WebSocket close frame, which clients see as a dropped connection
-    (issue #140). No command frames are sent, so the car does not move.
+    No command frames are sent, so the car does not move.
     """
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    endpoint = getattr(car_endpoints(get_dut_ip(dut)), name)
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
-        async with contextlib.AsyncExitStack() as stack:
-            connections = [
-                await stack.enter_async_context(websockets.connect(f'ws://{ip}/'))
-                for _ in range(MAX_OPEN_SOCKETS)
-            ]
-            # Let the client notice a purge that was triggered by a later accept.
-            await asyncio.sleep(2)
+        async with websockets.connect(endpoint.uri) as first:
+            try:
+                async with websockets.connect(endpoint.uri):
+                    status = None
+            except websockets.InvalidStatus as e:
+                status = e.response.status_code
+            await asyncio.wait_for(await first.ping(), timeout=5)
+        return status
 
-            dropped = []
-            for index, ws in enumerate(connections):
-                try:
-                    await asyncio.wait_for(await ws.ping(), timeout=5)
-                except websockets.ConnectionClosed:
-                    dropped.append(index)
-        return dropped
-
-    dropped = asyncio.run(run())
-    assert dropped == [], \
-        f'car closed connections {dropped} of {MAX_OPEN_SOCKETS} opened concurrently'
+    assert asyncio.run(run()) == HTTP_SERVICE_UNAVAILABLE
 
 
 def test_advance_and_brake(dut: Dut) -> None:
@@ -66,12 +56,12 @@ def test_advance_and_brake(dut: Dut) -> None:
     the watchdog: telemetry emits every 500 ms, so the car could already have
     self-braked before enough samples arrived.
     """
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/') as cmd_ws, \
-                   websockets.connect(f'ws://{ip}/telemetry') as tel_ws:
+        async with websockets.connect(car.drive.uri) as cmd_ws, \
+                   websockets.connect(car.telemetry.uri) as tel_ws:
 
             stop_resend = asyncio.Event()
 
@@ -111,12 +101,12 @@ def test_watchdog_brakes_without_explicit_brake(dut: Dut) -> None:
     Regression test for a dropped or lost BRAKE, or a sender that dies mid-drive:
     the car must not keep driving indefinitely just because nothing told it to stop.
     """
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/') as cmd_ws, \
-                   websockets.connect(f'ws://{ip}/telemetry') as tel_ws:
+        async with websockets.connect(car.drive.uri) as cmd_ws, \
+                   websockets.connect(car.telemetry.uri) as tel_ws:
 
             await cmd_ws.send(json.dumps({"command": COMMAND_ADVANCE, "value": 50}))
 
@@ -142,12 +132,12 @@ def test_look_does_not_reset_drive_watchdog(dut: Dut) -> None:
     A stream of pan/tilt commands carries no drive intent, so it must not
     reset the drive command watchdog deadline.
     """
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/') as cmd_ws, \
-                   websockets.connect(f'ws://{ip}/telemetry') as tel_ws:
+        async with websockets.connect(car.drive.uri) as cmd_ws, \
+                   websockets.connect(car.telemetry.uri) as tel_ws:
 
             await cmd_ws.send(json.dumps({"command": COMMAND_ADVANCE, "value": 50}))
 
@@ -172,12 +162,12 @@ def test_concurrent_stream_and_telemetry(dut: Dut) -> None:
     Regression test for the streaming deadlock where the camera stream task
     blocked the telemetry path under concurrent load.
     """
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/stream') as stream_ws, \
-                   websockets.connect(f'ws://{ip}/telemetry') as tel_ws:
+        async with websockets.connect(car.camera.uri) as stream_ws, \
+                   websockets.connect(car.telemetry.uri) as tel_ws:
 
             stream_count = 0
             tel_count = 0
@@ -220,11 +210,11 @@ def test_concurrent_stream_and_telemetry(dut: Dut) -> None:
 
 def test_pan_tilt(dut: Dut) -> None:
     """Pan and tilt servo commands complete without WebSocket disconnect or error log."""
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/') as ws:
+        async with websockets.connect(car.drive.uri) as ws:
             for cmd, value in [
                 (COMMAND_LOOK_HORIZONTALLY,  90),
                 (COMMAND_LOOK_HORIZONTALLY, -90),

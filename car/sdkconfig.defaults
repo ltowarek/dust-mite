@@ -14,6 +14,9 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_HTTPD_WS_SUPPORT=y
 CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT=y
 CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT=y
+# Each of the three endpoint servers reserves 3 sockets and holds 2 sessions; the rest is for the
+# OpenTelemetry exporters, SNTP and DNS.
+CONFIG_LWIP_MAX_SOCKETS=24
 
 # Camera DMA ISR must run from IRAM so it executes safely during the brief
 # window when wifi_setup() → nvs_flash_init() disables the flash cache.

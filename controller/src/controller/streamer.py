@@ -198,7 +198,7 @@ def main() -> None:
     handler = functools.partial(server_handler, camera, telemetry, arbiter)
     try:
         with (
-            send_commands_to_car(os.environ["CONTROLLER_CLIENT_URI"], commands),
+            send_commands_to_car(os.environ["DRIVE_CLIENT_URI"], commands),
             websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
         ):
             logger.info("Starting server")

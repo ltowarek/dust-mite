@@ -1,4 +1,4 @@
-set(srcs "main.cpp" "test_command_parser.cpp" "test_web_server.cpp")
+set(srcs "main.cpp" "test_command_parser.cpp" "test_socket_address.cpp" "test_web_server.cpp")
 if(CONFIG_WEB_SERVER_TEST_QEMU_MODE)
     list(APPEND srcs "qemu_peripherals.cpp")
 endif()

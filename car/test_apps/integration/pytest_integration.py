@@ -7,16 +7,16 @@ import pytest
 import websockets
 from pytest_embedded import Dut
 
-from helpers import get_dut_ip
+from helpers import car_endpoints, get_dut_ip
 
 
 def test_command_pipeline(dut: Dut) -> None:
     """Command JSON -> web server -> command queue -> motor task."""
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/') as ws:
+        async with websockets.connect(car.drive.uri) as ws:
             await ws.send(json.dumps({"command": 3, "value": 0}))
 
     asyncio.run(run())
@@ -33,11 +33,11 @@ def test_telemetry_disconnect(dut: Dut) -> None:
     fix it consumed a stale notification and tried to send CLOSE on the dead
     socket, logging an ERROR. After the fix it handles this gracefully.
     """
-    ip = get_dut_ip(dut)
+    car = car_endpoints(get_dut_ip(dut))
     dut.expect(r'Starting telemetry task', timeout=70)
 
     async def run():
-        async with websockets.connect(f'ws://{ip}/telemetry') as ws:
+        async with websockets.connect(car.telemetry.uri) as ws:
             for _ in range(5):
                 await asyncio.wait_for(ws.recv(), timeout=5.0)
         # async-with exit sends WS CLOSE + TCP FIN while the BG task is still
@@ -58,12 +58,12 @@ def test_telemetry_disconnect(dut: Dut) -> None:
 
 def test_telemetry_pipeline(dut: Dut) -> None:
     """Sensors -> telemetry task -> web server -> WebSocket client."""
-    ip = get_dut_ip(dut)
+    car = car_endpoints(get_dut_ip(dut))
     dut.expect(r'Starting telemetry task', timeout=70)
 
     async def run():
         packets = []
-        async with websockets.connect(f'ws://{ip}/telemetry') as ws:
+        async with websockets.connect(car.telemetry.uri) as ws:
             for _ in range(3):
                 raw = await asyncio.wait_for(ws.recv(), timeout=5)
                 packets.append(json.loads(raw))
@@ -86,14 +86,14 @@ def test_telemetry_pipeline(dut: Dut) -> None:
 
 def test_stream_pipeline(dut: Dut) -> None:
     """Camera -> frame queue -> web server -> Base64 JPEG WebSocket frames."""
-    ip = get_dut_ip(dut)
-    dut.expect(r'Registering URI handlers', timeout=70)
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
     frame_count = 10
 
     async def run():
         frames = []
         start = time.monotonic()
-        async with websockets.connect(f'ws://{ip}/stream') as ws:
+        async with websockets.connect(car.camera.uri) as ws:
             while len(frames) < frame_count:
                 raw = await asyncio.wait_for(ws.recv(), timeout=5)
                 frames.append(base64.b64decode(json.loads(raw)['data']))

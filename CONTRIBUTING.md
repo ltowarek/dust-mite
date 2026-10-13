@@ -952,10 +952,10 @@ In QEMU mode the app:
 - starts the real web server;
 - feeds it synthetic camera frames and telemetry packets from `main/qemu_peripherals.cpp`.
 
-The test app's `conftest.py` starts QEMU with 4 MB of PSRAM and user-mode networking, and forwards a
-free local port to the server's port 80. The pytest tests take the server's address from the
-`car_address` fixture, which returns that port under QEMU and the car's IP address and port 80 on
-hardware.
+The test app's `conftest.py` starts QEMU with 4 MB of PSRAM and user-mode networking, and forwards
+one free local port to each endpoint's server port (80, 81 and 82). The pytest tests take the
+endpoints' addresses from the `car` fixture, which returns the forwarded ports under QEMU and the
+car's IP address with the endpoints' own ports on hardware.
 
 QEMU's user-mode network buffers whatever the client does not read, so it never throttles the
 car's sends. Tests that depend on a slow or stalled client are marked `@pytest.mark.dut` and
