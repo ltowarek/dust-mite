@@ -27,7 +27,7 @@ TEST_CASE("extract valid traceparent", "[tracing]") {
   cJSON* obj = cJSON_CreateObject();
   cJSON_AddStringToObject(obj, "traceparent", traceparent);
 
-  opentelemetry::context::Context ctx = tracing_extract(*obj);
+  opentelemetry::context::Context ctx = tracing_extract(obj);
   cJSON_Delete(obj);
 
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> span =
@@ -50,7 +50,7 @@ TEST_CASE("extract valid traceparent", "[tracing]") {
 TEST_CASE("extract missing traceparent key", "[tracing]") {
   cJSON* obj = cJSON_CreateObject();
 
-  opentelemetry::context::Context ctx = tracing_extract(*obj);
+  opentelemetry::context::Context ctx = tracing_extract(obj);
   cJSON_Delete(obj);
 
   opentelemetry::trace::SpanContext sc = opentelemetry::trace::GetSpan(ctx)->GetContext();
@@ -61,7 +61,7 @@ TEST_CASE("extract null traceparent value", "[tracing]") {
   cJSON* obj = cJSON_CreateObject();
   cJSON_AddNullToObject(obj, "traceparent");
 
-  opentelemetry::context::Context ctx = tracing_extract(*obj);
+  opentelemetry::context::Context ctx = tracing_extract(obj);
   cJSON_Delete(obj);
 
   opentelemetry::trace::SpanContext sc = opentelemetry::trace::GetSpan(ctx)->GetContext();
@@ -72,7 +72,7 @@ TEST_CASE("extract non-string traceparent value", "[tracing]") {
   cJSON* obj = cJSON_CreateObject();
   cJSON_AddNumberToObject(obj, "traceparent", 42);
 
-  opentelemetry::context::Context ctx = tracing_extract(*obj);
+  opentelemetry::context::Context ctx = tracing_extract(obj);
   cJSON_Delete(obj);
 
   opentelemetry::trace::SpanContext sc = opentelemetry::trace::GetSpan(ctx)->GetContext();
@@ -81,7 +81,7 @@ TEST_CASE("extract non-string traceparent value", "[tracing]") {
 
 TEST_CASE("inject with no active span", "[tracing]") {
   cJSON* obj = cJSON_CreateObject();
-  tracing_inject(*obj);
+  tracing_inject(obj);
 
   const cJSON* tp = cJSON_GetObjectItemCaseSensitive(obj, "traceparent");
   cJSON_Delete(obj);
@@ -107,7 +107,7 @@ TEST_CASE("inject with valid span", "[tracing]") {
       opentelemetry::context::RuntimeContext::Attach(ctx_with_span);
 
   cJSON* obj = cJSON_CreateObject();
-  tracing_inject(*obj);
+  tracing_inject(obj);
 
   const cJSON* tp = cJSON_GetObjectItemCaseSensitive(obj, "traceparent");
   TEST_ASSERT_NOT_NULL(tp);
@@ -121,14 +121,14 @@ TEST_CASE("inject extract roundtrip", "[tracing]") {
   cJSON* in = cJSON_CreateObject();
   cJSON_AddStringToObject(in, "traceparent", traceparent);
 
-  opentelemetry::context::Context ctx = tracing_extract(*in);
+  opentelemetry::context::Context ctx = tracing_extract(in);
   cJSON_Delete(in);
 
   opentelemetry::nostd::unique_ptr<opentelemetry::context::Token> token =
       opentelemetry::context::RuntimeContext::Attach(ctx);
 
   cJSON* out = cJSON_CreateObject();
-  tracing_inject(*out);
+  tracing_inject(out);
 
   const cJSON* tp = cJSON_GetObjectItemCaseSensitive(out, "traceparent");
   TEST_ASSERT_NOT_NULL(tp);

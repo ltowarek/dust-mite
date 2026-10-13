@@ -4,6 +4,8 @@
 #include "esp_camera.h"
 #include "camera.hpp"
 #include "web_server.hpp"
+#include "web_server_metrics.hpp"
+#include "test_app.hpp"
 #include "motor.hpp"
 #include "esp_opentelemetry.hpp"
 #include "wifi.hpp"
@@ -35,15 +37,17 @@ static i2c_master_bus_handle_t i2c_bus_init() {
 }
 #endif
 
+QueueHandle_t test_app_command_queue = nullptr;
+
 extern "C" void app_main(void) {
   QueueHandle_t command_queue = xQueueCreate(1, sizeof(command_packet_t));
+  test_app_command_queue = command_queue;
   QueueHandle_t frame_queue = xQueueCreate(1, sizeof(camera_fb_t*));
   QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_packet_t));
 
 #ifndef CONFIG_WEB_SERVER_TEST_QEMU_MODE
   i2c_master_bus_handle_t i2c_bus = i2c_bus_init();
 
-  motor_setup(command_queue);
   esp_opentelemetry_tracing_setup({{"service.name", CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME}});
   wifi_setup();
   camera_setup(frame_queue, i2c_bus);
@@ -56,6 +60,7 @@ extern "C" void app_main(void) {
   web_server_setup(frame_queue, command_queue, telemetry_queue);
   qemu_producers_setup(frame_queue, telemetry_queue);
 #endif
+  web_server_metrics_setup();
 
   unity_run_menu();
 }

@@ -1,9 +1,15 @@
 #include <atomic>
+#include <cstring>
 #include <iterator>
+#include "esp_event.h"
+#include "esp_netif.h"
 #include "esp_websocket_client.h"
+#include "esp_wifi_types.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
+#include "motor.hpp"
+#include "test_app.hpp"
 #include "unity.h"
 
 static const int OPEN_TIMEOUT_MS = 8000;
@@ -332,4 +338,86 @@ TEST_CASE("stream_served_again_after_refusing_second_connection", "[web_server]"
 
 TEST_CASE("telemetry_served_again_after_refusing_second_connection", "[web_server]") {
   served_again_after_refusing_second_connection("/telemetry");
+}
+
+static const int COMMAND_TIMEOUT_MS = 2000;
+static const char BRAKE_50[] = "{\"command\": 3, \"value\": 50}";
+
+static bool command_received(command_packet_t* packet) {
+  return xQueueReceive(test_app_command_queue, packet, pdMS_TO_TICKS(COMMAND_TIMEOUT_MS)) == pdPASS;
+}
+
+TEST_CASE("command_reaches_the_command_queue", "[web_server]") {
+  ws_client_t* ws = ws_connect_or_fail("/");
+  esp_websocket_client_send_text(ws->handle, BRAKE_50, strlen(BRAKE_50), portMAX_DELAY);
+
+  command_packet_t received = {};
+  if (!command_received(&received)) {
+    TEST_FAIL_MESSAGE("no command reached the command queue");
+  }
+
+  TEST_ASSERT_EQUAL_INT(50, received.value);
+}
+
+TEST_CASE("command_that_is_not_json_is_dropped", "[web_server]") {
+  const char not_json[] = "{not json";
+  ws_client_t* ws = ws_connect_or_fail("/");
+  esp_websocket_client_send_text(ws->handle, not_json, strlen(not_json), portMAX_DELAY);
+
+  command_packet_t received = {};
+  TEST_ASSERT_FALSE_MESSAGE(command_received(&received), "a malformed command was queued");
+}
+
+TEST_CASE("command_in_a_binary_frame_is_dropped", "[web_server]") {
+  ws_client_t* ws = ws_connect_or_fail("/");
+  esp_websocket_client_send_bin(ws->handle, BRAKE_50, strlen(BRAKE_50), portMAX_DELAY);
+
+  command_packet_t received = {};
+  TEST_ASSERT_FALSE_MESSAGE(command_received(&received), "a binary frame was queued");
+}
+
+static bool server_accepts_connections() {
+  ws_client_t* ws = ws_connect("/");
+  bool open = ws_is_open(ws);
+  ws_destroy(ws);
+  return open;
+}
+
+static bool wait_until_server_accepting(bool accepting, int timeout_ms) {
+  const int poll_interval_ms = 100;
+  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  while (server_accepts_connections() != accepting) {
+    if (xTaskGetTickCount() > deadline) {
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
+  }
+  return true;
+}
+
+static void post_wifi_disconnected() {
+  wifi_event_sta_disconnected_t event = {};
+  esp_event_post(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &event, sizeof(event), portMAX_DELAY);
+}
+
+TEST_CASE("server_stops_when_wifi_disconnects", "[web_server]") {
+  post_wifi_disconnected();
+
+  TEST_ASSERT_TRUE_MESSAGE(wait_until_server_accepting(false, CLOSE_TIMEOUT_MS),
+                           "server still accepts connections after Wi-Fi disconnected");
+}
+
+TEST_CASE("server_starts_again_when_wifi_gets_an_ip", "[web_server]") {
+  post_wifi_disconnected();
+  if (!wait_until_server_accepting(false, CLOSE_TIMEOUT_MS)) {
+    TEST_FAIL_MESSAGE("server did not stop after Wi-Fi disconnected");
+  }
+
+  ip_event_got_ip_t event = {};
+  event.esp_netif = esp_netif_get_default_netif();
+  esp_netif_get_ip_info(event.esp_netif, &event.ip_info);
+  esp_event_post(IP_EVENT, IP_EVENT_STA_GOT_IP, &event, sizeof(event), portMAX_DELAY);
+
+  TEST_ASSERT_TRUE_MESSAGE(wait_until_server_accepting(true, CLOSE_TIMEOUT_MS),
+                           "server did not accept connections after Wi-Fi got an IP");
 }

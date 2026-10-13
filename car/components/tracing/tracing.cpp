@@ -10,12 +10,12 @@ namespace {
 
 class CJsonCarrier : public opentelemetry::context::propagation::TextMapCarrier {
  public:
-  explicit CJsonCarrier(cJSON& obj) : obj_(obj) {}
+  explicit CJsonCarrier(cJSON* obj) : obj_(obj) {}
 
   [[nodiscard]] opentelemetry::nostd::string_view Get(
       opentelemetry::nostd::string_view key) const noexcept override {
     std::string k(key.data(), key.size());
-    const cJSON* item = cJSON_GetObjectItemCaseSensitive(&obj_, k.c_str());
+    const cJSON* item = cJSON_GetObjectItemCaseSensitive(obj_, k.c_str());
     if (item == nullptr || !cJSON_IsString(item) || item->valuestring == nullptr) {
       return {};
     }
@@ -26,17 +26,17 @@ class CJsonCarrier : public opentelemetry::context::propagation::TextMapCarrier 
            opentelemetry::nostd::string_view value) noexcept override {
     std::string k(key.data(), key.size());
     std::string v(value.data(), value.size());
-    cJSON_DeleteItemFromObjectCaseSensitive(&obj_, k.c_str());
-    cJSON_AddStringToObject(&obj_, k.c_str(), v.c_str());
+    cJSON_DeleteItemFromObjectCaseSensitive(obj_, k.c_str());
+    cJSON_AddStringToObject(obj_, k.c_str(), v.c_str());
   }
 
  private:
-  cJSON& obj_;
+  cJSON* obj_;
 };
 
 }  // namespace
 
-void tracing_inject(cJSON& obj) {
+void tracing_inject(cJSON* obj) {
   auto propagator =
       opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
   if (!propagator) {
@@ -47,15 +47,14 @@ void tracing_inject(cJSON& obj) {
   propagator->Inject(carrier, ctx);
 }
 
-opentelemetry::context::Context tracing_extract(const cJSON& obj) {
+opentelemetry::context::Context tracing_extract(const cJSON* obj) {
   auto current = opentelemetry::context::RuntimeContext::GetCurrent();
   auto propagator =
       opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
   if (!propagator) {
     return current;
   }
-  // cJSON APIs do not take const - the carrier only reads, but we need a
-  // non-const reference for cJSON_GetObjectItemCaseSensitive.
-  CJsonCarrier carrier(const_cast<cJSON&>(obj));
+  // The carrier only reads here, but it also implements Set, so it holds a non-const pointer.
+  CJsonCarrier carrier(const_cast<cJSON*>(obj));
   return propagator->Extract(carrier, current);
 }
