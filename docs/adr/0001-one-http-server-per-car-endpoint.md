@@ -7,6 +7,7 @@ Each endpoint accepts one client and refuses a second with HTTP 503 before the W
 ## Considered Options
 
 - **One shared instance with bounded sends (#156).** Rejected: a client that stops reading still holds the shared task for each send's timeout, about 6 s, and drive commands wait behind it.
+- **Async request handlers with a worker pool (`httpd_req_async_handler_begin`).** The idiomatic ESP-IDF way to keep long HTTP requests off the server task. Rejected: httpd stops polling a socket while a worker owns it, so the client's WebSocket CLOSE frame is never read (#112). The car used this design before #124 replaced it with `httpd_queue_work`.
 - **A separate instance for the Camera endpoint only.** Rejected: a stalled Telemetry client delays drive commands in the same way.
 - **Video over UDP or WebRTC (#152).** Deferred: a larger change that does not by itself separate telemetry from drive commands.
 
