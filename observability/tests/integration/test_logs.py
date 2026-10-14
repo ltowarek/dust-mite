@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from tests.helpers.producers import push_log, push_span_with_log
@@ -15,8 +13,7 @@ from tests.helpers.query import (
     wait_for_logs,
     wait_for_traces,
 )
-
-_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
+from tests.helpers.settings import STACK_SETTINGS
 
 _SOURCE_LINK_SERVICE_NAME = "dust-mite-source-link-log-test"
 _SOURCE_LINK_ATTRIBUTES = {
@@ -29,7 +26,7 @@ def test_synthetic_log_is_queryable() -> None:
     """Proves the pipeline plumbing works; tests/e2e/ covers real components."""
     service_name = "dust-mite-synthetic"
     log_body = "test synthetic log"
-    push_log(f"{_OTLP_ENDPOINT}/v1/logs", service_name, log_body)
+    push_log(f"{STACK_SETTINGS.otlp_endpoint}/v1/logs", service_name, log_body)
 
     result = wait_for_logs(LOKI_UID, "loki", logql_query(service_name, log_body))
 
@@ -42,8 +39,8 @@ def test_log_inside_a_span_resolves_to_that_trace() -> None:
     span_name = "test.synthetic.span.with.log"
     log_body = "test synthetic log inside span"
     trace_id = push_span_with_log(
-        f"{_OTLP_ENDPOINT}/v1/traces",
-        f"{_OTLP_ENDPOINT}/v1/logs",
+        f"{STACK_SETTINGS.otlp_endpoint}/v1/traces",
+        f"{STACK_SETTINGS.otlp_endpoint}/v1/logs",
         service_name,
         span_name,
         log_body,
@@ -70,7 +67,7 @@ def test_tempo_datasource_has_traces_to_logs_v2() -> None:
 @pytest.fixture(scope="module", autouse=True)
 def _pushed_source_link_log() -> None:
     push_log(
-        f"{_OTLP_ENDPOINT}/v1/logs",
+        f"{STACK_SETTINGS.otlp_endpoint}/v1/logs",
         _SOURCE_LINK_SERVICE_NAME,
         "vcs source link probe",
         _SOURCE_LINK_ATTRIBUTES,
