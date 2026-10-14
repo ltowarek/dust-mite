@@ -239,10 +239,10 @@ The Python controller package bridges its existing standard-library `logging` ou
 rather than introducing a separate structured logging vocabulary. `configure_logging(endpoint, resource)` in
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
-`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. It's
-called from both `controller.py` (gamepad CLI) and `streamer.py` (always-on service) — unlike
-metrics/profiling, which today only reach the streamer. Log records reuse the same shared
-`vcs.*` resource-attribute helpers tracing already uses, and route through the same
+`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. Both
+`controller.py` (gamepad CLI) and `streamer.py` (always-on service) set it up, with every other
+signal, through `configure_observability`. Log records share the resource tracing uses, and
+route through the same
 `OTEL_EXPORTER_OTLP_ENDPOINT` collector endpoint as traces (not the metrics bypass-to-Mimir
 pattern). No log-level filtering is added — both entry points already run at `DEBUG`, and
 everything already being logged, including `DEBUG`, ships as-is. The handler is constructed with
@@ -426,9 +426,10 @@ OTel Collector `profiles` pipeline the firmware uses (no symbolizer hop needed: 
 function names/line numbers are already human-readable at sample time).
 
 The generic sampler/aggregator/exporter live in `controller/src/otlp_profiler/` (no dust-mite
-imports, so it can move into its own package later with no code changes); the streamer-specific
-wiring — reading env vars, deciding whether to start it — is
-`controller/src/controller/profiling.py`.
+imports, so it can move into its own package later with no code changes); the dust-mite wiring —
+deciding whether to start it and which source-linking attributes to attach — is
+`controller/src/controller/profiling.py`, called from `configure_observability` in
+`controller/src/controller/observability.py` with the rest of the signals.
 
 Exports as real protobuf (not JSON) directly to the collector's OTLP receiver — the observability
 stack's collector/Pyroscope versions are pinned specifically so `opentelemetry-proto`'s generated

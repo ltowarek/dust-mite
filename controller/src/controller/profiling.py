@@ -3,7 +3,6 @@
 import logging
 
 import otlp_profiler
-from controller.observability import ObservabilitySettings
 from controller.otel import resolve_current_git_ref
 
 logger = logging.getLogger(__name__)
@@ -40,26 +39,25 @@ def resolve_source_attributes(
     return attributes
 
 
-def configure_profiling(service_name: str, settings: ObservabilitySettings) -> None:
+def configure_profiling(
+    service_name: str, endpoint: str | None, repository: str | None, *, enabled: bool
+) -> None:
     """Configure continuous CPU profiling for `service_name`.
 
-    Opt-in: profiling only starts if ``settings.profiling_enabled`` is true.
-    Profiles go to the same OTLP base endpoint tracing uses, since they are
-    posted directly to the OTel Collector; unlike the ESP32 firmware
-    pipeline there is no symbolizer hop. Pyroscope links them to
-    ``settings.repository``.
+    Opt-in: profiling only starts if ``enabled`` is true. ``endpoint`` is the
+    same OTLP base endpoint tracing uses, since profiles are posted directly
+    to the OTel Collector; unlike the ESP32 firmware pipeline there is no
+    symbolizer hop. Pyroscope links profiles to ``repository``.
 
     Call after `configure_tracing()`, which must have already set the global
     TracerProvider for span/profile linking to attach to.
     """
-    profiling_endpoint = resolve_endpoint(
-        settings.otlp_endpoint, enabled=settings.profiling_enabled
-    )
+    profiling_endpoint = resolve_endpoint(endpoint, enabled=enabled)
     if profiling_endpoint is None:
         return
 
     resource_attributes = resolve_source_attributes(
-        settings.repository, resolve_current_git_ref(), _ROOT_PATH
+        repository, resolve_current_git_ref(), _ROOT_PATH
     )
 
     otlp_profiler.configure(
