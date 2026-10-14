@@ -1,6 +1,9 @@
+import logging
+import threading
+
 import pytest
 
-from controller.observability import ObservabilitySettings
+from controller.observability import ObservabilitySettings, configure_observability
 
 
 class TestObservabilitySettingsFromEnv:
@@ -114,3 +117,21 @@ class TestObservabilitySettingsFromEnv:
 
     def test_leaves_profiling_disabled_without_its_variable(self) -> None:
         assert ObservabilitySettings.from_env({}).profiling_enabled is False
+
+
+class TestConfigureObservability:
+    def test_sets_up_no_log_export_without_endpoints(
+        self, root_logger: logging.Logger
+    ) -> None:
+        original_handlers = list(root_logger.handlers)
+
+        configure_observability("test-service", ObservabilitySettings.from_env({}))
+
+        assert root_logger.handlers == original_handlers
+
+    def test_starts_no_profiler_without_a_profiles_endpoint(self) -> None:
+        settings = ObservabilitySettings.from_env({"PROFILING_ENABLED": "1"})
+
+        configure_observability("test-service", settings)
+
+        assert "otlp-profiler-sampler" not in {t.name for t in threading.enumerate()}
