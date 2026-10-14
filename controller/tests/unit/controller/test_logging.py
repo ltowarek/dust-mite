@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from controller.logging import configure_logging
+from controller.logging import install_log_handler
 
 
 def _make_tracer_provider() -> TracerProvider:
@@ -31,7 +31,7 @@ def exporter() -> Generator[InMemoryLogRecordExporter, None, None]:
     log_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
     root_handlers = list(logging.getLogger().handlers)
 
-    configure_logging("test-service", provider=log_provider)
+    install_log_handler(log_provider)
 
     yield log_exporter
 

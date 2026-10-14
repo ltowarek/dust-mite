@@ -19,7 +19,8 @@ import websockets.exceptions
 import websockets.http11
 import websockets.sync.server
 
-WAIT_TIMEOUT_S = 10
+__test__ = False
+
 FEED_INTERVAL_S = 0.05
 CLEAR_DISTANCE_CM = 100
 OBSTACLE_DISTANCE_CM = 3
@@ -126,12 +127,3 @@ def camera_frame() -> dict[str, Any]:
 
 def telemetry(distance_ahead: int) -> Callable[[], dict[str, Any]]:
     return lambda: {"distance_ahead": distance_ahead, "speed": 0.0}
-
-
-def wait_for(condition: Callable[[], bool]) -> bool:
-    deadline = time.monotonic() + WAIT_TIMEOUT_S
-    while not condition():
-        if time.monotonic() > deadline:
-            return False
-        time.sleep(FEED_INTERVAL_S)
-    return True

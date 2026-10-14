@@ -1,6 +1,6 @@
-import pytest
 from opentelemetry.sdk.metrics._internal.point import NumberDataPoint
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.resources import Resource
 
 from controller.command import Command
 from controller.metrics import (
@@ -74,11 +74,7 @@ def test_record_command_blocked_attributes_by_command_name(
     }
 
 
-def test_configure_metrics_skips_export_without_an_endpoint(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", raising=False)
-
-    configure_metrics("test-service")
+def test_configure_metrics_skips_export_without_an_endpoint() -> None:
+    configure_metrics(None, Resource.get_empty())
 
     record_command_sent(Command.BRAKE)

@@ -6,7 +6,7 @@ import pytest
 from controller.curses_logging import CursesHandler, curses_console_logging
 
 
-class FakeWindow:
+class WindowSpy:
     """Minimal stand-in for `curses.window`, recording calls made to it."""
 
     def __init__(self) -> None:
@@ -38,18 +38,18 @@ def _record(msg: str = "hello", args: tuple[object, ...] = ()) -> logging.LogRec
 
 
 @pytest.fixture
-def window() -> FakeWindow:
-    return FakeWindow()
+def window() -> WindowSpy:
+    return WindowSpy()
 
 
 class TestCursesHandler:
-    def test_enables_scrolling_on_init(self, window: FakeWindow) -> None:
+    def test_enables_scrolling_on_init(self, window: WindowSpy) -> None:
         CursesHandler(window)
 
         assert window.scrollok_calls == [True]
 
     def test_writes_formatted_message_with_trailing_newline(
-        self, window: FakeWindow
+        self, window: WindowSpy
     ) -> None:
         handler = CursesHandler(window)
 
@@ -57,7 +57,7 @@ class TestCursesHandler:
 
         assert window.written == ["hello world\n"]
 
-    def test_refreshes_after_writing(self, window: FakeWindow) -> None:
+    def test_refreshes_after_writing(self, window: WindowSpy) -> None:
         handler = CursesHandler(window)
 
         handler.emit(_record())
@@ -65,7 +65,7 @@ class TestCursesHandler:
         assert window.refresh_calls == 1
 
     def test_writes_consecutive_records_on_separate_lines(
-        self, window: FakeWindow
+        self, window: WindowSpy
     ) -> None:
         handler = CursesHandler(window)
 
@@ -78,18 +78,24 @@ class TestCursesHandler:
         """The bottom-right-cell write raises `curses.error` even on success."""
         bottom_right_cell_error = curses.error("add_wch() returned ERR")
 
-        class RaisingWindow(FakeWindow):
+        class RaisingWindowStub:
+            def scrollok(self, _flag: object, /) -> None:
+                """Accept the handler's scrolling setup."""
+
             def addstr(self, _text: str, /) -> None:
                 raise bottom_right_cell_error
 
-        handler = CursesHandler(RaisingWindow())
+            def refresh(self) -> None:
+                """Accept the handler's refresh."""
+
+        handler = CursesHandler(RaisingWindowStub())
 
         handler.emit(_record())  # must not raise
 
 
 class TestCursesConsoleLogging:
     def test_raises_when_console_handler_is_not_attached(
-        self, window: FakeWindow, root_logger: logging.Logger
+        self, window: WindowSpy, root_logger: logging.Logger
     ) -> None:
         """Failing loudly beats silently never swapping in `CursesHandler`."""
         detached_handler = logging.StreamHandler()
@@ -104,7 +110,7 @@ class TestCursesConsoleLogging:
         assert root_logger.handlers == original_handlers
 
     def test_swaps_console_handler_for_a_curses_handler(
-        self, window: FakeWindow, root_logger: logging.Logger
+        self, window: WindowSpy, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         root_logger.addHandler(console_handler)
@@ -114,7 +120,7 @@ class TestCursesConsoleLogging:
             assert any(isinstance(h, CursesHandler) for h in root_logger.handlers)
 
     def test_leaves_other_handlers_untouched(
-        self, window: FakeWindow, root_logger: logging.Logger
+        self, window: WindowSpy, root_logger: logging.Logger
     ) -> None:
         """The OpenTelemetry log bridge must keep exporting while curses owns
         the console handler."""
@@ -127,7 +133,7 @@ class TestCursesConsoleLogging:
             assert otel_handler in root_logger.handlers
 
     def test_restores_console_handler_on_exit(
-        self, window: FakeWindow, root_logger: logging.Logger
+        self, window: WindowSpy, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         otel_handler = logging.NullHandler()
@@ -141,7 +147,7 @@ class TestCursesConsoleLogging:
         assert root_logger.handlers == original_handlers
 
     def test_restores_console_handler_on_exception(
-        self, window: FakeWindow, root_logger: logging.Logger
+        self, window: WindowSpy, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         root_logger.addHandler(console_handler)
@@ -157,7 +163,7 @@ class TestCursesConsoleLogging:
         assert root_logger.handlers == original_handlers
 
     def test_routes_log_records_through_the_window(
-        self, window: FakeWindow, root_logger: logging.Logger
+        self, window: WindowSpy, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         root_logger.addHandler(console_handler)

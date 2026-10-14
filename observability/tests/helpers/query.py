@@ -6,12 +6,13 @@ build is the most reliable way to verify "would this actually display data"
 without a browser.
 """
 
-import os
 import time
 from collections.abc import Callable
 from typing import Any, cast
 
 import requests
+
+from tests.helpers.settings import STACK_SETTINGS
 
 TEMPO_UID = "tempo"
 PYROSCOPE_UID = "pyroscope"
@@ -21,11 +22,6 @@ LOKI_UID = "loki"
 _PROFILE_TOTAL_ROW = (
     1  # an empty flame graph still returns one row -- see has_profile_samples
 )
-
-
-def grafana_url() -> str:
-    """Return the base URL of the Grafana instance to query."""
-    return os.getenv("GRAFANA_URL", "http://localhost:3000")
 
 
 def query(
@@ -41,7 +37,7 @@ def query(
     per request, so there is never a second result to disambiguate.
     """
     response = requests.post(
-        f"{grafana_url()}/api/ds/query",
+        f"{STACK_SETTINGS.grafana_url}/api/ds/query",
         json={
             "queries": [
                 {
@@ -61,7 +57,9 @@ def query(
 
 def datasource_settings(uid: str) -> dict[str, Any]:
     """GET a datasource's provisioned settings, the same way Grafana's UI reads them."""
-    response = requests.get(f"{grafana_url()}/api/datasources/uid/{uid}", timeout=10)
+    response = requests.get(
+        f"{STACK_SETTINGS.grafana_url}/api/datasources/uid/{uid}", timeout=10
+    )
     response.raise_for_status()
     return cast("dict[str, Any]", response.json())
 

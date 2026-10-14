@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from tests.helpers.producers import PROFILE_TYPE, push_profile
@@ -8,8 +6,7 @@ from tests.helpers.query import (
     has_profile_samples,
     wait_for_profile_samples,
 )
-
-_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
+from tests.helpers.settings import STACK_SETTINGS
 
 _SERVICE_NAMES = ["dust-mite-car", "dust-mite-streamer"]
 
@@ -32,8 +29,10 @@ def _pushed_profiles() -> None:
     for the first parametrized case regardless of which service it was.
     """
     for service_name in _SERVICE_NAMES:
-        push_profile(_OTLP_ENDPOINT, service_name)
-    push_profile(_OTLP_ENDPOINT, _SOURCE_LINK_SERVICE_NAME, _SOURCE_LINK_ATTRIBUTES)
+        push_profile(STACK_SETTINGS.otlp_endpoint, service_name)
+    push_profile(
+        STACK_SETTINGS.otlp_endpoint, _SOURCE_LINK_SERVICE_NAME, _SOURCE_LINK_ATTRIBUTES
+    )
 
 
 @pytest.mark.parametrize("service_name", _SERVICE_NAMES)

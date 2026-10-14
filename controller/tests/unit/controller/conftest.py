@@ -6,7 +6,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics._internal.point import NumberDataPoint
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
-from controller.metrics import configure_metrics
+from controller.metrics import install_instruments
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def root_logger() -> Generator[logging.Logger, None, None]:
 def reader() -> InMemoryMetricReader:
     metric_reader = InMemoryMetricReader()
     provider = MeterProvider(metric_readers=[metric_reader])
-    configure_metrics("test-service", provider=provider)
+    install_instruments(provider)
     return metric_reader
 
 

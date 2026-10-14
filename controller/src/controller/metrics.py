@@ -1,21 +1,15 @@
 """OpenTelemetry metrics configuration and pipeline-health recording."""
 
 import logging
-import os
 from types import SimpleNamespace
 
 import opentelemetry.metrics as otel_metrics
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.resources import Resource
 
 from controller.command import Command
-from controller.otel import (
-    current_repository,
-    resolve_current_git_ref,
-    resolve_vcs_attributes,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -27,33 +21,25 @@ _metrics: SimpleNamespace = SimpleNamespace(
 )
 
 
-def configure_metrics(service_name: str, provider: MeterProvider | None = None) -> None:
-    """Configure OpenTelemetry metrics instruments.
+def configure_metrics(endpoint: str | None, resource: Resource) -> None:
+    """Export the pipeline-health metrics over OTLP/HTTP.
 
-    When ``provider`` is omitted, builds a production ``MeterProvider`` with
-    OTLP/HTTP export and sets it as the global provider. Reads
-    ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` from the environment in that case,
-    skipping configuration if it isn't set. Pass a ``MeterProvider``
-    explicitly to use a custom provider without touching the global state
-    (useful in tests).
+    Builds a ``MeterProvider`` exporting to ``endpoint``, the full metrics
+    URL, sets it as the global provider and installs the instruments on it,
+    skipping configuration if ``endpoint`` is empty.
     """
-    if provider is None:
-        endpoint_url = os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
-        if not endpoint_url:
-            logger.debug(
-                "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT not set, "
-                "skipping metrics configuration"
-            )
-            return
-        exporter = OTLPMetricExporter(endpoint=endpoint_url)
-        reader = PeriodicExportingMetricReader(exporter, export_interval_millis=500)
-        vcs_attributes = resolve_vcs_attributes(
-            current_repository(), resolve_current_git_ref()
-        )
-        resource = Resource.create({SERVICE_NAME: service_name, **vcs_attributes})
-        provider = MeterProvider(resource=resource, metric_readers=[reader])
-        otel_metrics.set_meter_provider(provider)
+    if not endpoint:
+        logger.debug("No OTLP metrics endpoint, skipping metrics configuration")
+        return
+    exporter = OTLPMetricExporter(endpoint=endpoint)
+    reader = PeriodicExportingMetricReader(exporter, export_interval_millis=500)
+    provider = MeterProvider(resource=resource, metric_readers=[reader])
+    otel_metrics.set_meter_provider(provider)
+    install_instruments(provider)
 
+
+def install_instruments(provider: MeterProvider) -> None:
+    """Create the pipeline-health instruments the `record_*` functions use."""
     meter = provider.get_meter(__name__)
 
     _metrics.frames_processed = meter.create_counter(

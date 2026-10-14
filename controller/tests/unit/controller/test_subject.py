@@ -1,18 +1,11 @@
 from controller.subject import Subject
-
-
-class _Recorder:
-    def __init__(self) -> None:
-        self.messages: list[str] = []
-
-    def __call__(self, message: str) -> None:
-        self.messages.append(message)
+from tests.test_doubles import SubscriberSpy
 
 
 class TestSubject:
     def test_delivers_published_messages_to_every_subscriber(self) -> None:
         subject = Subject()
-        first, second = _Recorder(), _Recorder()
+        first, second = SubscriberSpy[str](), SubscriberSpy[str]()
 
         with subject.subscription(first), subject.subscription(second):
             subject.publish("frame")
@@ -22,13 +15,13 @@ class TestSubject:
 
     def test_stops_delivering_once_the_subscription_ends(self) -> None:
         subject = Subject()
-        recorder = _Recorder()
+        subscriber = SubscriberSpy[str]()
 
-        with subject.subscription(recorder):
+        with subject.subscription(subscriber):
             subject.publish("before")
         subject.publish("after")
 
-        assert recorder.messages == ["before"]
+        assert subscriber.messages == ["before"]
 
     def test_activates_on_the_first_subscriber_and_deactivates_after_the_last(
         self,
@@ -39,8 +32,8 @@ class TestSubject:
             on_idle=lambda: events.append("idle"),
         )
 
-        with subject.subscription(_Recorder()):
-            with subject.subscription(_Recorder()):
+        with subject.subscription(SubscriberSpy[str]()):
+            with subject.subscription(SubscriberSpy[str]()):
                 events.append("both subscribed")
             events.append("one left")
 

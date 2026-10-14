@@ -8,10 +8,33 @@ This repository is an experimental platform, and contributions that improve tech
 - Keep changes focused and easy to review.
 - Prefer small pull requests over large rewrites.
 - Preserve existing style and tooling unless a change explicitly updates them.
-- Follow classical TDD: use real collaborators in tests instead of mocks or stubs.
+- Follow classical TDD: prefer real collaborators in tests. Where a real collaborator is impractical, use a hand-written stub, spy, or fake as described in [Test doubles](#test-doubles). Never use mocks or monkeypatching.
 - Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
 - A suppression is acceptable only when the finding cannot be fixed because the code must match an interface outside the repository, such as a C extension's signature or a server that must bind to all interfaces. In that case, suppress the single rule on the single line and state the reason after it, for example `# noqa: S104 - the streamer must accept connections from all interfaces`, and list the suppression in the pull request description.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
+
+## Test doubles
+
+Test doubles follow the taxonomy from Gerard Meszaros, *xUnit Test Patterns*, summarized in Martin Fowler's [Mocks Aren't Stubs](https://martinfowler.com/articles/mocksArentStubs.html):
+
+| Double | What it does |
+|---|---|
+| Dummy | Is passed around but never used. |
+| Stub | Returns canned answers to the calls the test makes. |
+| Spy | A stub that also records how it was used, for the test to check afterwards. |
+| Mock | Is pre-programmed with expectations and verifies them itself. Not used in this repository. |
+| Fake | A working, simplified implementation, such as an in-memory database. |
+
+Rules:
+
+- Name a double after its role, with the role as a suffix: `…Stub`, `…Spy`, `…Fake`, or `…Dummy`. Functions and C++ identifiers use `_stub`, `_spy`, `_fake`, or `_dummy`. A double that both returns canned answers and records calls is a spy.
+- A double may subclass the real type when the interface is untyped or C-backed. Name it by the role it plays.
+- Doubles that only tests use live under `tests/`, not `src/`. Put a double in `src/` only if it is a product feature, such as a car simulator.
+- Doubles shared by several test modules live in a `test_doubles.py` next to those tests, with `__test__ = False` at module level so that pytest does not collect it.
+- Use hand-written doubles only: no `unittest.mock`, `pytest` `monkeypatch`, `vi.mock`, `vi.spyOn`, `vi.stubGlobal`, `vi.stubEnv`, gmock, or CMock. Inject the collaborator, setting, or environment mapping instead.
+- Names from third-party APIs, such as Vitest `vi.useFakeTimers` and OpenTelemetry `InMemoryMetricReader`, are exempt from the naming rule.
+
+These rules are documented only; no linter enforces them.
 
 ## Issue labels
 
@@ -186,7 +209,7 @@ All three services export traces via OTLP/HTTP to the OTel Collector and metrics
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
 | ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
-| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
+| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces` (default `http://otel-collector:4318/v1/traces`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
 | Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `/otlp`), proxied by Vite straight to Mimir |
 
 The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
@@ -213,15 +236,15 @@ curl -s 'http://localhost:8080/prometheus/api/v1/query?query=dust_mite_task_cpu_
 ### Logs
 
 The Python controller package bridges its existing standard-library `logging` output into OTel
-rather than introducing a separate structured logging vocabulary. `configure_logging(service_name)` in
+rather than introducing a separate structured logging vocabulary. `configure_logging(endpoint, resource)` in
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
-`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. It's
-called from both `controller.py` (gamepad CLI) and `streamer.py` (always-on service) — unlike
-metrics/profiling, which today only reach the streamer. Log records reuse the same shared
-`vcs.*` resource-attribute helpers tracing already uses, and route through the same
-`OTEL_EXPORTER_OTLP_ENDPOINT` collector endpoint as traces (not the metrics bypass-to-Mimir
-pattern). No log-level filtering is added — both entry points already run at `DEBUG`, and
+`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. Both
+`controller.py` (gamepad CLI) and `streamer.py` (always-on service) set it up, with every other
+signal, through `configure_observability`. Log records share the resource tracing uses, and route
+through the same collector as traces, at `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else
+`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs` (not the metrics bypass-to-Mimir pattern). No
+log-level filtering is added — both entry points already run at `DEBUG`, and
 everything already being logged, including `DEBUG`, ships as-is. The handler is constructed with
 `log_code_attributes=True`, which is off by default: without it records reach Loki with no `code.*`
 attributes, so nothing there says which call site produced a line.
@@ -403,9 +426,10 @@ OTel Collector `profiles` pipeline the firmware uses (no symbolizer hop needed: 
 function names/line numbers are already human-readable at sample time).
 
 The generic sampler/aggregator/exporter live in `controller/src/otlp_profiler/` (no dust-mite
-imports, so it can move into its own package later with no code changes); the streamer-specific
-wiring — reading env vars, deciding whether to start it — is
-`controller/src/controller/profiling.py`.
+imports, so it can move into its own package later with no code changes); the dust-mite wiring —
+deciding whether to start it and which source-linking attributes to attach — is
+`controller/src/controller/profiling.py`, called from `configure_observability` in
+`controller/src/controller/observability.py` with the rest of the signals.
 
 Exports as real protobuf (not JSON) directly to the collector's OTLP receiver — the observability
 stack's collector/Pyroscope versions are pinned specifically so `opentelemetry-proto`'s generated
@@ -423,7 +447,9 @@ contending for the GIL is typically in `S` state and gets filtered out even thou
 See `controller/src/otlp_profiler/sampler.py`'s module docstring for the full detail.
 
 Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off unless
-`PROFILING_ENABLED` is set to `1`.
+`PROFILING_ENABLED` is set to `1`. Profiles go to `OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT`, else
+`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1development/profiles`: the profiles signal is still in
+development, so the pinned collector serves it under the development version rather than `v1`.
 
 To profile a run:
 
@@ -456,10 +482,12 @@ resource attributes, and a self-hosted Pyroscope server configured with a GitHub
 `service_root_path` is optional (the subtree within the repository where a given service's code
 lives).
 
-- **Python streamer**: `SERVICE_REPOSITORY`/`SERVICE_ROOT_PATH` env vars, catalogued in
-  `scripts/dump_env.sh`. `service_git_ref` comes from the installed `controller` package's own
-  version (`setuptools_scm`, derived from git at `pip install .` time) rather than an env var, so
-  it can't go stale relative to `.env`. `controller/Dockerfile` bind-mounts `.git` for that one
+- **Python streamer**: `service_repository` comes from the `SERVICE_REPOSITORY` env var, catalogued
+  in `scripts/dump_env.sh`; `service_root_path` is fixed to `controller` in
+  [controller/src/controller/profiling.py](controller/src/controller/profiling.py).
+  `service_git_ref` comes from the installed `controller` package's own version (`setuptools_scm`,
+  derived from git at `pip install .` time) rather than an env var, so it can't go stale relative
+  to `.env`. `controller/Dockerfile` bind-mounts `.git` for that one
   install step only, via `additional_contexts: {root: .}` in `docker-compose.yml`.
 - **Car firmware**: `service_repository`/`service_root_path` are static Kconfig options, set in
   `car/sdkconfig.defaults`. `service_git_ref` comes from ESP-IDF's own `esp_app_desc_t.version`
@@ -645,7 +673,7 @@ If checks fail, apply automatic fixes:
 - Unit tests: validate individual modules and functions in isolation; implemented in [web/tests/unit/](web/tests/unit/).
 - Integration tests: validate interactions across component boundaries; implemented in [web/tests/integration/](web/tests/integration/).
 - E2E tests: validate full user-level flows in a browser; implemented in [web/tests/e2e/](web/tests/e2e/). Two variants:
-  - Mock-based: uses an in-process WebSocket server; runs in CI.
+  - Streamer-spy-based: runs against an in-process WebSocket server standing in for the streamer; runs in CI.
   - Full-stack (`tests/e2e/full_stack.test.js`): runs against the real running stack; on-demand only, not run in CI.
 
 Run specific suites:
@@ -889,12 +917,6 @@ Each test scope can target a different execution environment. Choose based on wh
 - Pros: no device required; runs the actual firmware binary; supports GDB debugging via `idf.py qemu gdb`; safe for irreversible hardware operations.
 - Cons: incomplete peripheral emulation; does not replace target testing for hardware-dependent components; requires the Espressif QEMU fork.
 
-**Host — CMock**: compiles the component for Linux with CMock-generated stubs replacing hardware dependencies; run directly without pytest-embedded.
-
-- Use for: pure logic with no hardware or FreeRTOS dependency (data structures, algorithms, protocol handling).
-- Pros: fastest execution; runs in standard CI; supports host-side tools (Valgrind, sanitizers).
-- Cons: stubs must be generated and maintained; cannot validate hardware interactions or FreeRTOS task behavior.
-
 **Host — POSIX/Linux simulator**: runs the component under the FreeRTOS POSIX/Linux simulator, which maps FreeRTOS tasks to pthreads and uses POSIX signals for scheduling; run directly without pytest-embedded.
 
 - Use for: code that uses FreeRTOS primitives (tasks, queues, semaphores) but has no real hardware dependency.
@@ -905,7 +927,6 @@ Each test scope can target a different execution environment. Choose based on wh
 
 | Validation target | Environment |
 |---|---|
-| Pure logic, no hardware or FreeRTOS dependency | Host — CMock |
 | FreeRTOS task interactions, no hardware dependency | Host — POSIX/Linux simulator |
 | Firmware behavior without real peripherals | QEMU |
 | Security features (eFuse, secure boot) | QEMU |

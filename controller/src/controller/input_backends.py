@@ -11,7 +11,7 @@ from .command import Command
 
 
 class InputBackendName(StrEnum):
-    """Value of the `CONTROLLER_INPUT_BACKEND` environment variable."""
+    """Name of an input backend the controller can drive the car with."""
 
     DUALSENSE = "dualsense"
     KEYBOARD = "keyboard"
@@ -134,7 +134,7 @@ class _InputWindow(Protocol):
     """The subset of `curses.window` the keyboard backend reads through.
 
     A structural type rather than `curses.window` itself, so tests can pass
-    a plain fake instead of a real (C-extension) curses window.
+    a stub instead of a real (C-extension) curses window.
     """
 
     # `timeout` and `getch` mirror curses.window's C functions, which only
@@ -153,10 +153,12 @@ class KeyboardInputBackend:
     register.
     """
 
-    def __init__(self, window: _InputWindow) -> None:
+    def __init__(
+        self, window: _InputWindow, poll_timeout_ms: int = _KEYBOARD_POLL_TIMEOUT_MS
+    ) -> None:
         """Initialize the object."""
         self._window = window
-        self._window.timeout(_KEYBOARD_POLL_TIMEOUT_MS)
+        self._window.timeout(poll_timeout_ms)
 
     def poll(self) -> tuple[Command, int | None] | None:
         """Return the current command and value, or `None` if 'q' was pressed."""

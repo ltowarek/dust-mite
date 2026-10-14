@@ -11,6 +11,7 @@ from controller.command_arbiter import (
     DriverAlreadyConnectedError,
 )
 from controller.subject import Subject
+from tests.test_doubles import SubscriberSpy
 
 from .conftest import counter_values_by_command
 
@@ -19,22 +20,14 @@ _CLEAR_DISTANCE_CM = 100
 _OBSTACLE_DISTANCE_CM = 3
 
 
-class _Recorder:
-    def __init__(self) -> None:
-        self.messages: list[dict[str, Any]] = []
-
-    def __call__(self, message: dict[str, Any]) -> None:
-        self.messages.append(message)
-
-
 class _Car:
     """The arbiter's surroundings: a telemetry source and the commands it publishes."""
 
     def __init__(self) -> None:
         self.telemetry = Subject()
         self.commands = Subject()
-        self.sent = _Recorder()
-        self.collision_states = _Recorder()
+        self.sent = SubscriberSpy[dict[str, Any]]()
+        self.collision_states = SubscriberSpy[dict[str, Any]]()
         self.arbiter = CommandArbiter(self.commands, self.telemetry, CollisionMonitor())
 
     def report_distance(self, distance_ahead_cm: int) -> None:

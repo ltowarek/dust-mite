@@ -1,8 +1,11 @@
 """controller module."""
 
 import curses
+import dataclasses
 import logging
 import os
+from collections.abc import Mapping
+from typing import Self
 
 from .command import Command
 from .curses_logging import curses_console_logging
@@ -12,13 +15,29 @@ from .input_backends import (
     InputBackendName,
     KeyboardInputBackend,
 )
-from .logging import configure_logging
-from .metrics import configure_metrics
+from .observability import ObservabilitySettings, configure_observability
 from .senders import CommandSender, DriveConnectionClosedError, WebSocketCommandSender
-from .tracing import configure_tracing
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+@dataclasses.dataclass(frozen=True)
+class ControllerSettings:
+    """The gamepad CLI's settings, read from the environment."""
+
+    drive_uri: str
+    input_backend: InputBackendName
+    observability: ObservabilitySettings
+
+    @classmethod
+    def from_env(cls, environ: Mapping[str, str]) -> Self:
+        """Read the settings from `environ`; the app settings are required."""
+        return cls(
+            drive_uri=environ["STREAMER_DRIVE_URI"],
+            input_backend=InputBackendName(environ["CONTROLLER_INPUT_BACKEND"]),
+            observability=ObservabilitySettings.from_env(environ),
+        )
 
 
 def _configure_console_logging() -> logging.Handler:
@@ -51,16 +70,13 @@ def control(input_backend: InputBackend, sender: CommandSender) -> None:
 
 def main() -> None:
     """Run the main entry point."""
-    configure_tracing("dust-mite-controller")
-    configure_logging("dust-mite-controller")
-    configure_metrics("dust-mite-controller")
+    settings = ControllerSettings.from_env(os.environ)
+    configure_observability("dust-mite-controller", settings.observability)
     console_handler = _configure_console_logging()
-    streamer_drive_uri = os.environ["STREAMER_DRIVE_URI"]
-    input_backend_name = InputBackendName(os.environ["CONTROLLER_INPUT_BACKEND"])
 
     try:
-        with WebSocketCommandSender(streamer_drive_uri) as sender:
-            if input_backend_name is InputBackendName.KEYBOARD:
+        with WebSocketCommandSender(settings.drive_uri) as sender:
+            if settings.input_backend is InputBackendName.KEYBOARD:
 
                 def run(window: curses.window) -> None:
                     with curses_console_logging(window, console_handler):

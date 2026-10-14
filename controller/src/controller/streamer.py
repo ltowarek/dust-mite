@@ -2,11 +2,13 @@
 
 import base64
 import contextlib
+import dataclasses
 import functools
 import json
 import logging
 import os
 import threading
+from collections.abc import Mapping
 from types import TracebackType
 from typing import Any, Self
 
@@ -18,11 +20,10 @@ from websockets.frames import CloseCode
 from .car import CarFeed, camera_frame_jpeg, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
-from .logging import configure_logging
-from .metrics import configure_metrics, record_telemetry_received
-from .profiling import configure_profiling
+from .metrics import record_telemetry_received
+from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
-from .tracing import configure_tracing, extract_trace_context, inject_trace_context
+from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_frame
 
 logging.basicConfig()
@@ -179,6 +180,26 @@ def telemetry_message(raw: str | bytes) -> dict[str, Any]:
         return prepare_telemetry_packet(telemetry)
 
 
+@dataclasses.dataclass(frozen=True)
+class StreamerSettings:
+    """The streamer's settings, read from the environment."""
+
+    camera_uri: str
+    telemetry_uri: str
+    drive_uri: str
+    observability: ObservabilitySettings
+
+    @classmethod
+    def from_env(cls, environ: Mapping[str, str]) -> Self:
+        """Read the settings from `environ`; the car endpoint URIs are required."""
+        return cls(
+            camera_uri=environ["STREAM_CLIENT_URI"],
+            telemetry_uri=environ["TELEMETRY_CLIENT_URI"],
+            drive_uri=environ["DRIVE_CLIENT_URI"],
+            observability=ObservabilitySettings.from_env(environ),
+        )
+
+
 def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
     """Build a telemetry packet with trace context."""
     packet = {"type": "telemetry", "data": telemetry}
@@ -187,18 +208,16 @@ def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> None:
     """Run the main entry point."""
-    configure_tracing("dust-mite-streamer")
-    configure_logging("dust-mite-streamer")
-    configure_metrics("dust-mite-streamer")
-    configure_profiling("dust-mite-streamer")
+    settings = StreamerSettings.from_env(os.environ)
+    configure_observability("dust-mite-streamer", settings.observability)
     commands = Subject()
-    camera = CarFeed(os.environ["STREAM_CLIENT_URI"], camera_message)
-    telemetry = CarFeed(os.environ["TELEMETRY_CLIENT_URI"], telemetry_message)
+    camera = CarFeed(settings.camera_uri, camera_message)
+    telemetry = CarFeed(settings.telemetry_uri, telemetry_message)
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
     handler = functools.partial(server_handler, camera, telemetry, arbiter)
     try:
         with (
-            send_commands_to_car(os.environ["DRIVE_CLIENT_URI"], commands),
+            send_commands_to_car(settings.drive_uri, commands),
             websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
         ):
             logger.info("Starting server")

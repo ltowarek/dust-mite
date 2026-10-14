@@ -4,7 +4,6 @@ import pytest
 from pydualsense import pydualsense
 from pydualsense.pydualsense import DSState
 
-from controller import input_backends
 from controller.command import Command
 from controller.controller import control
 from controller.input_backends import (
@@ -12,7 +11,8 @@ from controller.input_backends import (
     DualSenseInputBackend,
     KeyboardInputBackend,
 )
-from controller.senders import InMemoryCommandSender
+
+from .test_doubles import CommandSenderSpy
 
 # `curses.getch` returns -1 (ERR) when the poll timeout lapses with no key.
 _CURSES_ERR = -1
@@ -34,8 +34,7 @@ def _dualsense(**state_overrides: bool | int) -> pydualsense:
     return ds
 
 
-# DSState is untyped (Any), and mypy disallows subclassing Any.
-class AutoExitDSState(DSState):  # type: ignore[misc]
+class AutoExitDSStateStub(DSState):  # type: ignore[misc]  # DSState is untyped (Any)
     """Dpad-up held, with `.ps` reading truthy after `exit_after` reads.
 
     `DualSenseInputBackend.poll` reads `.ps` exactly once per call, so this
@@ -102,17 +101,17 @@ class TestDualSenseInputBackend:
 
     def test_drives_the_control_loop(self) -> None:
         ds = pydualsense()
-        ds.state = AutoExitDSState(exit_after=1)
+        ds.state = AutoExitDSStateStub(exit_after=1)
         backend = DualSenseInputBackend(ds)
-        sender = InMemoryCommandSender()
+        sender = CommandSenderSpy()
 
         control(backend, sender)
 
         assert sender.sent == [(Command.ADVANCE, 50)]
 
 
-class HeldKeyWindow:
-    """Fake `curses.window` replaying one key held down under auto-repeat.
+class HeldKeyWindowStub:
+    """Stub `curses.window` replaying one key held down under auto-repeat.
 
     A terminal delivers a held key as a single keydown, then nothing until
     the host's initial repeat delay elapses, then repeats at a steady
@@ -166,8 +165,8 @@ class HeldKeyWindow:
         return _CURSES_ERR
 
 
-class ScriptedWindow:
-    """Fake `curses.window` returning a fixed sequence of `getch` results."""
+class ScriptedWindowStub:
+    """Stub `curses.window` returning a fixed sequence of `getch` results."""
 
     def __init__(self, keys: list[int]) -> None:
         self._keys = list(keys)
@@ -213,11 +212,11 @@ class TestKeyboardInputBackend:
     def test_translates_key_to_command(
         self, key: int, expected: tuple[Command, int | None]
     ) -> None:
-        backend = KeyboardInputBackend(ScriptedWindow([key]))
+        backend = KeyboardInputBackend(ScriptedWindowStub([key]))
         assert backend.poll() == expected
 
     def test_exit_key_returns_none(self) -> None:
-        backend = KeyboardInputBackend(ScriptedWindow([ord("q")]))
+        backend = KeyboardInputBackend(ScriptedWindowStub([ord("q")]))
         assert backend.poll() is None
 
     @pytest.mark.parametrize(
@@ -225,7 +224,7 @@ class TestKeyboardInputBackend:
         [pytest.param(_CURSES_ERR, id="no_key"), pytest.param(ord("z"), id="unbound")],
     )
     def test_reads_back_as_brake(self, key: int) -> None:
-        backend = KeyboardInputBackend(ScriptedWindow([key]))
+        backend = KeyboardInputBackend(ScriptedWindowStub([key]))
         assert backend.poll() == (Command.BRAKE, None)
 
     @pytest.mark.parametrize(
@@ -235,26 +234,25 @@ class TestKeyboardInputBackend:
     def test_held_key_never_brakes_while_the_timeout_clears_the_repeat_delay(
         self, repeat_delay_ms: int
     ) -> None:
-        window = HeldKeyWindow(ord("a"), repeat_delay_ms=repeat_delay_ms)
+        window = HeldKeyWindowStub(ord("a"), repeat_delay_ms=repeat_delay_ms)
 
         commands = _drive(KeyboardInputBackend(window), polls=20)
 
         assert Command.BRAKE not in commands
 
     def test_held_key_stutters_when_the_timeout_is_below_the_repeat_delay(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
         """The pre-fix behavior, kept as the counter-example to the invariant."""
-        monkeypatch.setattr(input_backends, "_KEYBOARD_POLL_TIMEOUT_MS", 50)
-        window = HeldKeyWindow(ord("a"), repeat_delay_ms=500)
+        window = HeldKeyWindowStub(ord("a"), repeat_delay_ms=500)
 
-        commands = _drive(KeyboardInputBackend(window), polls=20)
+        commands = _drive(KeyboardInputBackend(window, poll_timeout_ms=50), polls=20)
 
         assert commands.count(Command.BRAKE) > 1
 
     def test_release_brakes_within_the_poll_timeout(self) -> None:
         hold_ms = 1000
-        window = HeldKeyWindow(ord("a"), hold_ms=hold_ms)
+        window = HeldKeyWindowStub(ord("a"), hold_ms=hold_ms)
         backend = KeyboardInputBackend(window)
 
         while True:
@@ -266,8 +264,8 @@ class TestKeyboardInputBackend:
         assert window.elapsed_ms - hold_ms <= _KEYBOARD_POLL_TIMEOUT_MS
 
     def test_drives_the_control_loop(self) -> None:
-        window = ScriptedWindow([ord("a"), ord("a"), ord("d"), ord("q")])
-        sender = InMemoryCommandSender()
+        window = ScriptedWindowStub([ord("a"), ord("a"), ord("d"), ord("q")])
+        sender = CommandSenderSpy()
 
         control(KeyboardInputBackend(window), sender)
 

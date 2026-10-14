@@ -38,10 +38,11 @@ def configure(
     """Start continuous profiling and attach span/profile linking.
 
     Starts a background sampler that periodically exports OTLP profiles to
-    `endpoint`, and -- if a real `TracerProvider` is the current global
-    tracer provider -- attaches a `SpanProcessor` that stamps every span with
-    a `pyroscope.profile.id` attribute and tags samples with whichever span
-    is active on their thread. The sampler itself is only ever started once.
+    `endpoint`, the full OTLP/HTTP profiles URL, and -- if a real
+    `TracerProvider` is the current global tracer provider -- attaches a
+    `SpanProcessor` that stamps every span with a `pyroscope.profile.id`
+    attribute and tags samples with whichever span is active on their
+    thread. The sampler itself is only ever started once.
     If the tracer provider wasn't ready yet on an earlier call, span/profile
     linking is retried on each subsequent call until it succeeds.
     """
