@@ -520,6 +520,17 @@ TEST_CASE("no_server_runs_when_one_fails_to_start", "[web_server]") {
                                 "servers kept running after another one failed to start");
 }
 
+TEST_CASE("served_connection_survives_wifi_getting_an_ip_again", "[web_server]") {
+  ws_client_t* ws = ws_connect_or_fail(CAMERA);
+  ws_wait_for_messages_or_fail(ws, 1);
+
+  post_got_ip_and_wait_until_handled();
+  int received = ws->messages;
+
+  TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_messages(ws, received + 1, FIRST_FRAME_BUDGET_MS),
+                           "the served connection stopped after Wi-Fi got an IP again");
+}
+
 static void keeps_sending_after_a_client_frame(const endpoint_t& endpoint) {
   const char hello[] = "hello";
   ws_client_t* ws = ws_connect_or_fail(endpoint);
