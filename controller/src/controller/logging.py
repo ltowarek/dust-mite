@@ -1,7 +1,6 @@
 """OpenTelemetry logging configuration."""
 
 import logging
-import os
 
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
@@ -20,19 +19,18 @@ logger = logging.getLogger(__name__)
 
 
 def configure_logging(
-    service_name: str, provider: LoggerProvider | None = None
+    service_name: str, endpoint: str | None, provider: LoggerProvider | None = None
 ) -> None:
     """Configure OpenTelemetry logging for `service_name`.
 
     When ``provider`` is omitted, builds a production ``LoggerProvider`` with
-    OTLP/HTTP export and sets it as the global provider. Reads
-    ``OTEL_EXPORTER_OTLP_ENDPOINT`` from the environment in that case,
-    skipping configuration if it isn't set. Pass a ``LoggerProvider``
+    OTLP/HTTP export to ``endpoint``, the OTLP base endpoint
+    (``OTEL_EXPORTER_OTLP_ENDPOINT``), and sets it as the global provider,
+    skipping configuration if ``endpoint`` is empty. Pass a ``LoggerProvider``
     explicitly to use a custom provider without touching the global state
     (useful in tests).
     """
     if provider is None:
-        endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
         if not endpoint:
             logger.debug(
                 "OTEL_EXPORTER_OTLP_ENDPOINT not set, skipping log configuration"

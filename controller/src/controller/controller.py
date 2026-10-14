@@ -51,9 +51,12 @@ def control(input_backend: InputBackend, sender: CommandSender) -> None:
 
 def main() -> None:
     """Run the main entry point."""
-    configure_tracing("dust-mite-controller")
-    configure_logging("dust-mite-controller")
-    configure_metrics("dust-mite-controller")
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    configure_tracing("dust-mite-controller", otlp_endpoint)
+    configure_logging("dust-mite-controller", otlp_endpoint)
+    configure_metrics(
+        "dust-mite-controller", os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+    )
     console_handler = _configure_console_logging()
     streamer_drive_uri = os.environ["STREAMER_DRIVE_URI"]
     input_backend_name = InputBackendName(os.environ["CONTROLLER_INPUT_BACKEND"])

@@ -236,7 +236,7 @@ curl -s 'http://localhost:8080/prometheus/api/v1/query?query=dust_mite_task_cpu_
 ### Logs
 
 The Python controller package bridges its existing standard-library `logging` output into OTel
-rather than introducing a separate structured logging vocabulary. `configure_logging(service_name)` in
+rather than introducing a separate structured logging vocabulary. `configure_logging(service_name, endpoint)` in
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
 `logging.getLogger(...)` call site is bridged with no change to call sites or log levels. It's

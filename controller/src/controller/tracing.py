@@ -1,7 +1,6 @@
 """OpenTelemetry tracer configuration."""
 
 import logging
-import os
 from typing import Any
 
 from opentelemetry import context, propagate, trace
@@ -42,16 +41,15 @@ def extract_trace_context(payload: dict[str, Any]) -> context.Context:
     return propagate.extract(payload)
 
 
-def configure_tracing(service_name: str) -> None:
+def configure_tracing(service_name: str, endpoint: str | None) -> None:
     """Configure global OpenTelemetry tracer with OTLP/HTTP export.
 
     Sets the global TracerProvider and W3C TraceContext TextMapPropagator.
     Call once at application startup before any spans are created.
 
-    The OTLP endpoint is read from the ``OTEL_EXPORTER_OTLP_ENDPOINT``
-    environment variable.
+    ``endpoint`` is the OTLP base endpoint (``OTEL_EXPORTER_OTLP_ENDPOINT``);
+    configuration is skipped if it is empty.
     """
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint:
         logger.debug(
             "OTEL_EXPORTER_OTLP_ENDPOINT not set, skipping tracer configuration"

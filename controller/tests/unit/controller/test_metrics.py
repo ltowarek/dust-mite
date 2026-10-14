@@ -74,6 +74,6 @@ def test_record_command_blocked_attributes_by_command_name(
 
 
 def test_configure_metrics_skips_export_without_an_endpoint() -> None:
-    configure_metrics("test-service", environ={})
+    configure_metrics("test-service", endpoint=None)
 
     record_command_sent(Command.BRAKE)

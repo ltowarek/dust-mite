@@ -31,7 +31,7 @@ def exporter() -> Generator[InMemoryLogRecordExporter, None, None]:
     log_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
     root_handlers = list(logging.getLogger().handlers)
 
-    configure_logging("test-service", provider=log_provider)
+    configure_logging("test-service", endpoint=None, provider=log_provider)
 
     yield log_exporter
 

@@ -1,8 +1,6 @@
 """OpenTelemetry metrics configuration and pipeline-health recording."""
 
 import logging
-import os
-from collections.abc import Mapping
 from types import SimpleNamespace
 
 import opentelemetry.metrics as otel_metrics
@@ -29,28 +27,25 @@ _metrics: SimpleNamespace = SimpleNamespace(
 
 
 def configure_metrics(
-    service_name: str,
-    provider: MeterProvider | None = None,
-    environ: Mapping[str, str] = os.environ,
+    service_name: str, endpoint: str | None, provider: MeterProvider | None = None
 ) -> None:
     """Configure OpenTelemetry metrics instruments.
 
     When ``provider`` is omitted, builds a production ``MeterProvider`` with
-    OTLP/HTTP export and sets it as the global provider. Reads
-    ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` from ``environ`` in that case,
-    skipping configuration if it isn't set. Pass a ``MeterProvider``
+    OTLP/HTTP export to ``endpoint``, the full metrics URL
+    (``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT``), and sets it as the global
+    provider, skipping configuration if ``endpoint`` is empty. Pass a ``MeterProvider``
     explicitly to use a custom provider without touching the global state
     (useful in tests).
     """
     if provider is None:
-        endpoint_url = environ.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
-        if not endpoint_url:
+        if not endpoint:
             logger.debug(
                 "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT not set, "
                 "skipping metrics configuration"
             )
             return
-        exporter = OTLPMetricExporter(endpoint=endpoint_url)
+        exporter = OTLPMetricExporter(endpoint=endpoint)
         reader = PeriodicExportingMetricReader(exporter, export_interval_millis=500)
         vcs_attributes = resolve_vcs_attributes(
             current_repository(), resolve_current_git_ref()

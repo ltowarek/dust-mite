@@ -1,7 +1,6 @@
 """Dust-mite-specific wiring for the generic `otlp_profiler` package."""
 
 import logging
-import os
 
 import otlp_profiler
 from controller.otel import current_repository, resolve_current_git_ref
@@ -16,8 +15,7 @@ def resolve_endpoint(profiling_enabled: str, endpoint: str | None) -> str | None
     """Return the endpoint to profile with, or None if profiling should stay off.
 
     Pure decision logic factored out of `configure_profiling` so it can be
-    tested directly with plain string arguments, without needing environment
-    variables or a test double for `otlp_profiler.configure`.
+    tested directly without a test double for `otlp_profiler.configure`.
     """
     if profiling_enabled != _ENABLED_VALUE:
         logger.debug("PROFILING_ENABLED not set, skipping profiler configuration")
@@ -44,21 +42,22 @@ def resolve_source_attributes(
     return attributes
 
 
-def configure_profiling(service_name: str) -> None:
+def configure_profiling(
+    service_name: str, profiling_enabled: str, endpoint: str | None
+) -> None:
     """Configure continuous CPU profiling for `service_name`.
 
-    Opt-in: profiling only starts if ``PROFILING_ENABLED`` is set to ``"1"``.
-    Reuses ``OTEL_EXPORTER_OTLP_ENDPOINT`` (the same endpoint tracing
-    uses) since profiles are posted directly to the OTel Collector, unlike
-    the ESP32 firmware pipeline there is no symbolizer hop.
+    Opt-in: profiling only starts if ``profiling_enabled``
+    (``PROFILING_ENABLED``) is ``"1"``. ``endpoint`` is the same OTLP base
+    endpoint tracing uses (``OTEL_EXPORTER_OTLP_ENDPOINT``), since profiles
+    are posted directly to the OTel Collector; unlike the ESP32 firmware
+    pipeline there is no symbolizer hop.
 
     Call after `configure_tracing()`, which must have already set the global
     TracerProvider for span/profile linking to attach to.
     """
-    endpoint = resolve_endpoint(
-        os.getenv("PROFILING_ENABLED", ""), os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    )
-    if endpoint is None:
+    profiling_endpoint = resolve_endpoint(profiling_enabled, endpoint)
+    if profiling_endpoint is None:
         return
 
     resource_attributes = resolve_source_attributes(
@@ -66,5 +65,5 @@ def configure_profiling(service_name: str) -> None:
     )
 
     otlp_profiler.configure(
-        service_name, endpoint, resource_attributes=resource_attributes
+        service_name, profiling_endpoint, resource_attributes=resource_attributes
     )

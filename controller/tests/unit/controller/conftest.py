@@ -22,7 +22,7 @@ def root_logger() -> Generator[logging.Logger, None, None]:
 def reader() -> InMemoryMetricReader:
     metric_reader = InMemoryMetricReader()
     provider = MeterProvider(metric_readers=[metric_reader])
-    configure_metrics("test-service", provider=provider)
+    configure_metrics("test-service", endpoint=None, provider=provider)
     return metric_reader
 
 
