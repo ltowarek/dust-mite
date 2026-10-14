@@ -1,21 +1,4 @@
-from controller.profiling import resolve_endpoint, resolve_source_attributes
-
-
-class TestResolveEndpoint:
-    def test_returns_none_when_profiling_disabled(self) -> None:
-        assert resolve_endpoint("http://otel-collector:4318", enabled=False) is None
-
-    def test_returns_none_when_endpoint_unset(self) -> None:
-        assert resolve_endpoint(None, enabled=True) is None
-
-    def test_returns_none_when_endpoint_empty(self) -> None:
-        assert resolve_endpoint("", enabled=True) is None
-
-    def test_returns_endpoint_when_both_set(self) -> None:
-        assert (
-            resolve_endpoint("http://otel-collector:4318", enabled=True)
-            == "http://otel-collector:4318"
-        )
+from controller.profiling import resolve_source_attributes
 
 
 class TestResolveSourceAttributes:

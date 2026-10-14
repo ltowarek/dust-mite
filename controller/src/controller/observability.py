@@ -1,6 +1,7 @@
 """Observability settings and the setup every entry point shares."""
 
 import dataclasses
+import logging
 from collections.abc import Mapping
 from typing import Self
 
@@ -9,6 +10,8 @@ from .metrics import configure_metrics
 from .otel import service_resource
 from .profiling import configure_profiling
 from .tracing import configure_tracing
+
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -32,14 +35,16 @@ class ObservabilitySettings:
 
 
 def configure_observability(service_name: str, settings: ObservabilitySettings) -> None:
-    """Configure tracing, logging, metrics and profiling for `service_name`."""
+    """Configure tracing, logging, metrics and profiling for `service_name`.
+
+    Profiling is opt-in, unlike the other signals: it only starts if
+    ``settings.profiling_enabled`` is true.
+    """
     resource = service_resource(service_name, settings.repository)
     configure_tracing(settings.otlp_endpoint, resource)
     configure_logging(settings.otlp_endpoint, resource)
     configure_metrics(settings.metrics_endpoint, resource)
-    configure_profiling(
-        service_name,
-        settings.otlp_endpoint,
-        settings.repository,
-        enabled=settings.profiling_enabled,
-    )
+    if not settings.profiling_enabled:
+        logger.debug("Profiling not enabled, skipping profiler configuration")
+        return
+    configure_profiling(service_name, settings.otlp_endpoint, settings.repository)
