@@ -3,6 +3,8 @@
 import re
 from importlib.metadata import PackageNotFoundError, version
 
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+
 _COMMIT_ID_RE = re.compile(r"\+g([0-9a-f]+)")
 
 
@@ -20,7 +22,7 @@ def resolve_current_git_ref() -> str:
         return ""
 
 
-def resolve_vcs_attributes(repository: str, git_ref: str) -> dict[str, str]:
+def resolve_vcs_attributes(repository: str | None, git_ref: str) -> dict[str, str]:
     """Return OpenTelemetry `vcs.*` resource attributes, or {} if unset."""
     if not repository or not git_ref:
         return {}
@@ -28,3 +30,9 @@ def resolve_vcs_attributes(repository: str, git_ref: str) -> dict[str, str]:
         "vcs.repository.url.full": repository,
         "vcs.ref.head.revision": git_ref,
     }
+
+
+def service_resource(service_name: str, repository: str | None) -> Resource:
+    """Return the resource every signal of `service_name` is exported with."""
+    vcs_attributes = resolve_vcs_attributes(repository, resolve_current_git_ref())
+    return Resource.create({SERVICE_NAME: service_name, **vcs_attributes})

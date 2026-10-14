@@ -78,9 +78,15 @@ class TestCursesHandler:
         """The bottom-right-cell write raises `curses.error` even on success."""
         bottom_right_cell_error = curses.error("add_wch() returned ERR")
 
-        class RaisingWindowStub(WindowSpy):
+        class RaisingWindowStub:
+            def scrollok(self, _flag: object, /) -> None:
+                """Accept the handler's scrolling setup."""
+
             def addstr(self, _text: str, /) -> None:
                 raise bottom_right_cell_error
+
+            def refresh(self) -> None:
+                """Accept the handler's refresh."""
 
         handler = CursesHandler(RaisingWindowStub())
 

@@ -1,14 +1,15 @@
 import datetime
-import os
 import time
 
 import pytest
 from websockets.asyncio.client import connect
 
+from controller.streamer import StreamerSettings
+
 
 @pytest.fixture
-def telemetry_client_uri() -> str:
-    return os.getenv("TELEMETRY_CLIENT_URI", "ws://localhost:8765/telemetry")
+def telemetry_client_uri(streamer_settings: StreamerSettings) -> str:
+    return streamer_settings.telemetry_uri
 
 
 @pytest.mark.dut

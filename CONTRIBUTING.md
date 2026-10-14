@@ -236,7 +236,7 @@ curl -s 'http://localhost:8080/prometheus/api/v1/query?query=dust_mite_task_cpu_
 ### Logs
 
 The Python controller package bridges its existing standard-library `logging` output into OTel
-rather than introducing a separate structured logging vocabulary. `configure_logging(service_name, endpoint, repository)` in
+rather than introducing a separate structured logging vocabulary. `configure_logging(endpoint, resource)` in
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
 `logging.getLogger(...)` call site is bridged with no change to call sites or log levels. It's
@@ -479,10 +479,12 @@ resource attributes, and a self-hosted Pyroscope server configured with a GitHub
 `service_root_path` is optional (the subtree within the repository where a given service's code
 lives).
 
-- **Python streamer**: `SERVICE_REPOSITORY`/`SERVICE_ROOT_PATH` env vars, catalogued in
-  `scripts/dump_env.sh`. `service_git_ref` comes from the installed `controller` package's own
-  version (`setuptools_scm`, derived from git at `pip install .` time) rather than an env var, so
-  it can't go stale relative to `.env`. `controller/Dockerfile` bind-mounts `.git` for that one
+- **Python streamer**: `service_repository` comes from the `SERVICE_REPOSITORY` env var, catalogued
+  in `scripts/dump_env.sh`; `service_root_path` is fixed to `controller` in
+  [controller/src/controller/profiling.py](controller/src/controller/profiling.py).
+  `service_git_ref` comes from the installed `controller` package's own version (`setuptools_scm`,
+  derived from git at `pip install .` time) rather than an env var, so it can't go stale relative
+  to `.env`. `controller/Dockerfile` bind-mounts `.git` for that one
   install step only, via `additional_contexts: {root: .}` in `docker-compose.yml`.
 - **Car firmware**: `service_repository`/`service_root_path` are static Kconfig options, set in
   `car/sdkconfig.defaults`. `service_git_ref` comes from ESP-IDF's own `esp_app_desc_t.version`

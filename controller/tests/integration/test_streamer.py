@@ -26,13 +26,12 @@ from controller.subject import Subject
 
 from .test_doubles import (
     OBSTACLE_DISTANCE_CM,
-    WAIT_TIMEOUT_S,
     CarEndpointSpy,
     car_feed_stub,
     serve,
     telemetry,
-    wait_for,
 )
+from .waiting import WAIT_TIMEOUT_S, wait_for
 
 _SPEED = 50
 

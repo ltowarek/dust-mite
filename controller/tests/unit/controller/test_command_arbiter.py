@@ -11,9 +11,9 @@ from controller.command_arbiter import (
     DriverAlreadyConnectedError,
 )
 from controller.subject import Subject
+from tests.test_doubles import SubscriberSpy
 
 from .conftest import counter_values_by_command
-from .test_doubles import SubscriberSpy
 
 _SPEED = 50
 _CLEAR_DISTANCE_CM = 100

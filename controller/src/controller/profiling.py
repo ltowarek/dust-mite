@@ -3,6 +3,7 @@
 import logging
 
 import otlp_profiler
+from controller.observability import ObservabilitySettings
 from controller.otel import resolve_current_git_ref
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ def resolve_endpoint(endpoint: str | None, *, enabled: bool) -> str | None:
 
 
 def resolve_source_attributes(
-    repository: str, git_ref: str, root_path: str
+    repository: str | None, git_ref: str, root_path: str
 ) -> dict[str, str]:
     """Return the Pyroscope GitHub source-linking resource attributes."""
     if not repository or not git_ref:
@@ -39,26 +40,26 @@ def resolve_source_attributes(
     return attributes
 
 
-def configure_profiling(
-    service_name: str, endpoint: str | None, repository: str, *, enabled: bool
-) -> None:
+def configure_profiling(service_name: str, settings: ObservabilitySettings) -> None:
     """Configure continuous CPU profiling for `service_name`.
 
-    Opt-in: profiling only starts if ``enabled`` is true.
-    ``endpoint`` is the same OTLP base endpoint tracing uses, since profiles
-    are posted directly to the OTel Collector; unlike the ESP32 firmware
-    pipeline there is no symbolizer hop. ``repository`` is the source
-    repository URL Pyroscope links profiles to.
+    Opt-in: profiling only starts if ``settings.profiling_enabled`` is true.
+    Profiles go to the same OTLP base endpoint tracing uses, since they are
+    posted directly to the OTel Collector; unlike the ESP32 firmware
+    pipeline there is no symbolizer hop. Pyroscope links them to
+    ``settings.repository``.
 
     Call after `configure_tracing()`, which must have already set the global
     TracerProvider for span/profile linking to attach to.
     """
-    profiling_endpoint = resolve_endpoint(endpoint, enabled=enabled)
+    profiling_endpoint = resolve_endpoint(
+        settings.otlp_endpoint, enabled=settings.profiling_enabled
+    )
     if profiling_endpoint is None:
         return
 
     resource_attributes = resolve_source_attributes(
-        repository, resolve_current_git_ref(), _ROOT_PATH
+        settings.repository, resolve_current_git_ref(), _ROOT_PATH
     )
 
     otlp_profiler.configure(

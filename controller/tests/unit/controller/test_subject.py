@@ -1,6 +1,5 @@
 from controller.subject import Subject
-
-from .test_doubles import SubscriberSpy
+from tests.test_doubles import SubscriberSpy
 
 
 class TestSubject:

@@ -1,14 +1,15 @@
 import datetime
-import os
 import time
 
 import pytest
 from websockets.asyncio.client import connect
 
+from controller.streamer import StreamerSettings
+
 
 @pytest.fixture
-def stream_client_uri() -> str:
-    return os.getenv("STREAM_CLIENT_URI", "ws://localhost:8765/stream")
+def stream_client_uri(streamer_settings: StreamerSettings) -> str:
+    return streamer_settings.camera_uri
 
 
 @pytest.mark.dut

@@ -1,11 +1,14 @@
 import dataclasses
 import json
+import os
 import threading
 from collections.abc import Generator, Iterator
 from typing import Any
 
 import pytest
 import websockets.sync.server
+
+from controller.streamer import StreamerSettings
 
 from .test_doubles import (
     CLEAR_DISTANCE_CM,
@@ -69,3 +72,9 @@ def telemetry_feed() -> Iterator[CarEndpointSpy]:
 def car_control() -> Iterator[CarEndpointSpy]:
     with car_control_spy() as control:
         yield control
+
+
+@pytest.fixture
+def streamer_settings() -> StreamerSettings:
+    """The streamer's own settings, for tests that reach the car it is set up for."""
+    return StreamerSettings.from_env(os.environ)

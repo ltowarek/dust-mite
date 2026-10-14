@@ -31,6 +31,8 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+_SERVICE_NAME = "dust-mite-streamer"
+
 tracer = trace.get_tracer(__name__)
 
 # How long an idle client handler waits for a message before rechecking
@@ -210,14 +212,8 @@ def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     """Run the main entry point."""
     settings = StreamerSettings.from_env(os.environ)
-    observability = settings.observability
-    configure_observability("dust-mite-streamer", observability)
-    configure_profiling(
-        "dust-mite-streamer",
-        observability.otlp_endpoint,
-        observability.repository,
-        enabled=observability.profiling_enabled,
-    )
+    configure_observability(_SERVICE_NAME, settings.observability)
+    configure_profiling(_SERVICE_NAME, settings.observability)
     commands = Subject()
     camera = CarFeed(settings.camera_uri, camera_message)
     telemetry = CarFeed(settings.telemetry_uri, telemetry_message)

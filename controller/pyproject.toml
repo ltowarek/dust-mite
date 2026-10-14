@@ -27,6 +27,7 @@ legacy_tox_ini = """
     package = editable
     deps = -r requirements/dev.txt
     passenv =
+        DRIVE_CLIENT_URI
         STREAM_CLIENT_URI
         TELEMETRY_CLIENT_URI
     commands = pytest --cov=src --cov-report=xml:coverage.xml --junitxml=results.xml -o junit_family=legacy {posargs:tests/}

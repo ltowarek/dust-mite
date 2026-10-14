@@ -25,13 +25,11 @@ class TestObservabilitySettingsFromEnv:
 
         assert getattr(settings, field) == "http://example.invalid"
 
-    def test_leaves_endpoints_unset_without_their_variables(self) -> None:
-        settings = ObservabilitySettings.from_env({})
-
-        assert (settings.otlp_endpoint, settings.metrics_endpoint) == (None, None)
-
-    def test_leaves_repository_empty_without_its_variable(self) -> None:
-        assert ObservabilitySettings.from_env({}).repository == ""
+    @pytest.mark.parametrize(
+        "field", ["otlp_endpoint", "metrics_endpoint", "repository"]
+    )
+    def test_leaves_each_field_unset_without_its_variable(self, field: str) -> None:
+        assert getattr(ObservabilitySettings.from_env({}), field) is None
 
     @pytest.mark.parametrize(
         ("value", "expected"),

@@ -6,6 +6,7 @@ from typing import Self
 
 from .logging import configure_logging
 from .metrics import configure_metrics
+from .otel import service_resource
 from .tracing import configure_tracing
 
 
@@ -15,7 +16,7 @@ class ObservabilitySettings:
 
     otlp_endpoint: str | None
     metrics_endpoint: str | None
-    repository: str
+    repository: str | None
     profiling_enabled: bool
 
     @classmethod
@@ -24,7 +25,7 @@ class ObservabilitySettings:
         return cls(
             otlp_endpoint=environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
             metrics_endpoint=environ.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"),
-            repository=environ.get("SERVICE_REPOSITORY", ""),
+            repository=environ.get("SERVICE_REPOSITORY"),
             profiling_enabled=environ.get("PROFILING_ENABLED") == "1",
         )
 
@@ -35,6 +36,7 @@ def configure_observability(service_name: str, settings: ObservabilitySettings) 
     Profiling is left to the caller: only the streamer runs long enough
     for it to be worth sampling.
     """
-    configure_tracing(service_name, settings.otlp_endpoint, settings.repository)
-    configure_logging(service_name, settings.otlp_endpoint, settings.repository)
-    configure_metrics(service_name, settings.metrics_endpoint, settings.repository)
+    resource = service_resource(service_name, settings.repository)
+    configure_tracing(settings.otlp_endpoint, resource)
+    configure_logging(settings.otlp_endpoint, resource)
+    configure_metrics(settings.metrics_endpoint, resource)

@@ -35,7 +35,7 @@ class TestResolveSourceAttributes:
         }
 
     def test_empty_when_repository_missing(self) -> None:
-        assert resolve_source_attributes("", "abc123", "controller") == {}
+        assert resolve_source_attributes(None, "abc123", "controller") == {}
 
     def test_empty_when_git_ref_missing(self) -> None:
         assert (
