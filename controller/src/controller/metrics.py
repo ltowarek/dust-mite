@@ -10,11 +10,7 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 from controller.command import Command
-from controller.otel import (
-    current_repository,
-    resolve_current_git_ref,
-    resolve_vcs_attributes,
-)
+from controller.otel import resolve_current_git_ref, resolve_vcs_attributes
 
 logger = logging.getLogger(__name__)
 
@@ -27,29 +23,27 @@ _metrics: SimpleNamespace = SimpleNamespace(
 
 
 def configure_metrics(
-    service_name: str, endpoint: str | None, provider: MeterProvider | None = None
+    service_name: str,
+    endpoint: str | None,
+    repository: str,
+    provider: MeterProvider | None = None,
 ) -> None:
     """Configure OpenTelemetry metrics instruments.
 
     When ``provider`` is omitted, builds a production ``MeterProvider`` with
-    OTLP/HTTP export to ``endpoint``, the full metrics URL
-    (``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT``), and sets it as the global
-    provider, skipping configuration if ``endpoint`` is empty. Pass a ``MeterProvider``
-    explicitly to use a custom provider without touching the global state
-    (useful in tests).
+    OTLP/HTTP export to ``endpoint``, the full metrics URL, and sets it as the
+    global provider, skipping configuration if ``endpoint`` is empty.
+    ``repository`` is the source repository URL recorded as a resource
+    attribute. Pass a ``MeterProvider`` explicitly to use a custom provider
+    without touching the global state (useful in tests).
     """
     if provider is None:
         if not endpoint:
-            logger.debug(
-                "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT not set, "
-                "skipping metrics configuration"
-            )
+            logger.debug("No OTLP metrics endpoint, skipping metrics configuration")
             return
         exporter = OTLPMetricExporter(endpoint=endpoint)
         reader = PeriodicExportingMetricReader(exporter, export_interval_millis=500)
-        vcs_attributes = resolve_vcs_attributes(
-            current_repository(), resolve_current_git_ref()
-        )
+        vcs_attributes = resolve_vcs_attributes(repository, resolve_current_git_ref())
         resource = Resource.create({SERVICE_NAME: service_name, **vcs_attributes})
         provider = MeterProvider(resource=resource, metric_readers=[reader])
         otel_metrics.set_meter_provider(provider)

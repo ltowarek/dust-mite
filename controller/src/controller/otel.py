@@ -1,6 +1,5 @@
 """Dust-mite-specific OpenTelemetry helpers shared across signals."""
 
-import os
 import re
 from importlib.metadata import PackageNotFoundError, version
 
@@ -29,8 +28,3 @@ def resolve_vcs_attributes(repository: str, git_ref: str) -> dict[str, str]:
         "vcs.repository.url.full": repository,
         "vcs.ref.head.revision": git_ref,
     }
-
-
-def current_repository() -> str:
-    """Return the `SERVICE_REPOSITORY` env var, or "" if unset."""
-    return os.getenv("SERVICE_REPOSITORY", "")

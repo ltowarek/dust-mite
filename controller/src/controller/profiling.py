@@ -3,7 +3,7 @@
 import logging
 
 import otlp_profiler
-from controller.otel import current_repository, resolve_current_git_ref
+from controller.otel import resolve_current_git_ref
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +18,11 @@ def resolve_endpoint(profiling_enabled: str, endpoint: str | None) -> str | None
     tested directly without a test double for `otlp_profiler.configure`.
     """
     if profiling_enabled != _ENABLED_VALUE:
-        logger.debug("PROFILING_ENABLED not set, skipping profiler configuration")
+        logger.debug("Profiling not enabled, skipping profiler configuration")
         return None
 
     if not endpoint:
-        logger.debug(
-            "OTEL_EXPORTER_OTLP_ENDPOINT not set, skipping profiler configuration"
-        )
+        logger.debug("No OTLP endpoint, skipping profiler configuration")
         return None
 
     return endpoint
@@ -43,15 +41,15 @@ def resolve_source_attributes(
 
 
 def configure_profiling(
-    service_name: str, profiling_enabled: str, endpoint: str | None
+    service_name: str, profiling_enabled: str, endpoint: str | None, repository: str
 ) -> None:
     """Configure continuous CPU profiling for `service_name`.
 
-    Opt-in: profiling only starts if ``profiling_enabled``
-    (``PROFILING_ENABLED``) is ``"1"``. ``endpoint`` is the same OTLP base
-    endpoint tracing uses (``OTEL_EXPORTER_OTLP_ENDPOINT``), since profiles
+    Opt-in: profiling only starts if ``profiling_enabled`` is ``"1"``.
+    ``endpoint`` is the same OTLP base endpoint tracing uses, since profiles
     are posted directly to the OTel Collector; unlike the ESP32 firmware
-    pipeline there is no symbolizer hop.
+    pipeline there is no symbolizer hop. ``repository`` is the source
+    repository URL Pyroscope links profiles to.
 
     Call after `configure_tracing()`, which must have already set the global
     TracerProvider for span/profile linking to attach to.
@@ -61,7 +59,7 @@ def configure_profiling(
         return
 
     resource_attributes = resolve_source_attributes(
-        current_repository(), resolve_current_git_ref(), _ROOT_PATH
+        repository, resolve_current_git_ref(), _ROOT_PATH
     )
 
     otlp_profiler.configure(

@@ -188,13 +188,19 @@ def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     """Run the main entry point."""
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    configure_tracing("dust-mite-streamer", otlp_endpoint)
-    configure_logging("dust-mite-streamer", otlp_endpoint)
+    repository = os.getenv("SERVICE_REPOSITORY", "")
+    configure_tracing("dust-mite-streamer", otlp_endpoint, repository)
+    configure_logging("dust-mite-streamer", otlp_endpoint, repository)
     configure_metrics(
-        "dust-mite-streamer", os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+        "dust-mite-streamer",
+        os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"),
+        repository,
     )
     configure_profiling(
-        "dust-mite-streamer", os.getenv("PROFILING_ENABLED", ""), otlp_endpoint
+        "dust-mite-streamer",
+        os.getenv("PROFILING_ENABLED", ""),
+        otlp_endpoint,
+        repository,
     )
     commands = Subject()
     camera = CarFeed(os.environ["STREAM_CLIENT_URI"], camera_message)
