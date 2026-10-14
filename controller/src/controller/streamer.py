@@ -198,9 +198,9 @@ def main() -> None:
     )
     configure_profiling(
         "dust-mite-streamer",
-        os.getenv("PROFILING_ENABLED", ""),
         otlp_endpoint,
         repository,
+        enabled=os.getenv("PROFILING_ENABLED") == "1",
     )
     commands = Subject()
     camera = CarFeed(os.environ["STREAM_CLIENT_URI"], camera_message)
