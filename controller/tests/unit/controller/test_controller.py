@@ -1,7 +1,14 @@
 import logging
 
+import pytest
+
 from controller.command import Command
-from controller.controller import _configure_console_logging, control
+from controller.controller import (
+    ControllerSettings,
+    _configure_console_logging,
+    control,
+)
+from controller.input_backends import InputBackendName
 
 from .test_doubles import CommandSenderSpy
 
@@ -81,3 +88,42 @@ class TestControl:
         control(input_backend, sender)
 
         assert sender.sent == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
+
+
+_CONTROLLER_ENV = {
+    "STREAMER_DRIVE_URI": "ws://streamer.invalid/drive",
+    "CONTROLLER_INPUT_BACKEND": "keyboard",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.invalid",
+}
+
+
+class TestControllerSettingsFromEnv:
+    def test_reads_the_streamer_drive_uri(self) -> None:
+        settings = ControllerSettings.from_env(_CONTROLLER_ENV)
+
+        assert settings.drive_uri == "ws://streamer.invalid/drive"
+
+    def test_reads_the_input_backend(self) -> None:
+        settings = ControllerSettings.from_env(_CONTROLLER_ENV)
+
+        assert settings.input_backend is InputBackendName.KEYBOARD
+
+    def test_reads_the_observability_settings(self) -> None:
+        settings = ControllerSettings.from_env(_CONTROLLER_ENV)
+
+        assert settings.observability.otlp_endpoint == "http://collector.invalid"
+
+    @pytest.mark.parametrize(
+        "variable", ["STREAMER_DRIVE_URI", "CONTROLLER_INPUT_BACKEND"]
+    )
+    def test_requires_each_app_variable(self, variable: str) -> None:
+        environ = {k: v for k, v in _CONTROLLER_ENV.items() if k != variable}
+
+        with pytest.raises(KeyError, match=variable):
+            ControllerSettings.from_env(environ)
+
+    def test_rejects_an_unknown_input_backend(self) -> None:
+        environ = {**_CONTROLLER_ENV, "CONTROLLER_INPUT_BACKEND": "joystick"}
+
+        with pytest.raises(ValueError, match="joystick"):
+            ControllerSettings.from_env(environ)

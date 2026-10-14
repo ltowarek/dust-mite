@@ -3,8 +3,9 @@ import json
 
 import cv2
 import numpy as np
+import pytest
 
-from controller.streamer import camera_message, telemetry_message
+from controller.streamer import StreamerSettings, camera_message, telemetry_message
 
 
 def _camera_packet() -> str:
@@ -20,3 +21,41 @@ def test_a_telemetry_packet_becomes_a_telemetry_message() -> None:
     telemetry = {"distance_ahead": 100, "speed": 0.0}
 
     assert telemetry_message(json.dumps(telemetry))["data"] == telemetry
+
+
+_STREAMER_ENV = {
+    "STREAM_CLIENT_URI": "ws://car.invalid/camera",
+    "TELEMETRY_CLIENT_URI": "ws://car.invalid/telemetry",
+    "DRIVE_CLIENT_URI": "ws://car.invalid/drive",
+    "PROFILING_ENABLED": "1",
+}
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        pytest.param("camera_uri", "ws://car.invalid/camera", id="camera"),
+        pytest.param("telemetry_uri", "ws://car.invalid/telemetry", id="telemetry"),
+        pytest.param("drive_uri", "ws://car.invalid/drive", id="drive"),
+    ],
+)
+def test_settings_read_each_car_endpoint_uri(field: str, expected: str) -> None:
+    settings = StreamerSettings.from_env(_STREAMER_ENV)
+
+    assert getattr(settings, field) == expected
+
+
+def test_settings_read_the_observability_settings() -> None:
+    settings = StreamerSettings.from_env(_STREAMER_ENV)
+
+    assert settings.observability.profiling_enabled is True
+
+
+@pytest.mark.parametrize(
+    "variable", ["STREAM_CLIENT_URI", "TELEMETRY_CLIENT_URI", "DRIVE_CLIENT_URI"]
+)
+def test_settings_require_each_car_endpoint_uri(variable: str) -> None:
+    environ = {k: v for k, v in _STREAMER_ENV.items() if k != variable}
+
+    with pytest.raises(KeyError, match=variable):
+        StreamerSettings.from_env(environ)

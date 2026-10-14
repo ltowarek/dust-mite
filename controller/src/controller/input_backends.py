@@ -11,7 +11,7 @@ from .command import Command
 
 
 class InputBackendName(StrEnum):
-    """Value of the `CONTROLLER_INPUT_BACKEND` environment variable."""
+    """Name of an input backend the controller can drive the car with."""
 
     DUALSENSE = "dualsense"
     KEYBOARD = "keyboard"
