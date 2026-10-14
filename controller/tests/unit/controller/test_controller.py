@@ -111,7 +111,9 @@ class TestControllerSettingsFromEnv:
     def test_reads_the_observability_settings(self) -> None:
         settings = ControllerSettings.from_env(_CONTROLLER_ENV)
 
-        assert settings.observability.otlp_endpoint == "http://collector.invalid"
+        assert settings.observability.traces_endpoint == (
+            "http://collector.invalid/v1/traces"
+        )
 
     @pytest.mark.parametrize(
         "variable", ["STREAMER_DRIVE_URI", "CONTROLLER_INPUT_BACKEND"]

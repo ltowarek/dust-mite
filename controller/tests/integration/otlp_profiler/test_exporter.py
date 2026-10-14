@@ -72,10 +72,13 @@ def collector() -> Iterator[_CollectorServer]:
         thread.join()
 
 
+_PROFILES_PATH = "/collector/profiles"
+
+
 def _endpoint(server: _CollectorServer) -> str:
     host, port = server.server_address
     assert isinstance(host, str)
-    return f"http://{host}:{port}"
+    return f"http://{host}:{port}{_PROFILES_PATH}"
 
 
 class TestExport:
@@ -88,7 +91,7 @@ class TestExport:
 
         assert collector.received == []
 
-    def test_posts_protobuf_to_the_profiles_path(
+    def test_posts_protobuf_to_the_endpoint_as_given(
         self, collector: _CollectorServer
     ) -> None:
         exporter.export(
@@ -102,7 +105,7 @@ class TestExport:
 
         assert len(collector.received) == 1
         request = collector.received[0]
-        assert request.path == "/v1development/profiles"
+        assert request.path == _PROFILES_PATH
         assert request.headers["Content-Type"] == "application/x-protobuf"
         # raises if not a valid ExportProfilesServiceRequest
         profiles_service_pb2.ExportProfilesServiceRequest.FromString(request.body)

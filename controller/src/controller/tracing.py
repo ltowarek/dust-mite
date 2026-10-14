@@ -41,13 +41,13 @@ def configure_tracing(endpoint: str | None, resource: Resource) -> None:
     Sets the global TracerProvider and W3C TraceContext TextMapPropagator.
     Call once at application startup before any spans are created.
 
-    ``endpoint`` is the OTLP base endpoint; configuration is skipped if it is
-    empty.
+    ``endpoint`` is the full OTLP/HTTP traces URL; configuration is skipped
+    if it is empty.
     """
     if not endpoint:
-        logger.debug("No OTLP endpoint, skipping tracer configuration")
+        logger.debug("No OTLP traces endpoint, skipping tracer configuration")
         return
-    exporter = OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces")
+    exporter = OTLPSpanExporter(endpoint=endpoint)
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)

@@ -8,12 +8,22 @@ class TestObservabilitySettingsFromEnv:
         ("variable", "field"),
         [
             pytest.param(
-                "OTEL_EXPORTER_OTLP_ENDPOINT", "otlp_endpoint", id="otlp_endpoint"
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+                "traces_endpoint",
+                id="traces_endpoint",
+            ),
+            pytest.param(
+                "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "logs_endpoint", id="logs_endpoint"
             ),
             pytest.param(
                 "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
                 "metrics_endpoint",
                 id="metrics_endpoint",
+            ),
+            pytest.param(
+                "OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT",
+                "profiles_endpoint",
+                id="profiles_endpoint",
             ),
             pytest.param("SERVICE_REPOSITORY", "repository", id="repository"),
         ],
@@ -26,10 +36,65 @@ class TestObservabilitySettingsFromEnv:
         assert getattr(settings, field) == "http://example.invalid"
 
     @pytest.mark.parametrize(
-        "field", ["otlp_endpoint", "metrics_endpoint", "repository"]
+        "field",
+        [
+            "traces_endpoint",
+            "logs_endpoint",
+            "metrics_endpoint",
+            "profiles_endpoint",
+            "repository",
+        ],
     )
     def test_leaves_each_field_unset_without_its_variable(self, field: str) -> None:
         assert getattr(ObservabilitySettings.from_env({}), field) is None
+
+    @pytest.mark.parametrize(
+        ("field", "expected"),
+        [
+            pytest.param(
+                "traces_endpoint", "http://collector.invalid/v1/traces", id="traces"
+            ),
+            pytest.param(
+                "logs_endpoint", "http://collector.invalid/v1/logs", id="logs"
+            ),
+            pytest.param(
+                "profiles_endpoint",
+                "http://collector.invalid/v1development/profiles",
+                id="profiles",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "base",
+        [
+            pytest.param("http://collector.invalid", id="no_trailing_slash"),
+            pytest.param("http://collector.invalid/", id="trailing_slash"),
+        ],
+    )
+    def test_derives_signal_endpoints_from_the_base_endpoint(
+        self, base: str, field: str, expected: str
+    ) -> None:
+        settings = ObservabilitySettings.from_env({"OTEL_EXPORTER_OTLP_ENDPOINT": base})
+
+        assert getattr(settings, field) == expected
+
+    def test_prefers_a_signal_endpoint_over_the_base_endpoint(self) -> None:
+        settings = ObservabilitySettings.from_env(
+            {
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.invalid",
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://tempo.invalid/traces",
+            }
+        )
+
+        assert settings.traces_endpoint == "http://tempo.invalid/traces"
+
+    def test_does_not_derive_the_metrics_endpoint_from_the_base_endpoint(self) -> None:
+        """Metrics go straight to Mimir; the collector has no metrics pipeline."""
+        settings = ObservabilitySettings.from_env(
+            {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.invalid"}
+        )
+
+        assert settings.metrics_endpoint is None
 
     @pytest.mark.parametrize(
         ("value", "expected"),

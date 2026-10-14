@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 def configure_logging(endpoint: str | None, resource: Resource) -> None:
     """Export the root logger's records over OTLP/HTTP.
 
-    Builds a ``LoggerProvider`` exporting to ``endpoint``, the OTLP base
-    endpoint, sets it as the global provider and installs its handler,
+    Builds a ``LoggerProvider`` exporting to ``endpoint``, the full OTLP/HTTP
+    logs URL, sets it as the global provider and installs its handler,
     skipping configuration if ``endpoint`` is empty.
     """
     if not endpoint:
-        logger.debug("No OTLP endpoint, skipping log configuration")
+        logger.debug("No OTLP logs endpoint, skipping log configuration")
         return
-    exporter = OTLPLogExporter(endpoint=f"{endpoint}/v1/logs")
+    exporter = OTLPLogExporter(endpoint=endpoint)
     provider = LoggerProvider(resource=resource)
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)

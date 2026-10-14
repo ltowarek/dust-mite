@@ -209,7 +209,7 @@ All three services export traces via OTLP/HTTP to the OTel Collector and metrics
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
 | ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
-| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
+| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces` (default `http://otel-collector:4318/v1/traces`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
 | Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `/otlp`), proxied by Vite straight to Mimir |
 
 The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
@@ -241,10 +241,10 @@ rather than introducing a separate structured logging vocabulary. `configure_log
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
 `logging.getLogger(...)` call site is bridged with no change to call sites or log levels. Both
 `controller.py` (gamepad CLI) and `streamer.py` (always-on service) set it up, with every other
-signal, through `configure_observability`. Log records share the resource tracing uses, and
-route through the same
-`OTEL_EXPORTER_OTLP_ENDPOINT` collector endpoint as traces (not the metrics bypass-to-Mimir
-pattern). No log-level filtering is added — both entry points already run at `DEBUG`, and
+signal, through `configure_observability`. Log records share the resource tracing uses, and route
+through the same collector as traces, at `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else
+`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs` (not the metrics bypass-to-Mimir pattern). No
+log-level filtering is added — both entry points already run at `DEBUG`, and
 everything already being logged, including `DEBUG`, ships as-is. The handler is constructed with
 `log_code_attributes=True`, which is off by default: without it records reach Loki with no `code.*`
 attributes, so nothing there says which call site produced a line.
@@ -447,7 +447,9 @@ contending for the GIL is typically in `S` state and gets filtered out even thou
 See `controller/src/otlp_profiler/sampler.py`'s module docstring for the full detail.
 
 Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off unless
-`PROFILING_ENABLED` is set to `1`.
+`PROFILING_ENABLED` is set to `1`. Profiles go to `OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT`, else
+`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1development/profiles`: the profiles signal is still in
+development, so the pinned collector serves it under the development version rather than `v1`.
 
 To profile a run:
 

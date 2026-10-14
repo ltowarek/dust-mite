@@ -20,7 +20,6 @@ from opentelemetry.sdk.resources import SERVICE_NAME
 
 from otlp_profiler.aggregator import SampleKey, Stack
 
-_PROFILES_PATH = "/v1development/profiles"
 _THREAD_NAME_KEY = "thread_name"
 
 
@@ -243,14 +242,14 @@ def send(
     endpoint: str,
     request: profiles_service_pb2.ExportProfilesServiceRequest,
 ) -> None:
-    """POST `request` as protobuf to `endpoint`'s OTLP profiles path.
+    """POST `request` as protobuf to `endpoint`, the full OTLP profiles URL.
 
     Raises if the collector responds with an HTTP error status, so callers
     (see `otlp_profiler.configure`'s export callback) can log the failure
     instead of it being silently swallowed.
     """
     response = _session.post(
-        endpoint.rstrip("/") + _PROFILES_PATH,
+        endpoint,
         data=request.SerializeToString(),
         headers={"Content-Type": "application/x-protobuf"},
         timeout=5,

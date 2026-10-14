@@ -27,16 +27,16 @@ def configure_profiling(
 ) -> None:
     """Configure continuous CPU profiling for `service_name`.
 
-    ``endpoint`` is the same OTLP base endpoint tracing uses, since profiles
-    are posted directly to the OTel Collector; unlike the ESP32 firmware
-    pipeline there is no symbolizer hop. Configuration is skipped if it is
-    empty. Pyroscope links profiles to ``repository``.
+    ``endpoint`` is the full OTLP/HTTP profiles URL, on the OTel Collector:
+    unlike the ESP32 firmware pipeline there is no symbolizer hop.
+    Configuration is skipped if it is empty. Pyroscope links profiles to
+    ``repository``.
 
     Call after `configure_tracing()`, which must have already set the global
     TracerProvider for span/profile linking to attach to.
     """
     if not endpoint:
-        logger.debug("No OTLP endpoint, skipping profiler configuration")
+        logger.debug("No OTLP profiles endpoint, skipping profiler configuration")
         return
 
     resource_attributes = resolve_source_attributes(
