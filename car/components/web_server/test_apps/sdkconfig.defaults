@@ -8,5 +8,8 @@ CONFIG_FREERTOS_TASK_NOTIFICATION_ARRAY_ENTRIES=3
 CONFIG_HTTPD_WS_SUPPORT=y
 CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT=y
 CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT=y
-CONFIG_LWIP_MAX_SOCKETS=16
+CONFIG_LWIP_MAX_SOCKETS=24
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# The car is reached only over USB Serial/JTAG. As the secondary console that port is output-only,
+# so the Unity menu could not read the test runner's input; it has to be the primary console.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
