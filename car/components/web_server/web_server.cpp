@@ -307,10 +307,22 @@ static esp_err_t drive_handler(httpd_req_t* req) {
   return ret;
 }
 
-// A push endpoint's client only reads, so there is nothing to handle after the handshake.
+// A push endpoint's client only reads, but a frame it sends anyway must still be read off the
+// socket: httpd reads only a frame's first byte before calling the handler, and would parse the
+// rest as the next frame.
 static esp_err_t push_handler(httpd_req_t* req) {
-  (void)req;
-  return ESP_OK;
+  httpd_ws_frame_t frame = {};
+  esp_err_t ret = httpd_ws_recv_frame(req, &frame, 0);
+  if (ret != ESP_OK || frame.len == 0) {
+    return ret;
+  }
+  frame.payload = static_cast<uint8_t*>(malloc(frame.len));
+  if (frame.payload == nullptr) {
+    return ESP_ERR_NO_MEM;
+  }
+  ret = httpd_ws_recv_frame(req, &frame, frame.len);
+  free(frame.payload);
+  return ret;
 }
 
 static ws_endpoint_t g_drive{.path = "/",

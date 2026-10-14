@@ -519,3 +519,23 @@ TEST_CASE("no_server_runs_when_one_fails_to_start", "[web_server]") {
   TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_answering_endpoints(),
                                 "servers kept running after another one failed to start");
 }
+
+static void keeps_sending_after_a_client_frame(const endpoint_t& endpoint) {
+  const char hello[] = "hello";
+  ws_client_t* ws = ws_connect_or_fail(endpoint);
+  ws_wait_for_messages_or_fail(ws, 1);
+
+  esp_websocket_client_send_text(ws->handle, hello, strlen(hello), portMAX_DELAY);
+  int received = ws->messages;
+
+  TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_messages(ws, received + 2, CLOSE_TIMEOUT_MS),
+                           "the endpoint stopped sending after the client sent a frame");
+}
+
+TEST_CASE("camera_keeps_sending_after_a_client_frame", "[web_server]") {
+  keeps_sending_after_a_client_frame(CAMERA);
+}
+
+TEST_CASE("telemetry_keeps_sending_after_a_client_frame", "[web_server]") {
+  keeps_sending_after_a_client_frame(TELEMETRY);
+}
