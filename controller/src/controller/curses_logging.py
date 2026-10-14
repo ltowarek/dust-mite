@@ -11,7 +11,7 @@ class _LogWindow(Protocol):
     """The subset of `curses.window` this module writes through.
 
     A structural type rather than `curses.window` itself, so tests can pass
-    a plain fake instead of a real (C-extension) curses window.
+    a spy instead of a real (C-extension) curses window.
     """
 
     # `scrollok` and `addstr` mirror curses.window's C functions, which

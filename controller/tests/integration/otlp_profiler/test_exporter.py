@@ -42,7 +42,7 @@ class _CollectorServer(ThreadingHTTPServer):
     response_status: int
 
 
-class _RecordingCollector(BaseHTTPRequestHandler):
+class _CollectorSpy(BaseHTTPRequestHandler):
     """Records each POST on its server and replies with `response_status`."""
 
     def do_POST(self) -> None:
@@ -60,7 +60,7 @@ class _RecordingCollector(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def collector() -> Iterator[_CollectorServer]:
-    server = _CollectorServer(("127.0.0.1", 0), _RecordingCollector)
+    server = _CollectorServer(("127.0.0.1", 0), _CollectorSpy)
     server.received = []
     server.response_status = 200
     thread = threading.Thread(target=server.serve_forever, daemon=True)

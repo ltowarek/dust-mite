@@ -2,19 +2,19 @@ import { expect, test } from "@playwright/test";
 import { WebSocketServer } from "ws";
 import { Command } from "../../src/command.js";
 
-let wss;
+let streamerSpy;
 
 test.beforeAll(() => {
-  wss = new WebSocketServer({ port: 8765 });
+  streamerSpy = new WebSocketServer({ port: 8765 });
 });
 
 test.afterAll(() => {
-  wss.close();
+  streamerSpy.close();
 });
 
 function connectionTo(path) {
   return new Promise((resolve) => {
-    wss.on("connection", (ws, request) => {
+    streamerSpy.on("connection", (ws, request) => {
       if (request.url === path) {
         resolve(ws);
       }

@@ -100,19 +100,3 @@ class WebSocketCommandSender:
             reason = e.rcvd.reason if e.rcvd is not None else ""
             raise DriveConnectionClosedError(reason or "connection lost") from e
         record_command_sent(command)
-
-
-class InMemoryCommandSender:
-    """Command sender that records sent commands instead of transmitting them.
-
-    Useful for local development and tests that need to drive the control
-    loop without a real websocket connection or car.
-    """
-
-    def __init__(self) -> None:
-        """Initialize the object."""
-        self.sent: list[tuple[Command, int | None]] = []
-
-    def send(self, command: Command, value: int | None) -> None:
-        """Record a command instead of sending it anywhere."""
-        self.sent.append((command, value))

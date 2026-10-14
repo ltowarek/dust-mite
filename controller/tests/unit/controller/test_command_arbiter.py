@@ -13,18 +13,11 @@ from controller.command_arbiter import (
 from controller.subject import Subject
 
 from .conftest import counter_values_by_command
+from .test_doubles import SubscriberSpy
 
 _SPEED = 50
 _CLEAR_DISTANCE_CM = 100
 _OBSTACLE_DISTANCE_CM = 3
-
-
-class _Recorder:
-    def __init__(self) -> None:
-        self.messages: list[dict[str, Any]] = []
-
-    def __call__(self, message: dict[str, Any]) -> None:
-        self.messages.append(message)
 
 
 class _Car:
@@ -33,8 +26,8 @@ class _Car:
     def __init__(self) -> None:
         self.telemetry = Subject()
         self.commands = Subject()
-        self.sent = _Recorder()
-        self.collision_states = _Recorder()
+        self.sent = SubscriberSpy[dict[str, Any]]()
+        self.collision_states = SubscriberSpy[dict[str, Any]]()
         self.arbiter = CommandArbiter(self.commands, self.telemetry, CollisionMonitor())
 
     def report_distance(self, distance_ahead_cm: int) -> None:

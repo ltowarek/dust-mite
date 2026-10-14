@@ -84,7 +84,7 @@ describe("HeldKeyStack", () => {
   });
 });
 
-function fakeGamepad({ axes = [0, 0, 0, 0], buttons = {} } = {}) {
+function gamepadStub({ axes = [0, 0, 0, 0], buttons = {} } = {}) {
   const defaultButtons = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
   for (const [index, button] of Object.entries(buttons)) {
     defaultButtons[index] = { pressed: false, value: 0, ...button };
@@ -94,7 +94,7 @@ function fakeGamepad({ axes = [0, 0, 0, 0], buttons = {} } = {}) {
 
 describe("readGamepadCommand", () => {
   test("returns null when every axis and button is at rest", () => {
-    expect(readGamepadCommand(fakeGamepad())).toBeNull();
+    expect(readGamepadCommand(gamepadStub())).toBeNull();
   });
 
   test.each([
@@ -103,7 +103,7 @@ describe("readGamepadCommand", () => {
     { direction: "left", button: 14, command: Command.TURN_LEFT },
     { direction: "right", button: 15, command: Command.TURN_RIGHT },
   ])("D-pad $direction sends its command at the fixed value", ({ button, command }) => {
-    const gamepad = fakeGamepad({ buttons: { [button]: { pressed: true } } });
+    const gamepad = gamepadStub({ buttons: { [button]: { pressed: true } } });
 
     expect(readGamepadCommand(gamepad)).toEqual({ command, value: 50 });
   });
@@ -112,38 +112,38 @@ describe("readGamepadCommand", () => {
     { direction: "left", x: -1, command: Command.TURN_LEFT },
     { direction: "right", x: 1, command: Command.TURN_RIGHT },
   ])("left stick pushed fully $direction turns at full value", ({ x, command }) => {
-    const gamepad = fakeGamepad({ axes: [x, 0, 0, 0] });
+    const gamepad = gamepadStub({ axes: [x, 0, 0, 0] });
 
     expect(readGamepadCommand(gamepad)).toEqual({ command, value: 100 });
   });
 
   test("left stick X within the dead zone is ignored", () => {
-    expect(readGamepadCommand(fakeGamepad({ axes: [0.05, 0, 0, 0] }))).toBeNull();
+    expect(readGamepadCommand(gamepadStub({ axes: [0.05, 0, 0, 0] }))).toBeNull();
   });
 
   test.each([
     { motion: "right", axes: [0, 0, 1, 0], command: Command.LOOK_HORIZONTALLY },
     { motion: "up", axes: [0, 0, 0, -1], command: Command.LOOK_VERTICALLY },
   ])("right stick pushed fully $motion moves the camera", ({ axes, command }) => {
-    const gamepad = fakeGamepad({ axes });
+    const gamepad = gamepadStub({ axes });
 
     expect(readGamepadCommand(gamepad)).toEqual({ command, value: 90 });
   });
 
   test("R2 trigger advances proportionally to how far it's pulled", () => {
-    const gamepad = fakeGamepad({ buttons: { 7: { value: 0.5 } } });
+    const gamepad = gamepadStub({ buttons: { 7: { value: 0.5 } } });
 
     expect(readGamepadCommand(gamepad)).toEqual({ command: Command.ADVANCE, value: 50 });
   });
 
   test("D-pad takes priority over the left stick", () => {
-    const gamepad = fakeGamepad({ axes: [1, 0, 0, 0], buttons: { 12: { pressed: true } } });
+    const gamepad = gamepadStub({ axes: [1, 0, 0, 0], buttons: { 12: { pressed: true } } });
 
     expect(readGamepadCommand(gamepad)).toEqual({ command: Command.ADVANCE, value: 50 });
   });
 
   test("the left stick takes priority over the right stick and triggers", () => {
-    const gamepad = fakeGamepad({ axes: [1, 0, 1, 0], buttons: { 7: { value: 1 } } });
+    const gamepad = gamepadStub({ axes: [1, 0, 1, 0], buttons: { 7: { value: 1 } } });
 
     expect(readGamepadCommand(gamepad).command).toBe(Command.TURN_RIGHT);
   });

@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 import websockets.sync.server
 
-from .car_doubles import (
+from .test_doubles import (
     CLEAR_DISTANCE_CM,
     CarEndpointSpy,
     camera_frame,
@@ -18,7 +18,7 @@ from .car_doubles import (
 
 
 @dataclasses.dataclass
-class LocalServer:
+class LocalServerSpy:
     server: websockets.sync.server.Server
     received: list[dict[str, Any]]
     message_received: threading.Event
@@ -30,7 +30,7 @@ class LocalServer:
 
 
 @pytest.fixture
-def local_server() -> Generator[LocalServer, None, None]:
+def local_server_spy() -> Generator[LocalServerSpy, None, None]:
     received: list[dict[str, Any]] = []
     message_received = threading.Event()
 
@@ -47,7 +47,7 @@ def local_server() -> Generator[LocalServer, None, None]:
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
         try:
-            yield LocalServer(server, received, message_received)
+            yield LocalServerSpy(server, received, message_received)
         finally:
             server.shutdown()
             thread.join()

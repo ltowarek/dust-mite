@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections.abc import Mapping
 from types import SimpleNamespace
 
 import opentelemetry.metrics as otel_metrics
@@ -27,18 +28,22 @@ _metrics: SimpleNamespace = SimpleNamespace(
 )
 
 
-def configure_metrics(service_name: str, provider: MeterProvider | None = None) -> None:
+def configure_metrics(
+    service_name: str,
+    provider: MeterProvider | None = None,
+    environ: Mapping[str, str] = os.environ,
+) -> None:
     """Configure OpenTelemetry metrics instruments.
 
     When ``provider`` is omitted, builds a production ``MeterProvider`` with
     OTLP/HTTP export and sets it as the global provider. Reads
-    ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` from the environment in that case,
+    ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` from ``environ`` in that case,
     skipping configuration if it isn't set. Pass a ``MeterProvider``
     explicitly to use a custom provider without touching the global state
     (useful in tests).
     """
     if provider is None:
-        endpoint_url = os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+        endpoint_url = environ.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
         if not endpoint_url:
             logger.debug(
                 "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT not set, "

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Command } from "../../src/command.js";
 import { DriveController, driveStatusText } from "../../src/drive.js";
 
-class FakeSocket {
+class SocketSpy {
   constructor() {
     this.readyState = WebSocket.OPEN;
     this.sent = [];
@@ -19,7 +19,7 @@ describe("DriveController", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    socket = new FakeSocket();
+    socket = new SocketSpy();
     controller = new DriveController(socket, window, { getGamepads: () => [] });
     controller.start();
   });

@@ -9,12 +9,12 @@ from controller.car import CarFeed, send_commands_to_car
 from controller.command import Command
 from controller.subject import Subject
 
-from .car_doubles import CarEndpointSpy, camera_frame, car_feed_stub, wait_for
+from .test_doubles import CarEndpointSpy, camera_frame, car_feed_stub, wait_for
 
 _SPEED = 50
 
 
-class _Recorder:
+class _SubscriberSpy:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
 
@@ -26,7 +26,7 @@ def test_feed_subscribers_share_one_car_connection(
     camera_feed: CarEndpointSpy,
 ) -> None:
     feed = CarFeed(camera_feed.uri, json.loads)
-    first, second = _Recorder(), _Recorder()
+    first, second = _SubscriberSpy(), _SubscriberSpy()
 
     with feed.subscription(first), feed.subscription(second):
         wait_for(lambda: bool(first.messages and second.messages))
@@ -38,7 +38,7 @@ def test_feed_disconnects_after_the_last_subscriber_leaves(
     camera_feed: CarEndpointSpy,
 ) -> None:
     feed = CarFeed(camera_feed.uri, json.loads)
-    recorder = _Recorder()
+    recorder = _SubscriberSpy()
 
     with feed.subscription(recorder):
         wait_for(lambda: bool(recorder.messages))
@@ -59,7 +59,7 @@ def test_feed_retries_while_the_car_refuses_as_busy() -> None:
             return connection.respond(http.HTTPStatus.SERVICE_UNAVAILABLE, "")
         return None
 
-    recorder = _Recorder()
+    recorder = _SubscriberSpy()
     with car_feed_stub(camera_frame, process_request=refuse_first) as camera:
         feed = CarFeed(camera.uri, json.loads)
         with feed.subscription(recorder):

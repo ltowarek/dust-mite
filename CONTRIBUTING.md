@@ -8,10 +8,33 @@ This repository is an experimental platform, and contributions that improve tech
 - Keep changes focused and easy to review.
 - Prefer small pull requests over large rewrites.
 - Preserve existing style and tooling unless a change explicitly updates them.
-- Follow classical TDD: use real collaborators in tests instead of mocks or stubs.
+- Follow classical TDD: prefer real collaborators in tests. Where a real collaborator is impractical, use a hand-written stub, spy, or fake as described in [Test doubles](#test-doubles). Never use mocks or monkeypatching.
 - Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
 - A suppression is acceptable only when the finding cannot be fixed because the code must match an interface outside the repository, such as a C extension's signature or a server that must bind to all interfaces. In that case, suppress the single rule on the single line and state the reason after it, for example `# noqa: S104 - the streamer must accept connections from all interfaces`, and list the suppression in the pull request description.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
+
+## Test doubles
+
+Test doubles follow the taxonomy from Gerard Meszaros, *xUnit Test Patterns*, summarized in Martin Fowler's [Mocks Aren't Stubs](https://martinfowler.com/articles/mocksArentStubs.html):
+
+| Double | What it does |
+|---|---|
+| Dummy | Is passed around but never used. |
+| Stub | Returns canned answers to the calls the test makes. |
+| Spy | A stub that also records how it was used, for the test to check afterwards. |
+| Mock | Is pre-programmed with expectations and verifies them itself. Not used in this repository. |
+| Fake | A working, simplified implementation, such as an in-memory database. |
+
+Rules:
+
+- Name a double after its role, with the role as a suffix: `…Stub`, `…Spy`, `…Fake`, or `…Dummy`. Functions and C++ identifiers use `_stub`, `_spy`, `_fake`, or `_dummy`. A double that both returns canned answers and records calls is a spy.
+- A double may subclass the real type when the interface is untyped or C-backed. Name it by the role it plays.
+- Doubles that only tests use live under `tests/`, not `src/`. Put a double in `src/` only if it is a product feature, such as a car simulator.
+- Doubles shared by several test modules live in a `test_doubles.py` next to those tests, with `__test__ = False` at module level so that pytest does not collect it.
+- Use hand-written doubles only: no `unittest.mock`, `pytest` `monkeypatch`, `vi.mock`, `vi.spyOn`, `vi.stubGlobal`, `vi.stubEnv`, gmock, or CMock. Inject the collaborator, setting, or environment mapping instead.
+- Names from third-party APIs, such as Vitest `vi.useFakeTimers` and OpenTelemetry `InMemoryMetricReader`, are exempt from the naming rule.
+
+These rules are documented only; no linter enforces them.
 
 ## Issue labels
 
@@ -645,7 +668,7 @@ If checks fail, apply automatic fixes:
 - Unit tests: validate individual modules and functions in isolation; implemented in [web/tests/unit/](web/tests/unit/).
 - Integration tests: validate interactions across component boundaries; implemented in [web/tests/integration/](web/tests/integration/).
 - E2E tests: validate full user-level flows in a browser; implemented in [web/tests/e2e/](web/tests/e2e/). Two variants:
-  - Mock-based: uses an in-process WebSocket server; runs in CI.
+  - Streamer-spy-based: runs against an in-process WebSocket server standing in for the streamer; runs in CI.
   - Full-stack (`tests/e2e/full_stack.test.js`): runs against the real running stack; on-demand only, not run in CI.
 
 Run specific suites:
@@ -889,12 +912,6 @@ Each test scope can target a different execution environment. Choose based on wh
 - Pros: no device required; runs the actual firmware binary; supports GDB debugging via `idf.py qemu gdb`; safe for irreversible hardware operations.
 - Cons: incomplete peripheral emulation; does not replace target testing for hardware-dependent components; requires the Espressif QEMU fork.
 
-**Host — CMock**: compiles the component for Linux with CMock-generated stubs replacing hardware dependencies; run directly without pytest-embedded.
-
-- Use for: pure logic with no hardware or FreeRTOS dependency (data structures, algorithms, protocol handling).
-- Pros: fastest execution; runs in standard CI; supports host-side tools (Valgrind, sanitizers).
-- Cons: stubs must be generated and maintained; cannot validate hardware interactions or FreeRTOS task behavior.
-
 **Host — POSIX/Linux simulator**: runs the component under the FreeRTOS POSIX/Linux simulator, which maps FreeRTOS tasks to pthreads and uses POSIX signals for scheduling; run directly without pytest-embedded.
 
 - Use for: code that uses FreeRTOS primitives (tasks, queues, semaphores) but has no real hardware dependency.
@@ -905,7 +922,6 @@ Each test scope can target a different execution environment. Choose based on wh
 
 | Validation target | Environment |
 |---|---|
-| Pure logic, no hardware or FreeRTOS dependency | Host — CMock |
 | FreeRTOS task interactions, no hardware dependency | Host — POSIX/Linux simulator |
 | Firmware behavior without real peripherals | QEMU |
 | Security features (eFuse, secure boot) | QEMU |

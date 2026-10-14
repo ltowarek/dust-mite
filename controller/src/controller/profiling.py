@@ -17,7 +17,7 @@ def resolve_endpoint(profiling_enabled: str, endpoint: str | None) -> str | None
 
     Pure decision logic factored out of `configure_profiling` so it can be
     tested directly with plain string arguments, without needing environment
-    variables or a fake `otlp_profiler.configure`.
+    variables or a test double for `otlp_profiler.configure`.
     """
     if profiling_enabled != _ENABLED_VALUE:
         logger.debug("PROFILING_ENABLED not set, skipping profiler configuration")

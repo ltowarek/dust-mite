@@ -24,7 +24,7 @@ from controller.senders import WebSocketCommandSender
 from controller.streamer import camera_message, server_handler, telemetry_message
 from controller.subject import Subject
 
-from .car_doubles import (
+from .test_doubles import (
     OBSTACLE_DISTANCE_CM,
     WAIT_TIMEOUT_S,
     CarEndpointSpy,

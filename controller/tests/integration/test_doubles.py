@@ -19,6 +19,8 @@ import websockets.exceptions
 import websockets.http11
 import websockets.sync.server
 
+__test__ = False
+
 WAIT_TIMEOUT_S = 10
 FEED_INTERVAL_S = 0.05
 CLEAR_DISTANCE_CM = 100
