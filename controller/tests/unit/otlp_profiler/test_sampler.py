@@ -1,3 +1,4 @@
+import inspect
 import sys
 import threading
 import time
@@ -10,7 +11,8 @@ from otlp_profiler.span_registry import ActiveSpanRegistry
 
 
 def _inner() -> tuple[tuple[str, str, int], ...]:
-    frame = sys._current_frames()[threading.get_ident()]  # noqa: SLF001 - the documented way to read a thread's frame
+    frame = inspect.currentframe()
+    assert frame is not None
     return walk_stack(frame)
 
 

@@ -108,7 +108,7 @@ class Sampler:
         }
 
     def _sample_once(self) -> None:
-        frames = sys._current_frames()  # noqa: SLF001 - the documented way to read other threads' frames
+        frames = sys._current_frames()  # noqa: SLF001 - the only stdlib API that returns other threads' frames
         if not frames.keys() <= self._thread_info.keys():
             self._rebuild_thread_info()
 
