@@ -378,15 +378,15 @@ TEST_CASE("camera_path_on_telemetry_port_is_not_found", "[web_server]") {
 static const int COMMAND_TIMEOUT_MS = 2000;
 static const char BRAKE_50[] = "{\"command\": 3, \"value\": 50}";
 
-static bool command_received(command_packet_t* packet) {
-  return xQueueReceive(test_app_command_queue, packet, pdMS_TO_TICKS(COMMAND_TIMEOUT_MS)) == pdPASS;
+static bool command_received(drive_command_t* drive_command) {
+  return xQueueReceive(test_app_command_queue, drive_command, pdMS_TO_TICKS(COMMAND_TIMEOUT_MS)) == pdPASS;
 }
 
 TEST_CASE("command_reaches_the_command_queue", "[web_server]") {
   ws_client_t* ws = ws_connect_or_fail(DRIVE);
   esp_websocket_client_send_text(ws->handle, BRAKE_50, strlen(BRAKE_50), portMAX_DELAY);
 
-  command_packet_t received = {};
+  drive_command_t received = {};
   if (!command_received(&received)) {
     TEST_FAIL_MESSAGE("no command reached the command queue");
   }
@@ -399,7 +399,7 @@ TEST_CASE("command_that_is_not_json_is_dropped", "[web_server]") {
   ws_client_t* ws = ws_connect_or_fail(DRIVE);
   esp_websocket_client_send_text(ws->handle, not_json, strlen(not_json), portMAX_DELAY);
 
-  command_packet_t received = {};
+  drive_command_t received = {};
   TEST_ASSERT_FALSE_MESSAGE(command_received(&received), "a malformed command was queued");
 }
 
@@ -407,7 +407,7 @@ TEST_CASE("command_in_a_binary_frame_is_dropped", "[web_server]") {
   ws_client_t* ws = ws_connect_or_fail(DRIVE);
   esp_websocket_client_send_bin(ws->handle, BRAKE_50, strlen(BRAKE_50), portMAX_DELAY);
 
-  command_packet_t received = {};
+  drive_command_t received = {};
   TEST_ASSERT_FALSE_MESSAGE(command_received(&received), "a binary frame was queued");
 }
 

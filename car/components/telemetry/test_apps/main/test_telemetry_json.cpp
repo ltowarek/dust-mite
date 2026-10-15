@@ -2,11 +2,11 @@
 #include "unity.h"
 
 TEST_CASE("json_schema_completeness", "[telemetry_json]") {
-  telemetry_packet_t p = {
+  telemetry_reading_t p = {
       "2024-01-15T10:30:00Z", -65, 2.5f, {0.01f, 0.02f, 1.0f}, {0.1f, -0.2f, 0.05f},
       {0.5f, -0.3f, 0.1f},    100};
 
-  cJSON* j = convert_telemetry_packet_to_json(p);
+  cJSON* j = convert_telemetry_reading_to_json(p);
   TEST_ASSERT_NOT_NULL(j);
 
   TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(j, "timestamp")));
@@ -27,9 +27,9 @@ TEST_CASE("json_schema_completeness", "[telemetry_json]") {
 }
 
 TEST_CASE("json_value_roundtrip", "[telemetry_json]") {
-  telemetry_packet_t p = {"2024-01-15T10:30:00Z", -65, 0.0f, {1.0f, 2.0f, 3.0f}, {}, {}, 100};
+  telemetry_reading_t p = {"2024-01-15T10:30:00Z", -65, 0.0f, {1.0f, 2.0f, 3.0f}, {}, {}, 100};
 
-  cJSON* j = convert_telemetry_packet_to_json(p);
+  cJSON* j = convert_telemetry_reading_to_json(p);
   TEST_ASSERT_NOT_NULL(j);
 
   TEST_ASSERT_EQUAL_STRING("2024-01-15T10:30:00Z",

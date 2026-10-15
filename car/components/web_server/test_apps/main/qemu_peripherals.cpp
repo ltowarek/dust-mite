@@ -43,10 +43,10 @@ static void camera_stub_task(void* p) {
 static void telemetry_stub_task(void* p) {
   auto telemetry_queue = static_cast<QueueHandle_t>(p);
   for (int i = 0;; ++i) {
-    telemetry_packet_t packet = {};
-    snprintf(packet.timestamp, sizeof(packet.timestamp), "1970-01-01T00:00:00Z");
-    packet.distance_ahead = i;
-    xQueueSend(telemetry_queue, &packet, 0);
+    telemetry_reading_t reading = {};
+    snprintf(reading.timestamp, sizeof(reading.timestamp), "1970-01-01T00:00:00Z");
+    reading.distance_ahead = i;
+    xQueueSend(telemetry_queue, &reading, 0);
     vTaskDelay(pdMS_TO_TICKS(500));
   }
 }

@@ -1,4 +1,4 @@
-"""The streamer's side of the car: its endpoints and its packet format."""
+"""The streamer's side of the car: its endpoints and its message format."""
 
 import base64
 import contextlib
@@ -7,10 +7,10 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 
-from .packet import Packet
 from .subject import Subject
 from .tracing import inject_trace_context
 from .websocket_client import ClientConnection
+from .websocket_message import WebSocketMessage
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -27,20 +27,22 @@ class CarFeed:
     connection per endpoint no matter how many clients are connected.
     """
 
-    def __init__(self, uri: str, to_packet: Callable[[str | bytes], Packet]) -> None:
+    def __init__(
+        self, uri: str, to_message: Callable[[str | bytes], WebSocketMessage]
+    ) -> None:
         """Initialize the object."""
         self._uri = uri
-        self._to_packet = to_packet
+        self._to_message = to_message
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._subject: Subject[Packet] = Subject(
+        self._subject: Subject[WebSocketMessage] = Subject(
             on_active=self._start, on_idle=self._stop
         )
 
     def subscription(
-        self, callback: Callable[[Packet], None]
+        self, callback: Callable[[WebSocketMessage], None]
     ) -> contextlib.AbstractContextManager[None]:
-        """Call `callback` with each packet from the car while the context is open."""
+        """Call `callback` with each message from the car while the context is open."""
         return self._subject.subscription(callback)
 
     def _start(self) -> None:
@@ -61,15 +63,17 @@ class CarFeed:
                 except TimeoutError:
                     continue
                 try:
-                    packet = self._to_packet(raw)
+                    message = self._to_message(raw)
                 except Exception:
                     logger.exception("Dropping unreadable message from %s", self._uri)
                     continue
-                self._subject.publish(packet)
+                self._subject.publish(message)
 
 
 @contextlib.contextmanager
-def send_commands_to_car(uri: str, commands: Subject[Packet]) -> Iterator[None]:
+def send_commands_to_car(
+    uri: str, commands: Subject[WebSocketMessage]
+) -> Iterator[None]:
     """Send each command published on `commands` to the car while the context is open.
 
     The car's one Drive endpoint connection stays open for the whole context, so
@@ -82,11 +86,11 @@ def send_commands_to_car(uri: str, commands: Subject[Packet]) -> Iterator[None]:
         yield
 
 
-def camera_frame_jpeg(packet: Packet) -> bytes:
-    """Return the JPEG carried by a camera packet from the car."""
-    return base64.b64decode(packet["data"])
+def camera_frame_jpeg(message: WebSocketMessage) -> bytes:
+    """Return the JPEG carried by a camera message from the car."""
+    return base64.b64decode(message["data"])
 
 
-def prepare_command_packet(command: Packet) -> Packet:
-    """Build a drive command packet with trace context."""
+def prepare_drive_command(command: WebSocketMessage) -> WebSocketMessage:
+    """Build a Drive command for the car with trace context."""
     return inject_trace_context(command)

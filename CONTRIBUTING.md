@@ -287,7 +287,7 @@ records; the drop is silent and non-blocking by design, not a correctness bug.
 
 ### Cross-service trace propagation
 
-W3C `traceparent` is embedded as a field in every WebSocket JSON packet, linking spans across the firmware → streamer → browser path:
+W3C `traceparent` is embedded as a field in every JSON WebSocket message, linking spans across the firmware → streamer → browser path:
 
 - Firmware: `tracing_inject()` / `tracing_extract()` in [car/components/tracing/tracing.hpp](car/components/tracing/tracing.hpp).
 - Streamer: `inject_trace_context()` / `extract_trace_context()` in [controller/src/controller/tracing.py](controller/src/controller/tracing.py).
@@ -303,7 +303,7 @@ auto span = esp_opentelemetry_tracer()->StartSpan("my.operation");
 span->SetAttribute("key", "value");
 span->End();
 
-// Span linked to a parent extracted from an incoming JSON packet
+// Span linked to a parent extracted from an incoming JSON WebSocket message
 auto parent_ctx = tracing_extract(*json_obj);
 opentelemetry::trace::StartSpanOptions opts;
 opts.parent = opentelemetry::trace::GetSpan(parent_ctx)->GetContext();
@@ -323,9 +323,9 @@ def my_function():
     span = trace.get_current_span()
     span.set_attribute("key", "value")
 
-# Span linked to a parent extracted from an incoming WebSocket JSON packet
-packet: dict = json.loads(raw_message)
-parent_ctx = extract_trace_context(packet)  # reads W3C traceparent from the dict
+# Span linked to a parent extracted from an incoming JSON WebSocket message
+message: dict = json.loads(raw_message)
+parent_ctx = extract_trace_context(message)  # reads W3C traceparent from the dict
 with tracer.start_as_current_span("my.operation", context=parent_ctx) as span:
     span.set_attribute("key", "value")
 ```
@@ -333,8 +333,8 @@ with tracer.start_as_current_span("my.operation", context=parent_ctx) as span:
 **Web browser (JavaScript)** — use the module-level `tracer` and `propagation` from `web/src/index.js`:
 
 ```js
-// Span linked to a parent extracted from an incoming WebSocket JSON packet
-const carrier = { traceparent: packet.traceparent, tracestate: packet.tracestate };
+// Span linked to a parent extracted from an incoming JSON WebSocket message
+const carrier = { traceparent: message.traceparent, tracestate: message.tracestate };
 const parentContext = propagation.extract(context.active(), carrier);
 const span = tracer.startSpan("my.operation", {
     attributes: { "key": "value" },
@@ -597,7 +597,7 @@ If checks fail, apply automatic fixes:
 ### Controller test types
 
 - Unit tests: validate individual controller modules and functions in isolation using focused test doubles where needed; implemented in [controller/tests/unit/](controller/tests/unit/).
-- Integration tests: validate interactions across controller boundaries (for example websocket communication and packet flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/). Some require a real, connected device and are marked `@pytest.mark.dut` — skipped by default, run with `./scripts/run_tests.sh -- tests/integration --dut`, never run in CI.
+- Integration tests: validate interactions across controller boundaries (for example websocket communication and message flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/). Some require a real, connected device and are marked `@pytest.mark.dut` — skipped by default, run with `./scripts/run_tests.sh -- tests/integration --dut`, never run in CI.
 - E2E tests: validate full user-level control flows across the complete stack (controller input to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
 
 Run specific suites:
@@ -975,7 +975,7 @@ In QEMU mode the app:
 - brings the network up on QEMU's emulated OpenCores Ethernet MAC (`CONFIG_ETH_USE_OPENETH`) instead
   of Wi-Fi;
 - starts the real web server;
-- feeds it synthetic camera frames and telemetry packets from `main/qemu_peripherals.cpp`.
+- feeds it synthetic camera frames and Telemetry readings from `main/qemu_peripherals.cpp`.
 
 The test app's `conftest.py` starts QEMU with 4 MB of PSRAM and user-mode networking, and forwards
 one free local port to each endpoint's server port (80, 81 and 82). The pytest tests take the

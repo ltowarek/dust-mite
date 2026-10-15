@@ -23,12 +23,12 @@ export function updateCollisionMonitor(elements, stopping) {
   elements.collision_monitor.innerText = stopping ? "Obstacle ahead - forward blocked" : "";
 }
 
-export function handlePacket(packet, elements) {
-  if (packet.type === "stream") {
-    updateStream(elements.image, packet.data);
-  } else if (packet.type === "telemetry") {
-    updateTelemetry(elements, packet.data);
-  } else if (packet.type === "collision_monitor") {
-    updateCollisionMonitor(elements, packet.stopping);
+export function handleMessage(message, elements) {
+  if (message.type === "stream") {
+    updateStream(elements.image, message.data);
+  } else if (message.type === "telemetry") {
+    updateTelemetry(elements, message.data);
+  } else if (message.type === "collision_monitor") {
+    updateCollisionMonitor(elements, message.stopping);
   }
 }

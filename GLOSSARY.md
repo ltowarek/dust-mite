@@ -35,11 +35,23 @@ The wire unit a WebSocket message travels in; one WebSocket message is one or mo
 _Avoid_: Frame (on its own)
 
 **Drive command**:
-The WebSocket message a client sends to steer the car.
-_Avoid_: Control message, drive packet
+The WebSocket message a Driver sends to control the car: a Velocity command, a brake, or a camera pan or tilt.
+_Avoid_: Control message, operator command, teleop command, drive packet
+
+**Velocity command**:
+A Drive command that sets the car's speed or turning: advance, retreat, turn left or turn right.
+_Avoid_: Motion command, movement command
+
+**Driver**:
+The one client allowed to send Drive commands at a time.
+_Avoid_: Operator, pilot
 
 **Telemetry message**:
-The WebSocket message that carries one set of sensor readings.
+The WebSocket message that carries one Telemetry reading.
+
+**Telemetry reading**:
+One timestamped set of the car's sensor readings.
+_Avoid_: Telemetry packet, telemetry sample
 
 **Collision-monitor message**:
 The WebSocket message that tells a client whether the collision monitor is blocking forward motion.

@@ -11,7 +11,7 @@ import {
   buildWsAbnormalCloseLogRecord,
   setupLogging,
 } from "./logging.js";
-import { handlePacket } from "./packets.js";
+import { handleMessage } from "./messages.js";
 import { setupMetrics } from "./metrics.js";
 
 const provider = new WebTracerProvider({
@@ -61,21 +61,21 @@ function openStreamerSocket(url, elements) {
   });
 
   socket.addEventListener("message", (event) => {
-    const packet = JSON.parse(event.data);
+    const message = JSON.parse(event.data);
 
     const carrier = {
-      traceparent: packet.traceparent,
-      tracestate: packet.tracestate,
+      traceparent: message.traceparent,
+      tracestate: message.tracestate,
     };
     const extractedContext = propagation.extract(connectionContext ?? context.active(), carrier);
 
     const messageSpan = tracer.startSpan(
-      `ws.message.receive.${packet.type}`,
+      `ws.message.receive.${message.type}`,
       {
         kind: SpanKind.CLIENT,
         attributes: {
           "network.protocol.name": "websocket",
-          "ws.message.type": packet.type,
+          "ws.message.type": message.type,
           "ws.message.size": event.data.length,
         },
       },
@@ -83,7 +83,7 @@ function openStreamerSocket(url, elements) {
     );
 
     try {
-      handlePacket(packet, elements);
+      handleMessage(message, elements);
     } finally {
       messageSpan.end();
     }

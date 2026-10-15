@@ -1,7 +1,7 @@
 #include "telemetry_types.hpp"
 #include <cJSON.h>
 
-cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t& p) {
+cJSON* convert_telemetry_reading_to_json(const telemetry_reading_t& p) {
   cJSON* root = cJSON_CreateObject();
   cJSON_AddStringToObject(root, "timestamp", p.timestamp);
   cJSON_AddNumberToObject(root, "rssi", p.rssi);

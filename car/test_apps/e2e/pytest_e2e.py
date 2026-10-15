@@ -226,7 +226,7 @@ def test_concurrent_stream_and_telemetry(dut: Dut) -> None:
     assert stream_count >= 3, \
         f'stream delivered only {stream_count} frames in 10 s'
     assert tel_count >= 3, \
-        f'telemetry delivered only {tel_count} packets in 10 s'
+        f'telemetry delivered only {tel_count} messages in 10 s'
 
 
 def test_pan_tilt(dut: Dut) -> None:

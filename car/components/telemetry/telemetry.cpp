@@ -89,7 +89,7 @@ int get_rssi() {
   return rssi;
 }
 
-void get_telemetry_packet(telemetry_packet_t* p) {
+void get_telemetry_reading(telemetry_reading_t* p) {
   get_timestamp(p->timestamp);
   p->rssi = get_rssi();
   p->speed = get_speed();
@@ -367,11 +367,11 @@ void telemetry_task(void* p) {
       continue;
     }
 
-    telemetry_packet_t packet = {};
-    get_telemetry_packet(&packet);
-    telemetry_metrics_update(packet);
+    telemetry_reading_t reading = {};
+    get_telemetry_reading(&reading);
+    telemetry_metrics_update(reading);
 
-    if (xQueueSendToBack(g_telemetry_queue, &packet, portMAX_DELAY) != pdPASS) {
+    if (xQueueSendToBack(g_telemetry_queue, &reading, portMAX_DELAY) != pdPASS) {
       ESP_LOGE(TAG, "xQueueSendToBack failed");
       break;
     }

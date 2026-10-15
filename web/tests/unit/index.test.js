@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { updateCollisionMonitor, updateStream, updateTelemetry } from "../../src/packets.js";
+import { updateCollisionMonitor, updateStream, updateTelemetry } from "../../src/messages.js";
 
 describe("updateStream", () => {
   test("sets image src to base64 JPEG data URI", () => {

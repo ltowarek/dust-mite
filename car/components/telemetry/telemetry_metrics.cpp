@@ -124,22 +124,22 @@ void telemetry_metrics_setup() {
 #endif
 }
 
-void telemetry_metrics_update(const telemetry_packet_t& packet) {
+void telemetry_metrics_update(const telemetry_reading_t& reading) {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
   if (!s_mutex) return;
   xSemaphoreTake(s_mutex, portMAX_DELAY);
-  s_state.rssi = packet.rssi;
-  s_state.speed = packet.speed;
-  s_state.distance_ahead = packet.distance_ahead;
-  s_state.accel_x = packet.accelerometer.x;
-  s_state.accel_y = packet.accelerometer.y;
-  s_state.accel_z = packet.accelerometer.z;
-  s_state.mag_x = packet.magnetometer.x;
-  s_state.mag_y = packet.magnetometer.y;
-  s_state.mag_z = packet.magnetometer.z;
-  s_state.gyro_x = packet.gyroscope.x;
-  s_state.gyro_y = packet.gyroscope.y;
-  s_state.gyro_z = packet.gyroscope.z;
+  s_state.rssi = reading.rssi;
+  s_state.speed = reading.speed;
+  s_state.distance_ahead = reading.distance_ahead;
+  s_state.accel_x = reading.accelerometer.x;
+  s_state.accel_y = reading.accelerometer.y;
+  s_state.accel_z = reading.accelerometer.z;
+  s_state.mag_x = reading.magnetometer.x;
+  s_state.mag_y = reading.magnetometer.y;
+  s_state.mag_z = reading.magnetometer.z;
+  s_state.gyro_x = reading.gyroscope.x;
+  s_state.gyro_y = reading.gyroscope.y;
+  s_state.gyro_z = reading.gyroscope.z;
   xSemaphoreGive(s_mutex);
 #endif
 }

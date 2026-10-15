@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { handlePacket } from "../../src/packets.js";
+import { handleMessage } from "../../src/messages.js";
 
-describe("handlePacket", () => {
+describe("handleMessage", () => {
   let elements;
 
   beforeEach(() => {
@@ -29,14 +29,14 @@ describe("handlePacket", () => {
     };
   });
 
-  test("routes stream packet to image element", () => {
-    handlePacket({ type: "stream", data: "dGVzdA==" }, elements);
+  test("routes stream message to image element", () => {
+    handleMessage({ type: "stream", data: "dGVzdA==" }, elements);
 
     expect(elements.image.src).toBe("data:image/jpeg;base64,dGVzdA==");
   });
 
-  test("routes telemetry packet to telemetry elements", () => {
-    handlePacket(
+  test("routes telemetry message to telemetry elements", () => {
+    handleMessage(
       {
         type: "telemetry",
         data: {
@@ -56,15 +56,15 @@ describe("handlePacket", () => {
     expect(elements.distance_ahead.innerText).toBe("150 cm");
   });
 
-  test("ignores unknown packet types", () => {
-    handlePacket({ type: "unknown", data: {} }, elements);
+  test("ignores unknown message types", () => {
+    handleMessage({ type: "unknown", data: {} }, elements);
 
     expect(elements.image.src).toBe("");
     expect(elements.speed.textContent).toBe("");
   });
 
-  test("routes collision_monitor packet to the collision monitor element", () => {
-    handlePacket({ type: "collision_monitor", stopping: true }, elements);
+  test("routes collision_monitor message to the collision monitor element", () => {
+    handleMessage({ type: "collision_monitor", stopping: true }, elements);
 
     expect(elements.collision_monitor.innerText).toBe("Obstacle ahead - forward blocked");
   });

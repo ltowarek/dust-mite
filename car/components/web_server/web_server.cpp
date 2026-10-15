@@ -245,7 +245,7 @@ static esp_err_t drive_handler(httpd_req_t* req) {
   ESP_LOGI(TAG, "Frame len is %d", ws_pkt.len);
 
   if (ws_pkt.type != HTTPD_WS_TYPE_TEXT) {
-    ESP_LOGE(TAG, "Invalid packet type: %d", ws_pkt.type);
+    ESP_LOGE(TAG, "Invalid WebSocket frame type: %d", ws_pkt.type);
     return ESP_FAIL;
   }
 
@@ -263,9 +263,9 @@ static esp_err_t drive_handler(httpd_req_t* req) {
     return ret;
   }
 
-  command_packet_t packet = {};
-  if (parse_command_packet((const char*)ws_pkt.payload, &packet)) {
-    ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", packet.command, packet.value);
+  drive_command_t drive_command = {};
+  if (parse_drive_command((const char*)ws_pkt.payload, &drive_command)) {
+    ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", drive_command.command, drive_command.value);
 
     cJSON* root = cJSON_Parse((const char*)ws_pkt.payload);
     auto parent_ctx = tracing_extract(root);
@@ -278,15 +278,15 @@ static esp_err_t drive_handler(httpd_req_t* req) {
         "ws.command.receive",
         {{"ws.message.type", "command"},
          {"ws.message.size", static_cast<int64_t>(ws_pkt.len)},
-         {"command.name", static_cast<int64_t>(packet.command)},
-         {"command.value", static_cast<int64_t>(packet.value)}},
+         {"command.name", static_cast<int64_t>(drive_command.command)},
+         {"command.value", static_cast<int64_t>(drive_command.value)}},
         start_opts);
     ws_set_connection_attributes(*span, *endpoint, connection);
     auto scope = opentelemetry::trace::Scope(span);
 
     // The command queue is a depth-1 mailbox: the latest command wins and this
     // handler never blocks on a full queue.
-    if (xQueueOverwrite(g_command_queue, &packet) != pdPASS) {
+    if (xQueueOverwrite(g_command_queue, &drive_command) != pdPASS) {
       ESP_LOGE(TAG, "xQueueOverwrite failed");
       span->SetStatus(opentelemetry::trace::StatusCode::kError, "queue send failed");
       span->End();
@@ -415,18 +415,18 @@ void ws_stream_task(void* p) {
     mbedtls_base64_encode((unsigned char*)b64_buf, b64_len + 1, &b64_len, frame->buf, frame->len);
     b64_buf[b64_len] = '\0';
 
-    cJSON* packet_json = cJSON_CreateObject();
-    cJSON_AddStringToObject(packet_json, "data", b64_buf);
+    cJSON* message_json = cJSON_CreateObject();
+    cJSON_AddStringToObject(message_json, "data", b64_buf);
     heap_caps_free(b64_buf);
-    tracing_inject(packet_json);
+    tracing_inject(message_json);
 
-    char* packet_json_str = cJSON_PrintUnformatted(packet_json);
-    cJSON_Delete(packet_json);
-    size_t payload_len = strlen(packet_json_str);
+    char* message_json_str = cJSON_PrintUnformatted(message_json);
+    cJSON_Delete(message_json);
+    size_t payload_len = strlen(message_json_str);
     send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
 
     uint32_t seq = 0;
-    esp_err_t ret = ws_queue_send(g_camera, connection, packet_json_str, payload_len, &seq);
+    esp_err_t ret = ws_queue_send(g_camera, connection, message_json_str, payload_len, &seq);
     if (ret != ESP_OK) {
       ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
@@ -482,8 +482,8 @@ void ws_telemetry_task(void* p) {
       ESP_LOGI(TAG, "Telemetry started");
     }
 
-    telemetry_packet_t packet = {};
-    if (!ws_wait_for_item(g_telemetry, connection, &packet)) {
+    telemetry_reading_t reading = {};
+    if (!ws_wait_for_item(g_telemetry, connection, &reading)) {
       teardown();
       continue;
     }
@@ -492,7 +492,7 @@ void ws_telemetry_task(void* p) {
       continue;
     }
 
-    cJSON* packet_json = convert_telemetry_packet_to_json(packet);
+    cJSON* message_json = convert_telemetry_reading_to_json(reading);
 
     opentelemetry::trace::StartSpanOptions send_opts;
     send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
@@ -501,15 +501,15 @@ void ws_telemetry_task(void* p) {
         "ws.telemetry.send", {{"ws.message.type", "telemetry"}}, send_opts);
     ws_set_connection_attributes(*send_span, g_telemetry, connection);
     auto send_scope = opentelemetry::trace::Scope(send_span);
-    tracing_inject(packet_json);
+    tracing_inject(message_json);
 
-    char* packet_json_str = cJSON_PrintUnformatted(packet_json);
-    cJSON_Delete(packet_json);
-    size_t payload_len = strlen(packet_json_str);
+    char* message_json_str = cJSON_PrintUnformatted(message_json);
+    cJSON_Delete(message_json);
+    size_t payload_len = strlen(message_json_str);
     send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
 
     uint32_t seq = 0;
-    esp_err_t ret = ws_queue_send(g_telemetry, connection, packet_json_str, payload_len, &seq);
+    esp_err_t ret = ws_queue_send(g_telemetry, connection, message_json_str, payload_len, &seq);
     if (ret != ESP_OK) {
       ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
       send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");

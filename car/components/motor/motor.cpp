@@ -48,13 +48,13 @@ static motor_t* motors[4] = {&m1, &m2, &m3, &m4};
 static QueueHandle_t g_command_queue = NULL;
 static TaskHandle_t g_command_task_handle = NULL;
 
-static bool is_drive_command(char command) {
+static bool is_velocity_command(char command) {
   return command == COMMAND_ADVANCE || command == COMMAND_RETREAT || command == COMMAND_TURN_LEFT ||
          command == COMMAND_TURN_RIGHT;
 }
 
 void command_task(void* p) {
-  command_packet_t packet = {0, 0};
+  drive_command_t drive_command = {0, 0};
   bool watchdog_armed = false;
   TickType_t watchdog_deadline = 0;
 
@@ -65,7 +65,7 @@ void command_task(void* p) {
       wait_ticks = (watchdog_deadline > now) ? (watchdog_deadline - now) : 0;
     }
 
-    if (xQueueReceive(g_command_queue, &packet, wait_ticks) != pdPASS) {
+    if (xQueueReceive(g_command_queue, &drive_command, wait_ticks) != pdPASS) {
       // Only reachable once the watchdog is armed and its deadline has passed:
       // with no deadline, wait_ticks is portMAX_DELAY and this branch is not taken.
       ESP_LOGW(TAG, "Drive command watchdog expired, braking");
@@ -74,47 +74,47 @@ void command_task(void* p) {
       continue;
     }
 
-    if (is_drive_command(packet.command)) {
+    if (is_velocity_command(drive_command.command)) {
       watchdog_armed = true;
       watchdog_deadline = xTaskGetTickCount() + pdMS_TO_TICKS(DRIVE_COMMAND_WATCHDOG_MS);
-    } else if (packet.command == COMMAND_BRAKE) {
+    } else if (drive_command.command == COMMAND_BRAKE) {
       watchdog_armed = false;
     }
 
-    if (packet.command != 0) {
-      switch (packet.command) {
+    if (drive_command.command != 0) {
+      switch (drive_command.command) {
         case COMMAND_ADVANCE:
-          ESP_LOGI(TAG, "COMMAND_ADVANCE: %d", packet.value);
-          car_advance(packet.value);
+          ESP_LOGI(TAG, "COMMAND_ADVANCE: %d", drive_command.value);
+          car_advance(drive_command.value);
           break;
         case COMMAND_RETREAT:
           ESP_LOGI(TAG, "COMMAND_RETREAT");
-          car_retreat(packet.value);
+          car_retreat(drive_command.value);
           break;
         case COMMAND_BRAKE:
           ESP_LOGI(TAG, "COMMAND_BRAKE");
           car_brake();
           break;
         case COMMAND_TURN_LEFT:
-          ESP_LOGI(TAG, "COMMAND_TURN_LEFT: %d", packet.value);
-          car_turn_left(packet.value);
+          ESP_LOGI(TAG, "COMMAND_TURN_LEFT: %d", drive_command.value);
+          car_turn_left(drive_command.value);
           break;
         case COMMAND_TURN_RIGHT:
-          ESP_LOGI(TAG, "COMMAND_TURN_RIGHT: %d", packet.value);
-          car_turn_right(packet.value);
+          ESP_LOGI(TAG, "COMMAND_TURN_RIGHT: %d", drive_command.value);
+          car_turn_right(drive_command.value);
           break;
         case COMMAND_LOOK_HORIZONTALLY:
-          ESP_LOGI(TAG, "COMMAND_LOOK_HORIZONTALLY: %d", packet.value);
-          move_pan(packet.value);
+          ESP_LOGI(TAG, "COMMAND_LOOK_HORIZONTALLY: %d", drive_command.value);
+          move_pan(drive_command.value);
           break;
         case COMMAND_LOOK_VERTICALLY:
-          ESP_LOGI(TAG, "COMMAND_LOOK_VERTICALLY: %d", packet.value);
-          move_tilt(packet.value);
+          ESP_LOGI(TAG, "COMMAND_LOOK_VERTICALLY: %d", drive_command.value);
+          move_tilt(drive_command.value);
           break;
         default:
-          ESP_LOGI(TAG, "Unknown command: %d", packet.command);
+          ESP_LOGI(TAG, "Unknown command: %d", drive_command.command);
       }
-      packet = {0, 0};
+      drive_command = {0, 0};
     }
   }
 }
