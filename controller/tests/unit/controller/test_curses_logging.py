@@ -14,8 +14,7 @@ class WindowSpy:
         self.scrollok_calls: list[bool] = []
         self.refresh_calls = 0
 
-    def scrollok(self, flag: bool, /) -> None:  # noqa: FBT001 -- mirrors
-        # curses.window.scrollok, a C function that only takes a positional bool
+    def scrollok(self, flag: bool, /) -> None:  # noqa: FBT001 - mirrors curses.window.scrollok's positional-only bool
         self.scrollok_calls.append(flag)
 
     def addstr(self, text: str, /) -> None:

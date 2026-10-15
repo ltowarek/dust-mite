@@ -35,10 +35,12 @@ class CarFeed:
         self._to_message = to_message
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._subject = Subject(on_active=self._start, on_idle=self._stop)
+        self._subject: Subject[dict[str, Any]] = Subject(
+            on_active=self._start, on_idle=self._stop
+        )
 
     def subscription(
-        self, callback: Callable[[Any], None]
+        self, callback: Callable[[dict[str, Any]], None]
     ) -> contextlib.AbstractContextManager[None]:
         """Call `callback` with each message from the car while the context is open."""
         return self._subject.subscription(callback)
@@ -69,7 +71,7 @@ class CarFeed:
 
 
 @contextlib.contextmanager
-def send_commands_to_car(uri: str, commands: Subject) -> Iterator[None]:
+def send_commands_to_car(uri: str, commands: Subject[dict[str, Any]]) -> Iterator[None]:
     """Send each command published on `commands` to the car while the context is open.
 
     The car's one Drive endpoint connection stays open for the whole context, so

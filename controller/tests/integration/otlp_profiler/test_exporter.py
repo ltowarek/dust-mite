@@ -81,27 +81,24 @@ def _endpoint(server: _CollectorServer) -> str:
     return f"http://{host}:{port}{_PROFILES_PATH}"
 
 
+_SETTINGS = exporter.ProfileSettings("svc", sample_rate=100)
+_WINDOW = exporter.ProfileWindow(
+    time_unix_nano=1_700_000_000_000_000_000, duration_nano=500_000_000
+)
+
+
 class TestExport:
     def test_does_nothing_when_counts_are_empty(
         self, collector: _CollectorServer
     ) -> None:
-        exporter.export(
-            {}, "svc", _endpoint(collector), 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        exporter.export({}, _SETTINGS, _WINDOW, _endpoint(collector))
 
         assert collector.received == []
 
     def test_posts_protobuf_to_the_endpoint_as_given(
         self, collector: _CollectorServer
     ) -> None:
-        exporter.export(
-            _sample_counts(),
-            "svc",
-            _endpoint(collector),
-            100,
-            1_700_000_000_000_000_000,
-            500_000_000,
-        )
+        exporter.export(_sample_counts(), _SETTINGS, _WINDOW, _endpoint(collector))
 
         assert len(collector.received) == 1
         request = collector.received[0]
@@ -116,11 +113,4 @@ class TestExport:
         collector.response_status = 500
 
         with pytest.raises(requests.exceptions.HTTPError):
-            exporter.export(
-                _sample_counts(),
-                "svc",
-                _endpoint(collector),
-                100,
-                1_700_000_000_000_000_000,
-                500_000_000,
-            )
+            exporter.export(_sample_counts(), _SETTINGS, _WINDOW, _endpoint(collector))

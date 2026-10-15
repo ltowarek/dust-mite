@@ -9,6 +9,10 @@ _STACK_A = (("main", "app.py", 10), ("busy", "app.py", 20))
 _STACK_B = (("main", "app.py", 10),)
 _TRACE_ID = 0x0102030405060708090A0B0C0D0E0F10
 _SPAN_ID = 0x1234ABCD5678EF90
+_SETTINGS = exporter.ProfileSettings("svc", sample_rate=100)
+_WINDOW = exporter.ProfileWindow(
+    time_unix_nano=1_700_000_000_000_000_000, duration_nano=500_000_000
+)
 
 
 def _sample_counts() -> dict[SampleKey, int]:
@@ -20,13 +24,7 @@ def _sample_counts() -> dict[SampleKey, int]:
 
 class TestBuildRequest:
     def test_round_trips_through_protobuf_serialization(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(),
-            "svc",
-            sample_rate=100,
-            time_unix_nano=1_700_000_000_000_000_000,
-            duration_nano=500_000_000,
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
 
         wire_bytes = request.SerializeToString()
         round_tripped = profiles_service_pb2.ExportProfilesServiceRequest.FromString(
@@ -36,25 +34,19 @@ class TestBuildRequest:
         assert round_tripped == request
 
     def test_mapping_table_is_non_empty(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(), "svc", 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
 
         assert len(request.dictionary.mapping_table) >= 1
 
     def test_period_is_non_zero(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(), "svc", 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
 
         profile = request.resource_profiles[0].scope_profiles[0].profiles[0]
         assert profile.period > 0
 
     def test_period_type_matches_sample_type(self) -> None:
         # Both default to samples/count -- see ProfileType's docstring.
-        request = exporter.build_request(
-            _sample_counts(), "svc", 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
 
         strings = request.dictionary.string_table
         profile = request.resource_profiles[0].scope_profiles[0].profiles[0]
@@ -64,17 +56,15 @@ class TestBuildRequest:
         assert strings[profile.period_type.unit_strindex] == "count"
 
     def test_period_matches_sample_rate(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(), "svc", sample_rate=50, time_unix_nano=1, duration_nano=1
-        )
+        settings = exporter.ProfileSettings("svc", sample_rate=50)
+
+        request = exporter.build_request(_sample_counts(), settings, _WINDOW)
 
         profile = request.resource_profiles[0].scope_profiles[0].profiles[0]
         assert profile.period == 1_000_000_000 // 50
 
     def test_attribute_keys_are_dotless(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(), "svc", 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
 
         strings = request.dictionary.string_table
         for kv in request.dictionary.attribute_table:
@@ -82,9 +72,7 @@ class TestBuildRequest:
             assert "." not in key
 
     def test_stack_and_location_indices_are_in_bounds(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(), "svc", 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
         dictionary = request.dictionary
         profile = request.resource_profiles[0].scope_profiles[0].profiles[0]
 
@@ -98,9 +86,7 @@ class TestBuildRequest:
                     assert 0 <= line.function_index < len(dictionary.function_table)
 
     def test_link_index_carries_trace_and_span_id_when_present(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(), "svc", 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
         dictionary = request.dictionary
         profile = request.resource_profiles[0].scope_profiles[0].profiles[0]
 
@@ -111,16 +97,14 @@ class TestBuildRequest:
         assert int.from_bytes(link.span_id, "big") == _SPAN_ID
 
     def test_link_index_is_unset_when_no_span_is_active(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(), "svc", 100, 1_700_000_000_000_000_000, 500_000_000
-        )
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
         profile = request.resource_profiles[0].scope_profiles[0].profiles[0]
 
         unlinked_samples = [s for s in profile.samples if s.link_index == 0]
         assert len(unlinked_samples) == 1
 
     def test_resource_carries_service_name(self) -> None:
-        request = exporter.build_request(_sample_counts(), "svc", 100, 1, 500_000_000)
+        request = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
 
         resource = request.resource_profiles[0].resource
         names = [
@@ -131,14 +115,13 @@ class TestBuildRequest:
         assert names == ["svc"]
 
     def test_resource_attributes_are_added_when_given(self) -> None:
-        request = exporter.build_request(
-            _sample_counts(),
+        settings = exporter.ProfileSettings(
             "svc",
-            100,
-            1,
-            500_000_000,
+            sample_rate=100,
             resource_attributes={"service_repository": "https://github.com/o/r"},
         )
+
+        request = exporter.build_request(_sample_counts(), settings, _WINDOW)
 
         resource = request.resource_profiles[0].resource
         values = {kv.key: kv.value.string_value for kv in resource.attributes}
@@ -147,11 +130,11 @@ class TestBuildRequest:
 
     def test_no_extra_resource_attributes_when_none(self) -> None:
         with_none = exporter.build_request(
-            _sample_counts(), "svc", 100, 1, 500_000_000, resource_attributes=None
+            _sample_counts(),
+            exporter.ProfileSettings("svc", sample_rate=100, resource_attributes=None),
+            _WINDOW,
         )
-        without_arg = exporter.build_request(
-            _sample_counts(), "svc", 100, 1, 500_000_000
-        )
+        without_arg = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
 
         assert len(with_none.resource_profiles[0].resource.attributes) == 1
         assert (

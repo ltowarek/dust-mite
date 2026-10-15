@@ -25,7 +25,7 @@ from otlp_profiler.aggregator import Aggregator, Stack
 from otlp_profiler.span_registry import ActiveSpanRegistry
 
 _THREAD_NAME_PREFIX = "otlp-profiler-"
-_SAMPLER_THREAD_NAME = f"{_THREAD_NAME_PREFIX}sampler"
+SAMPLER_THREAD_NAME = f"{_THREAD_NAME_PREFIX}sampler"
 _EXPORT_THREAD_NAME = f"{_THREAD_NAME_PREFIX}export"
 
 
@@ -67,7 +67,7 @@ class Sampler:
         if self._thread is not None:
             return
         self._thread = threading.Thread(
-            target=self._run, name=_SAMPLER_THREAD_NAME, daemon=True
+            target=self._run, name=SAMPLER_THREAD_NAME, daemon=True
         )
         self._thread.start()
 
@@ -108,7 +108,7 @@ class Sampler:
         }
 
     def _sample_once(self) -> None:
-        frames = sys._current_frames()  # noqa: SLF001
+        frames = sys._current_frames()  # noqa: SLF001 - the documented way to read other threads' frames
         if not frames.keys() <= self._thread_info.keys():
             self._rebuild_thread_info()
 

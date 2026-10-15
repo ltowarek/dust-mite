@@ -70,7 +70,7 @@ def test_opens_the_control_connection_at_once(car_control: CarEndpointSpy) -> No
 def test_sends_each_published_command_to_the_car(
     car_control: CarEndpointSpy,
 ) -> None:
-    commands = Subject()
+    commands = Subject[dict[str, Any]]()
     command = {"command": Command.ADVANCE.value, "value": _SPEED}
 
     with send_commands_to_car(car_control.uri, commands):

@@ -24,8 +24,8 @@ class _Car:
     """The arbiter's surroundings: a telemetry source and the commands it publishes."""
 
     def __init__(self) -> None:
-        self.telemetry = Subject()
-        self.commands = Subject()
+        self.telemetry = Subject[dict[str, Any]]()
+        self.commands = Subject[dict[str, Any]]()
         self.sent = SubscriberSpy[dict[str, Any]]()
         self.collision_states = SubscriberSpy[dict[str, Any]]()
         self.arbiter = CommandArbiter(self.commands, self.telemetry, CollisionMonitor())

@@ -45,7 +45,7 @@ if __name__ == "__main__":
         logger.debug("Server handler finished")
 
     try:
-        with serve(server_handler, "0.0.0.0", 8765) as server:  # noqa: S104
+        with serve(server_handler, "0.0.0.0", 8765) as server:  # noqa: S104 - the camera must accept connections from all interfaces
             logger.info("Starting server")
             server.serve_forever()
     except KeyboardInterrupt:

@@ -34,17 +34,24 @@ def _dualsense(**state_overrides: bool | int) -> pydualsense:
     return ds
 
 
-class AutoExitDSStateStub(DSState):  # type: ignore[misc]  # DSState is untyped (Any)
-    """Dpad-up held, with `.ps` reading truthy after `exit_after` reads.
+class AutoExitDSStateStub:
+    """Stands in for `DSState`: dpad-up held, `.ps` truthy after `exit_after` reads.
 
     `DualSenseInputBackend.poll` reads `.ps` exactly once per call, so this
     drives `control()` through exactly `exit_after` sent commands before the
-    PS button "exit" condition trips.
+    PS button "exit" condition trips. Every other input the backend reads is
+    at rest.
     """
 
     def __init__(self, exit_after: int) -> None:
-        super().__init__()
         self.DpadUp = True
+        self.DpadRight = False
+        self.DpadDown = False
+        self.DpadLeft = False
+        self.LX = 0
+        self.RX = 0
+        self.RY = 0
+        self.R2 = 0
         self._exit_after = exit_after
         self._ps_reads = 0
 
@@ -52,10 +59,6 @@ class AutoExitDSStateStub(DSState):  # type: ignore[misc]  # DSState is untyped 
     def ps(self) -> bool:
         self._ps_reads += 1
         return self._ps_reads > self._exit_after
-
-    @ps.setter
-    def ps(self, value: bool) -> None:
-        pass
 
 
 class TestDualSenseInputBackend:

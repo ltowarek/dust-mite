@@ -36,8 +36,8 @@ class CommandArbiter:
 
     def __init__(
         self,
-        commands: Subject,
-        telemetry: CarFeed | Subject,
+        commands: Subject[dict[str, Any]],
+        telemetry: CarFeed | Subject[dict[str, Any]],
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""
@@ -48,7 +48,7 @@ class CommandArbiter:
         self._claimed = False
         # Race: only changes are published, so a client that subscribes after
         # the latest change sees no collision state until the next one.
-        self.collision_state = Subject()
+        self.collision_state: Subject[dict[str, Any]] = Subject()
 
     @contextlib.contextmanager
     def claim(self) -> Iterator[Callable[[dict[str, Any]], None]]:

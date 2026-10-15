@@ -16,7 +16,7 @@ class _LogWindow(Protocol):
 
     # `scrollok` and `addstr` mirror curses.window's C functions, which
     # only accept a positional bool/str, not a keyword.
-    def scrollok(self, flag: bool, /) -> None: ...  # noqa: FBT001
+    def scrollok(self, flag: bool, /) -> None: ...  # noqa: FBT001 - mirrors curses.window.scrollok's positional-only bool
     def addstr(self, text: str, /) -> None: ...
     def refresh(self) -> None: ...
 
@@ -36,7 +36,7 @@ class CursesHandler(logging.Handler):
         """Initialize the handler and enable scrolling on `window`."""
         super().__init__()
         self._window = window
-        self._window.scrollok(True)  # noqa: FBT003 -- positional-only, see above
+        self._window.scrollok(True)  # noqa: FBT003 - curses.window.scrollok takes only a positional bool
 
     def emit(self, record: logging.LogRecord) -> None:
         """Write the formatted `record` to the window."""
@@ -52,7 +52,7 @@ class CursesHandler(logging.Handler):
             # would reproduce the exact staircase bug this handler exists
             # to prevent.
             pass
-        except Exception:  # noqa: BLE001 -- never let a broken handler crash the caller
+        except Exception:  # noqa: BLE001 - logging.Handler.emit must pass every exception to handleError
             self.handleError(record)
 
 

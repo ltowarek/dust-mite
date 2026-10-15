@@ -5,12 +5,12 @@ import time
 import pytest
 
 from otlp_profiler.aggregator import Aggregator, SampleKey
-from otlp_profiler.sampler import Sampler, walk_stack
+from otlp_profiler.sampler import SAMPLER_THREAD_NAME, Sampler, walk_stack
 from otlp_profiler.span_registry import ActiveSpanRegistry
 
 
 def _inner() -> tuple[tuple[str, str, int], ...]:
-    frame = sys._current_frames()[threading.get_ident()]  # noqa: SLF001
+    frame = sys._current_frames()[threading.get_ident()]  # noqa: SLF001 - the documented way to read a thread's frame
     return walk_stack(frame)
 
 
@@ -110,11 +110,17 @@ class TestSampler:
         )
 
         sampler.start()
-        first_thread = sampler._thread  # noqa: SLF001
         sampler.start()
+        try:
+            sampler_threads = [
+                thread
+                for thread in threading.enumerate()
+                if thread.name == SAMPLER_THREAD_NAME
+            ]
+        finally:
+            sampler.stop()
 
-        assert sampler._thread is first_thread  # noqa: SLF001
-        sampler.stop()
+        assert len(sampler_threads) == 1
 
     def test_does_not_sample_its_own_thread(self) -> None:
         aggregator = Aggregator()

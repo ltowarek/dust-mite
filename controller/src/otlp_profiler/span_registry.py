@@ -82,7 +82,7 @@ class SpanLinkingProcessor(SpanProcessor):
     def on_start(
         self,
         span: Span,
-        parent_context: Context | None = None,  # noqa: ARG002 -- required by base class
+        parent_context: Context | None = None,  # noqa: ARG002 - required by the OpenTelemetry SpanProcessor interface
     ) -> None:
         """Record `span` as active on the current thread and stamp its profile id."""
         span_context = span.get_span_context()
@@ -103,7 +103,7 @@ class SpanLinkingProcessor(SpanProcessor):
 
     def force_flush(
         self,
-        timeout_millis: int = 30000,  # noqa: ARG002 -- required by base class
+        timeout_millis: int = 30000,  # noqa: ARG002 - required by the OpenTelemetry SpanProcessor interface
     ) -> bool:
         """Nothing to flush; always succeeds."""
         return True

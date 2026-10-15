@@ -1,8 +1,8 @@
 """Builds and sends OTLP profiles for a drained aggregate.
 
 Serializes as real protobuf. `sample_type`/`period_type` default to
-`("samples", "count")`; override via `build_request`/`export`'s
-`profile_type` parameter if a different Pyroscope profile type is needed.
+`("samples", "count")`; override via `ProfileSettings.profile_type` if a
+different Pyroscope profile type is needed.
 """
 
 import dataclasses
@@ -36,7 +36,22 @@ class ProfileType:
     period_unit: str = "count"
 
 
-_DEFAULT_PROFILE_TYPE = ProfileType()
+@dataclasses.dataclass(frozen=True)
+class ProfileSettings:
+    """What every profile from one process carries, export after export."""
+
+    service_name: str
+    sample_rate: int
+    profile_type: ProfileType = ProfileType()
+    resource_attributes: Mapping[str, str] | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class ProfileWindow:
+    """The interval one export covers."""
+
+    time_unix_nano: int
+    duration_nano: int
 
 
 # Same get-or-add-per-table pattern as the OTel Collector's own Go pdata
@@ -179,14 +194,8 @@ def _build_samples(
     return samples
 
 
-def build_request(  # noqa: PLR0913 -- each param is an independent OTLP field
-    counts: dict[SampleKey, int],
-    service_name: str,
-    sample_rate: int,
-    time_unix_nano: int,
-    duration_nano: int,
-    profile_type: ProfileType = _DEFAULT_PROFILE_TYPE,
-    resource_attributes: Mapping[str, str] | None = None,
+def build_request(
+    counts: dict[SampleKey, int], settings: ProfileSettings, window: ProfileWindow
 ) -> profiles_service_pb2.ExportProfilesServiceRequest:
     """Build one `ExportProfilesServiceRequest` from a drained aggregate."""
     dictionary = _DictionaryBuilder()
@@ -194,6 +203,7 @@ def build_request(  # noqa: PLR0913 -- each param is an independent OTLP field
 
     # Reserve the sample/period type strings before dictionary.build() -- see
     # _DictionaryBuilder's docstring for why ordering matters here.
+    profile_type = settings.profile_type
     sample_type_vt = profiles_pb2.ValueType(
         type_strindex=dictionary.string_index(profile_type.sample_type),
         unit_strindex=dictionary.string_index(profile_type.sample_unit),
@@ -206,20 +216,20 @@ def build_request(  # noqa: PLR0913 -- each param is an independent OTLP field
     profile = profiles_pb2.Profile(
         sample_type=sample_type_vt,
         samples=samples,
-        time_unix_nano=time_unix_nano,
-        duration_nano=duration_nano,
+        time_unix_nano=window.time_unix_nano,
+        duration_nano=window.duration_nano,
         period_type=period_type_vt,
-        period=1_000_000_000 // sample_rate,
+        period=1_000_000_000 // settings.sample_rate,
         profile_id=os.urandom(16),
     )
 
     attributes = [
         common_pb2.KeyValue(
             key=SERVICE_NAME,
-            value=common_pb2.AnyValue(string_value=service_name),
+            value=common_pb2.AnyValue(string_value=settings.service_name),
         )
     ]
-    for key, value in (resource_attributes or {}).items():
+    for key, value in (settings.resource_attributes or {}).items():
         attributes.append(
             common_pb2.KeyValue(key=key, value=common_pb2.AnyValue(string_value=value))
         )
@@ -257,26 +267,13 @@ def send(
     response.raise_for_status()
 
 
-def export(  # noqa: PLR0913 -- each param is an independent OTLP field
+def export(
     counts: dict[SampleKey, int],
-    service_name: str,
+    settings: ProfileSettings,
+    window: ProfileWindow,
     endpoint: str,
-    sample_rate: int,
-    time_unix_nano: int,
-    duration_nano: int,
-    profile_type: ProfileType = _DEFAULT_PROFILE_TYPE,
-    resource_attributes: Mapping[str, str] | None = None,
 ) -> None:
-    """Build and send one export covering `counts` from the last interval."""
+    """Build and send one export covering `counts` from `window`."""
     if not counts:
         return
-    request = build_request(
-        counts,
-        service_name,
-        sample_rate,
-        time_unix_nano=time_unix_nano,
-        duration_nano=duration_nano,
-        profile_type=profile_type,
-        resource_attributes=resource_attributes,
-    )
-    send(endpoint, request)
+    send(endpoint, build_request(counts, settings, window))

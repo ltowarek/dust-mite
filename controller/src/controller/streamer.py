@@ -46,7 +46,7 @@ class _Outbox:
     shares.
     """
 
-    def __init__(self, *feeds: CarFeed | Subject) -> None:
+    def __init__(self, *feeds: CarFeed | Subject[dict[str, Any]]) -> None:
         self._feeds = feeds
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
@@ -136,7 +136,7 @@ def _serve_camera(
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
     telemetry: CarFeed,
-    collision_state: Subject,
+    collision_state: Subject[dict[str, Any]],
 ) -> None:
     with _Outbox(telemetry, collision_state) as outbox:
         _send_until_closed(websocket, outbox)
@@ -210,7 +210,7 @@ def main() -> None:
     """Run the main entry point."""
     settings = StreamerSettings.from_env(os.environ)
     configure_observability("dust-mite-streamer", settings.observability)
-    commands = Subject()
+    commands: Subject[dict[str, Any]] = Subject()
     camera = CarFeed(settings.camera_uri, camera_message)
     telemetry = CarFeed(settings.telemetry_uri, telemetry_message)
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
