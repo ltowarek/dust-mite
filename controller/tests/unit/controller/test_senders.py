@@ -4,7 +4,11 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from websockets.frames import Close, CloseCode
 
 from controller.command import Command
-from controller.senders import DriveConnectionClosedError, WebSocketCommandSender
+from controller.senders import (
+    DriveConnectionClosedError,
+    SenderNotConnectedError,
+    WebSocketCommandSender,
+)
 
 from .conftest import counter_values_by_command
 
@@ -69,3 +73,15 @@ class TestWebSocketCommandSender:
             pytest.raises(DriveConnectionClosedError, match="connection lost"),
         ):
             sender.send(Command.BRAKE, None)
+
+    def test_refuses_to_send_before_connecting(self) -> None:
+        sender = WebSocketCommandSender(_URI, lambda _: _ConnectionStub())
+
+        with pytest.raises(SenderNotConnectedError):
+            sender.send(Command.BRAKE, None)
+
+    def test_refuses_to_close_before_connecting(self) -> None:
+        sender = WebSocketCommandSender(_URI, lambda _: _ConnectionStub())
+
+        with pytest.raises(SenderNotConnectedError):
+            sender.close()
