@@ -26,7 +26,7 @@ from otlp_profiler.span_registry import ActiveSpanRegistry
 
 _THREAD_NAME_PREFIX = "otlp-profiler-"
 SAMPLER_THREAD_NAME = f"{_THREAD_NAME_PREFIX}sampler"
-_EXPORT_THREAD_NAME = f"{_THREAD_NAME_PREFIX}export"
+EXPORT_THREAD_NAME = f"{_THREAD_NAME_PREFIX}export"
 
 
 def walk_stack(frame: FrameType) -> Stack:
@@ -93,7 +93,7 @@ class Sampler:
                     self._export_thread = threading.Thread(
                         target=self._export_fn,
                         args=(window_start_ns,),
-                        name=_EXPORT_THREAD_NAME,
+                        name=EXPORT_THREAD_NAME,
                         daemon=True,
                     )
                     self._export_thread.start()
