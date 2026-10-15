@@ -26,7 +26,7 @@ def configure(
     resource: Resource,
     sample_rate: int = _DEFAULT_SAMPLE_RATE,
     export_interval_ms: int = _DEFAULT_EXPORT_INTERVAL_MS,
-) -> None:
+) -> Sampler:
     """Start continuous profiling and attach span/profile linking.
 
     Starts a background sampler that periodically exports OTLP profiles of
@@ -35,7 +35,8 @@ def configure(
     `SpanProcessor` that stamps every span with a `pyroscope.profile.id`
     attribute and tags samples with whichever span is active on their
     thread. Call it once per process, after the global tracer provider is
-    set, as with the other signals' configure functions.
+    set, as with the other signals' configure functions. Returns the running
+    sampler, which samples until its `stop()` is called.
     """
     aggregator = Aggregator()
     span_registry = ActiveSpanRegistry()
@@ -65,3 +66,4 @@ def configure(
         _export,
     )
     sampler.start()
+    return sampler
