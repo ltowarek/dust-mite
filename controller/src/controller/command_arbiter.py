@@ -7,7 +7,7 @@ from typing import Any
 
 from opentelemetry import trace
 
-from .car import CarFeed, prepare_command_packet
+from .car import CarFeed, Message, prepare_command_packet
 from .collision_monitor import CollisionMonitor
 from .command import Command
 from .metrics import record_command_blocked, record_command_sent
@@ -36,8 +36,8 @@ class CommandArbiter:
 
     def __init__(
         self,
-        commands: Subject[dict[str, Any]],
-        telemetry: CarFeed | Subject[dict[str, Any]],
+        commands: Subject[Message],
+        telemetry: CarFeed | Subject[Message],
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""
@@ -48,10 +48,10 @@ class CommandArbiter:
         self._claimed = False
         # Race: only changes are published, so a client that subscribes after
         # the latest change sees no collision state until the next one.
-        self.collision_state: Subject[dict[str, Any]] = Subject()
+        self.collision_state: Subject[Message] = Subject()
 
     @contextlib.contextmanager
-    def claim(self) -> Iterator[Callable[[dict[str, Any]], None]]:
+    def claim(self) -> Iterator[Callable[[Message], None]]:
         """Hold the arbiter for the context; yield a function that sends commands.
 
         Raises `DriverAlreadyConnectedError` if another driver holds it.

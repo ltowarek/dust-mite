@@ -8,7 +8,6 @@ import functools
 import json
 import time
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 import websockets.exceptions
@@ -17,7 +16,7 @@ import websockets.sync.connection
 import websockets.sync.server
 from websockets.frames import Close, CloseCode
 
-from controller.car import CarFeed, send_commands_to_car
+from controller.car import CarFeed, Message, send_commands_to_car
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
 from controller.command_arbiter import DRIVER_ALREADY_CONNECTED, CommandArbiter
@@ -41,7 +40,7 @@ _SPEED = 50
 def _streamer(
     camera: CarEndpointSpy, telemetry: CarEndpointSpy, control: CarEndpointSpy
 ) -> Iterator[websockets.sync.server.Server]:
-    commands = Subject[dict[str, Any]]()
+    commands = Subject[Message]()
     car_camera = CarFeed(camera.uri, camera_message)
     car_telemetry = CarFeed(telemetry.uri, telemetry_message)
     arbiter = CommandArbiter(commands, car_telemetry, CollisionMonitor())

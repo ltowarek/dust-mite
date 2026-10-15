@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
+from controller.car import Message
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
 from controller.command_arbiter import (
@@ -24,8 +25,8 @@ class _Car:
     """The arbiter's surroundings: a telemetry source and the commands it publishes."""
 
     def __init__(self) -> None:
-        self.telemetry = Subject[dict[str, Any]]()
-        self.commands = Subject[dict[str, Any]]()
+        self.telemetry = Subject[Message]()
+        self.commands = Subject[Message]()
         self.sent = SubscriberSpy[dict[str, Any]]()
         self.collision_states = SubscriberSpy[dict[str, Any]]()
         self.arbiter = CommandArbiter(self.commands, self.telemetry, CollisionMonitor())

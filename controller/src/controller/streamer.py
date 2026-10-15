@@ -17,7 +17,7 @@ import websockets.sync.server
 from opentelemetry import trace
 from websockets.frames import CloseCode
 
-from .car import CarFeed, camera_frame_jpeg, send_commands_to_car
+from .car import CarFeed, Message, camera_frame_jpeg, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received
@@ -46,7 +46,7 @@ class _Outbox:
     shares.
     """
 
-    def __init__(self, *feeds: CarFeed | Subject[dict[str, Any]]) -> None:
+    def __init__(self, *feeds: CarFeed | Subject[Message]) -> None:
         self._feeds = feeds
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
@@ -136,7 +136,7 @@ def _serve_camera(
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
     telemetry: CarFeed,
-    collision_state: Subject[dict[str, Any]],
+    collision_state: Subject[Message],
 ) -> None:
     with _Outbox(telemetry, collision_state) as outbox:
         _send_until_closed(websocket, outbox)
@@ -210,7 +210,7 @@ def main() -> None:
     """Run the main entry point."""
     settings = StreamerSettings.from_env(os.environ)
     configure_observability("dust-mite-streamer", settings.observability)
-    commands: Subject[dict[str, Any]] = Subject()
+    commands: Subject[Message] = Subject()
     camera = CarFeed(settings.camera_uri, camera_message)
     telemetry = CarFeed(settings.telemetry_uri, telemetry_message)
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
