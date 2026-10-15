@@ -17,6 +17,16 @@ _SOURCE_LINK_ATTRIBUTES = {
     "service_root_path": "controller",
 }
 
+# The dotted resource attributes the streamer and controller send with every
+# profile, besides service.name; see pyroscope.yml's relabeling rule.
+_DOTTED_ATTRIBUTES_SERVICE_NAME = "dust-mite-dotted-attributes-test"
+_DOTTED_ATTRIBUTES = {
+    "vcs.repository.url.full": "https://github.com/ltowarek/dust-mite",
+    "vcs.ref.head.revision": "abc123",
+    "service.instance.id": "6f1c2a1e-5d0b-4c1e-9a7f-2b3c4d5e6f70",
+    "telemetry.sdk.language": "python",
+}
+
 
 @pytest.fixture(scope="module", autouse=True)
 def _pushed_profiles() -> None:
@@ -32,6 +42,11 @@ def _pushed_profiles() -> None:
         push_profile(STACK_SETTINGS.otlp_endpoint, service_name)
     push_profile(
         STACK_SETTINGS.otlp_endpoint, _SOURCE_LINK_SERVICE_NAME, _SOURCE_LINK_ATTRIBUTES
+    )
+    push_profile(
+        STACK_SETTINGS.otlp_endpoint,
+        _DOTTED_ATTRIBUTES_SERVICE_NAME,
+        _DOTTED_ATTRIBUTES,
     )
 
 
@@ -62,6 +77,21 @@ def test_github_source_link_attribute_is_queryable(attribute_key: str) -> None:
             "queryType": "profile",
             "profileTypeId": PROFILE_TYPE,
             "labelSelector": f'{{{attribute_key}="{value}"}}',
+        },
+    )
+
+    assert has_profile_samples(result)
+
+
+def test_profile_with_dotted_resource_attributes_is_queryable() -> None:
+    """Pyroscope rejects a series with a dotted label; these must not become one."""
+    result = wait_for_profile_samples(
+        PYROSCOPE_UID,
+        "grafana-pyroscope-datasource",
+        {
+            "queryType": "profile",
+            "profileTypeId": PROFILE_TYPE,
+            "labelSelector": f'{{service_name="{_DOTTED_ATTRIBUTES_SERVICE_NAME}"}}',
         },
     )
 
