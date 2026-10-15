@@ -103,9 +103,6 @@ void command_task(void* p) {
           ESP_LOGI(TAG, "COMMAND_TURN_RIGHT: %d", packet.value);
           car_turn_right(packet.value);
           break;
-        // TODO: Split car and camera commands
-        // Currently there is no way to drive a car and look around
-        // What's more, you can't look horizontally and vertically and the same time
         case COMMAND_LOOK_HORIZONTALLY:
           ESP_LOGI(TAG, "COMMAND_LOOK_HORIZONTALLY: %d", packet.value);
           move_pan(packet.value);
