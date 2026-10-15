@@ -31,12 +31,9 @@ include = [
 
 [tool.ruff.lint]
 select = ["ALL"]
-# COM812 conflicts with `ruff format`; ruff warns when both are enabled.
 ignore = ["COM812"]
 unfixable = ["F401"]
 
-# Tests are named for what they check rather than given docstrings, and
-# pytest's own assertion rewriting relies on bare asserts.
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D", "S101"]
 
