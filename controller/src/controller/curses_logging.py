@@ -7,7 +7,7 @@ from collections.abc import Generator
 from typing import Protocol, override
 
 
-class _LogWindow(Protocol):
+class LogWindow(Protocol):
     """The subset of `curses.window` this module writes through.
 
     A structural type rather than `curses.window` itself, so tests can pass
@@ -16,9 +16,14 @@ class _LogWindow(Protocol):
 
     # `scrollok` and `addstr` mirror curses.window's C functions, which
     # only accept a positional bool/str, not a keyword.
-    def scrollok(self, flag: bool, /) -> None: ...  # noqa: FBT001 - mirrors curses.window.scrollok's positional-only bool
-    def addstr(self, text: str, /) -> None: ...
-    def refresh(self) -> None: ...
+    def scrollok(self, flag: bool, /) -> None:  # noqa: FBT001 - mirrors curses.window.scrollok's positional-only bool
+        """Let the window scroll when the cursor moves past its last line."""
+
+    def addstr(self, text: str, /) -> None:
+        """Write `text` at the cursor."""
+
+    def refresh(self) -> None:
+        """Show what was written on the terminal."""
 
 
 class CursesHandler(logging.Handler):
@@ -32,7 +37,7 @@ class CursesHandler(logging.Handler):
     `curses` track the cursor and scroll correctly.
     """
 
-    def __init__(self, window: _LogWindow) -> None:
+    def __init__(self, window: LogWindow) -> None:
         """Initialize the handler and enable scrolling on `window`."""
         super().__init__()
         self._window = window
@@ -59,7 +64,7 @@ class CursesHandler(logging.Handler):
 
 @contextlib.contextmanager
 def curses_console_logging(
-    window: _LogWindow, console_handler: logging.Handler
+    window: LogWindow, console_handler: logging.Handler
 ) -> Generator[None, None, None]:
     """Route console output through `window` for the duration of the block.
 

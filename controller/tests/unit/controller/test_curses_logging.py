@@ -1,12 +1,17 @@
 import curses
 import logging
+from typing import override
 
 import pytest
 
-from controller.curses_logging import CursesHandler, curses_console_logging
+from controller.curses_logging import (
+    CursesHandler,
+    LogWindow,
+    curses_console_logging,
+)
 
 
-class WindowSpy:
+class WindowSpy(LogWindow):
     """Minimal stand-in for `curses.window`, recording calls made to it."""
 
     def __init__(self) -> None:
@@ -14,12 +19,15 @@ class WindowSpy:
         self.scrollok_calls: list[bool] = []
         self.refresh_calls = 0
 
-    def scrollok(self, flag: bool, /) -> None:  # noqa: FBT001 - mirrors curses.window.scrollok's positional-only bool
+    @override
+    def scrollok(self, flag: bool, /) -> None:
         self.scrollok_calls.append(flag)
 
+    @override
     def addstr(self, text: str, /) -> None:
         self.written.append(text)
 
+    @override
     def refresh(self) -> None:
         self.refresh_calls += 1
 
