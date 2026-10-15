@@ -16,5 +16,5 @@ The browser shows the stream in an `<img>`, which cannot read part headers, so t
 ## Consequences
 
 - The Camera endpoint is an HTTP endpoint, not a WebSocket one; it amends [ADR 0001](0001-one-http-server-per-car-endpoint.md) for that endpoint only.
-- The car's stream handler runs for the life of the stream on the Camera instance's only task, so that instance detects a departed client only when a send fails.
+- The car's `/stream` handler hands the request to the stream task with `httpd_req_async_handler_begin`, so the Camera instance's own task stays free to refuse a second client with HTTP 503. ADR 0001 rejected async handlers because httpd does not read a WebSocket CLOSE frame from a socket a worker owns; plain HTTP has no CLOSE frame, and the stream task detects a departed client when a send fails.
 - The streamer reads the car's stream with the standard library (`http.client` and a reader driven by each part's `Content-Length`) and serves its viewers from a `ThreadingHTTPServer` on its own port, beside the WebSocket server.
