@@ -3,8 +3,6 @@
   "ignorePatterns": ["dist/"],
   "categories": {
     "correctness": "error",
-    // Suspicious findings are reported as warnings for now, so linting
-    // fails only on correctness errors.
     "suspicious": "warn"
   }
 }
