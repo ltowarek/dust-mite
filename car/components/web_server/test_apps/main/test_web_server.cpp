@@ -379,7 +379,8 @@ static const int COMMAND_TIMEOUT_MS = 2000;
 static const char BRAKE_50[] = "{\"command\": 3, \"value\": 50}";
 
 static bool command_received(drive_command_t* drive_command) {
-  return xQueueReceive(test_app_command_queue, drive_command, pdMS_TO_TICKS(COMMAND_TIMEOUT_MS)) == pdPASS;
+  return xQueueReceive(test_app_command_queue, drive_command, pdMS_TO_TICKS(COMMAND_TIMEOUT_MS)) ==
+         pdPASS;
 }
 
 TEST_CASE("command_reaches_the_command_queue", "[web_server]") {

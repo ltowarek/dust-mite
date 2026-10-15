@@ -265,7 +265,8 @@ static esp_err_t drive_handler(httpd_req_t* req) {
 
   drive_command_t drive_command = {};
   if (parse_drive_command((const char*)ws_pkt.payload, &drive_command)) {
-    ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", drive_command.command, drive_command.value);
+    ESP_LOGI(TAG, "JSON={\"command\": %d, \"value\": %d}", drive_command.command,
+             drive_command.value);
 
     cJSON* root = cJSON_Parse((const char*)ws_pkt.payload);
     auto parent_ctx = tracing_extract(root);
