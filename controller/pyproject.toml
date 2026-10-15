@@ -40,6 +40,7 @@ files = [
     "tests/**/*.py"
 ]
 strict = true
+enable_error_code = ["explicit-override"]
 
 # pydualsense and picamera2 ship without type information.
 [[tool.mypy.overrides]]

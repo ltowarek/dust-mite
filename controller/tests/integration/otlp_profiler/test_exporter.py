@@ -2,7 +2,7 @@ import dataclasses
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import cast
+from typing import cast, override
 
 import pytest
 import requests
@@ -55,6 +55,7 @@ class _CollectorSpy(BaseHTTPRequestHandler):
         self.send_response(server.response_status)
         self.end_headers()
 
+    @override
     def log_message(self, *args: object) -> None:
         """Silence the default per-request stderr logging."""
 

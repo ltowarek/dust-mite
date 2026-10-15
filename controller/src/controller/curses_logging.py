@@ -4,7 +4,7 @@ import contextlib
 import curses
 import logging
 from collections.abc import Generator
-from typing import Protocol
+from typing import Protocol, override
 
 
 class _LogWindow(Protocol):
@@ -38,6 +38,7 @@ class CursesHandler(logging.Handler):
         self._window = window
         self._window.scrollok(True)  # noqa: FBT003 - curses.window.scrollok takes only a positional bool
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         """Write the formatted `record` to the window."""
         try:
