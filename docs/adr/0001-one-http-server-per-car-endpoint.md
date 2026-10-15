@@ -1,5 +1,7 @@
 # One HTTP server instance per car endpoint, each accepting one client
 
+The Camera endpoint serves MJPEG over HTTP, not WebSocket, since [ADR 0002](0002-mjpeg-over-http-for-camera-frames.md).
+
 An `esp_http_server` instance does all of its work on one task. When the Drive, Camera and Telemetry endpoints shared one instance, a camera or telemetry send blocked on a client's TCP window also stopped drive commands from being read ([#150](https://github.com/ltowarek/dust-mite/pull/150)). Bounding sends to one per endpoint ([#156](https://github.com/ltowarek/dust-mite/pull/156)) shortened that delay but did not remove it. Each endpoint therefore runs on its own instance and its own port (Drive 80, Camera 81, Telemetry 82), so a slow or stalled reader on one endpoint cannot delay another ([#154](https://github.com/ltowarek/dust-mite/issues/154)).
 
 Each endpoint accepts one client and refuses a second with HTTP 503 before the WebSocket upgrade. The streamer is the only client of the car and fans out to its own clients, so one session per endpoint is enough. This keeps every instance at two sessions (the owner and one connection being refused), which keeps the lwIP socket budget small.

@@ -6,13 +6,13 @@ from collections.abc import Callable, Iterator
 
 from opentelemetry import trace
 
-from .car import CarFeed, prepare_command_packet
+from .car import CarFeed, prepare_drive_command
 from .collision_monitor import CollisionMonitor
 from .command import Command
 from .metrics import record_command_blocked, record_command_sent
-from .packet import Packet
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
+from .websocket_message import WebSocketMessage
 
 tracer = trace.get_tracer(__name__)
 
@@ -36,8 +36,8 @@ class CommandArbiter:
 
     def __init__(
         self,
-        commands: Subject[Packet],
-        telemetry: CarFeed | Subject[Packet],
+        commands: Subject[WebSocketMessage],
+        telemetry: CarFeed | Subject[WebSocketMessage],
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""
@@ -48,10 +48,10 @@ class CommandArbiter:
         self._claimed = False
         # Race: only changes are published, so a client that subscribes after
         # the latest change sees no collision state until the next one.
-        self.collision_state: Subject[Packet] = Subject()
+        self.collision_state: Subject[WebSocketMessage] = Subject()
 
     @contextlib.contextmanager
-    def claim(self) -> Iterator[Callable[[Packet], None]]:
+    def claim(self) -> Iterator[Callable[[WebSocketMessage], None]]:
         """Hold the arbiter for the context; yield a function that sends commands.
 
         Raises `DriverAlreadyConnectedError` if another driver holds it.
@@ -70,27 +70,27 @@ class CommandArbiter:
             with self._lock:
                 self._claimed = False
 
-    def _submit(self, command_packet: Packet) -> None:
-        operator_context = extract_trace_context(command_packet)
+    def _submit(self, drive_command: WebSocketMessage) -> None:
+        driver_context = extract_trace_context(drive_command)
         with tracer.start_as_current_span(
-            "streamer.handle_drive_command", context=operator_context
+            "streamer.handle_drive_command", context=driver_context
         ) as span:
-            requested = Command(command_packet["command"])
-            command_packet = self._collision_monitor.filter(command_packet)
-            command = Command(command_packet["command"])
+            requested = Command(drive_command["command"])
+            drive_command = self._collision_monitor.filter(drive_command)
+            command = Command(drive_command["command"])
             span.set_attribute("network.protocol.name", "websocket")
-            span.set_attribute("operator_command_name", requested.name)
+            span.set_attribute("requested_command_name", requested.name)
             span.set_attribute("command_name", command.name)
             span.set_attribute(
                 "collision_monitor.stopping", self._collision_monitor.stopping
             )
             if command != requested:
                 record_command_blocked(requested)
-            self._commands.publish(prepare_command_packet(command_packet))
+            self._commands.publish(prepare_drive_command(drive_command))
             record_command_sent(command)
 
-    def _on_telemetry(self, packet: Packet) -> None:
-        if self._collision_monitor.update(packet["data"]["distance_ahead"]):
+    def _on_telemetry(self, message: WebSocketMessage) -> None:
+        if self._collision_monitor.update(message["data"]["distance_ahead"]):
             self._publish_collision_state()
 
     def _publish_collision_state(self) -> None:

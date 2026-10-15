@@ -3,7 +3,7 @@
 import threading
 
 from .command import Command
-from .packet import Packet
+from .websocket_message import WebSocketMessage
 
 
 class CollisionMonitor:
@@ -13,7 +13,7 @@ class CollisionMonitor:
     Stopping starts below `STOP_DISTANCE_CM` and lasts until the obstacle is
     at least `RESUME_DISTANCE_CM` away, so sensor jitter around a single
     cutoff doesn't flip it on and off. RETREAT and the turns always pass
-    through, so the operator can back away.
+    through, so the driver can back away.
     """
 
     STOP_DISTANCE_CM = 5
@@ -52,8 +52,8 @@ class CollisionMonitor:
         with self._lock:
             self._stopping = False
 
-    def filter(self, command_packet: Packet) -> Packet:
-        """Return the command to send to the car in place of `command_packet`."""
-        if self.stopping and command_packet.get("command") == Command.ADVANCE.value:
+    def filter(self, drive_command: WebSocketMessage) -> WebSocketMessage:
+        """Return the command to send to the car in place of `drive_command`."""
+        if self.stopping and drive_command.get("command") == Command.ADVANCE.value:
             return {"command": Command.BRAKE.value, "value": None}
-        return command_packet
+        return drive_command

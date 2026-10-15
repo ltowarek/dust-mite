@@ -31,7 +31,7 @@ CAR_METRICS = [
 ]
 STREAMER_METRICS = [
     "dust_mite_frames_processed",
-    "dust_mite_telemetry_packets_received",
+    "dust_mite_telemetry_messages_received",
     "dust_mite_commands_sent",
 ]
 WEB_METRICS = ["dust_mite_frames_displayed"]

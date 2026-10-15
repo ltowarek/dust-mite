@@ -20,9 +20,9 @@ typedef struct {
   vector3_t magnetometer;
   vector3_t gyroscope;
   int distance_ahead;
-} telemetry_packet_t;
+} telemetry_reading_t;
 
-cJSON* convert_telemetry_packet_to_json(const telemetry_packet_t& p);
+cJSON* convert_telemetry_reading_to_json(const telemetry_reading_t& p);
 
 #ifdef __cplusplus
 }

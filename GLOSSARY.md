@@ -1,31 +1,63 @@
 # Dust Mite
 
-A remote-controlled car whose ESP32 firmware exposes WebSocket endpoints to a host-side streamer, which relays camera, telemetry and drive commands to its own clients.
+A remote-controlled car whose ESP32 firmware exposes endpoints to a host-side streamer, which relays Camera frames, telemetry and Drive commands to its own clients.
 
 ## Language
 
 ### Car endpoints
 
 **Endpoint**:
-One WebSocket path on the car, served by its own HTTP server instance on its own port.
+One path on the car, served by its own HTTP server instance on its own port.
 _Avoid_: Route, channel (for the car side)
 
 **Drive endpoint**:
-The endpoint (`/`) on which the car receives drive commands.
+The WebSocket endpoint (`/`) on which the car receives Drive commands.
 _Avoid_: Control endpoint, controller endpoint, root endpoint
 
 **Camera endpoint**:
-The endpoint (`/stream`) on which the car sends camera frames.
+The HTTP endpoint (`/stream`) on which the car streams Camera frames.
 _Avoid_: Stream endpoint, video endpoint
 
 **Telemetry endpoint**:
-The endpoint (`/telemetry`) on which the car sends sensor readings.
+The WebSocket endpoint (`/telemetry`) on which the car sends Telemetry messages.
 
 **Push endpoint**:
 The Camera or Telemetry endpoint: the car sends and the client only reads.
 
-### Packets
+### WebSocket messages
 
-**Packet**:
-One JSON object carried by a WebSocket message: a drive command, a camera frame, a telemetry reading or a collision-monitor state.
-_Avoid_: Message (the WebSocket unit that carries a packet), payload
+**WebSocket message**:
+The application-level unit of one WebSocket connection, sent and received whole: a Drive command, a Telemetry message or a Collision-monitor message.
+_Avoid_: Message (on its own), packet, payload
+
+**WebSocket frame**:
+The wire unit a WebSocket message travels in; one WebSocket message is one or more WebSocket frames.
+_Avoid_: Frame (on its own)
+
+**Drive command**:
+The WebSocket message a Driver sends to control the car: a Velocity command, a brake, or a camera pan or tilt.
+_Avoid_: Control message, operator command, teleop command, drive packet
+
+**Velocity command**:
+A Drive command that sets the car's speed or turning: advance, retreat, turn left or turn right.
+_Avoid_: Motion command, movement command
+
+**Driver**:
+The one client allowed to send Drive commands at a time.
+_Avoid_: Operator, pilot
+
+**Telemetry message**:
+The WebSocket message that carries one Telemetry reading.
+
+**Telemetry reading**:
+One timestamped set of the car's sensor readings.
+_Avoid_: Telemetry packet, telemetry sample
+
+**Collision-monitor message**:
+The WebSocket message that tells a client whether the collision monitor is blocking forward motion.
+
+### Camera
+
+**Camera frame**:
+One picture captured by the camera, whether or not the streamer has drawn on it.
+_Avoid_: Frame (on its own), image, picture, snapshot, video frame

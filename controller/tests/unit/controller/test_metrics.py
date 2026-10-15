@@ -41,7 +41,7 @@ def test_record_frame(reader: InMemoryMetricReader) -> None:
 
 def test_record_telemetry_received(reader: InMemoryMetricReader) -> None:
     record_telemetry_received()
-    assert _counter_value(reader, "dust_mite_telemetry_packets_received") == 1
+    assert _counter_value(reader, "dust_mite_telemetry_messages_received") == 1
 
 
 def test_record_command_sent(reader: InMemoryMetricReader) -> None:

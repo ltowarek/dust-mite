@@ -62,24 +62,24 @@ def test_telemetry_pipeline(dut: Dut) -> None:
     dut.expect(r'Starting telemetry task', timeout=70)
 
     async def run():
-        packets = []
+        messages = []
         async with websockets.connect(car.telemetry.uri) as ws:
             for _ in range(3):
                 raw = await asyncio.wait_for(ws.recv(), timeout=5)
-                packets.append(json.loads(raw))
-        return packets
+                messages.append(json.loads(raw))
+        return messages
 
-    packets = asyncio.run(run())
-    assert len(packets) == 3
+    messages = asyncio.run(run())
+    assert len(messages) == 3
 
     required = {'timestamp', 'rssi', 'speed', 'accelerometer',
                 'magnetometer', 'gyroscope', 'distance_ahead'}
-    for pkt in packets:
-        assert required <= pkt.keys(), f'missing keys: {required - pkt.keys()}'
+    for message in messages:
+        assert required <= message.keys(), f'missing keys: {required - message.keys()}'
         for vec in ('accelerometer', 'magnetometer', 'gyroscope'):
-            assert {'x', 'y', 'z'} <= pkt[vec].keys()
+            assert {'x', 'y', 'z'} <= message[vec].keys()
 
-    timestamps = [pkt['timestamp'] for pkt in packets]
+    timestamps = [message['timestamp'] for message in messages]
     assert all(isinstance(ts, str) and len(ts) > 0 for ts in timestamps), \
         'timestamps must be non-empty strings'
 

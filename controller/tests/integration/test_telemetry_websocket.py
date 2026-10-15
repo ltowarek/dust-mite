@@ -15,17 +15,17 @@ def telemetry_client_uri(streamer_settings: StreamerSettings) -> str:
 @pytest.mark.dut
 @pytest.mark.asyncio
 async def test_performance(telemetry_client_uri: str) -> None:
-    packet_count = 100
+    message_count = 100
     async with connect(telemetry_client_uri) as websocket:
         start = time.time()
-        for _ in range(packet_count):
+        for _ in range(message_count):
             await websocket.recv()
         end = time.time()
     duration = datetime.timedelta(seconds=end - start)
-    pps = packet_count / duration.total_seconds()
+    messages_per_second = message_count / duration.total_seconds()
 
     expected = 1300
-    assert pps >= expected
+    assert messages_per_second >= expected
 
 
 @pytest.mark.dut

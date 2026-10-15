@@ -20,14 +20,14 @@ from controller.car import CarFeed, send_commands_to_car
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
 from controller.command_arbiter import DRIVER_ALREADY_CONNECTED, CommandArbiter
-from controller.packet import Packet
 from controller.senders import WebSocketCommandSender
 from controller.streamer import (
-    relay_camera_packet,
-    relay_telemetry_packet,
+    relay_camera_message,
+    relay_telemetry_message,
     server_handler,
 )
 from controller.subject import Subject
+from controller.websocket_message import WebSocketMessage
 
 from .test_doubles import (
     OBSTACLE_DISTANCE_CM,
@@ -45,9 +45,9 @@ _SPEED = 50
 def _streamer(
     camera: CarEndpointSpy, telemetry: CarEndpointSpy, control: CarEndpointSpy
 ) -> Iterator[websockets.sync.server.Server]:
-    commands = Subject[Packet]()
-    car_camera = CarFeed(camera.uri, relay_camera_packet)
-    car_telemetry = CarFeed(telemetry.uri, relay_telemetry_packet)
+    commands = Subject[WebSocketMessage]()
+    car_camera = CarFeed(camera.uri, relay_camera_message)
+    car_telemetry = CarFeed(telemetry.uri, relay_telemetry_message)
     arbiter = CommandArbiter(commands, car_telemetry, CollisionMonitor())
     with (
         send_commands_to_car(control.uri, commands),

@@ -10,8 +10,8 @@ from controller.command_arbiter import (
     CommandArbiter,
     DriverAlreadyConnectedError,
 )
-from controller.packet import Packet
 from controller.subject import Subject
+from controller.websocket_message import WebSocketMessage
 from tests.test_doubles import SubscriberSpy
 
 from .conftest import counter_values_by_command
@@ -25,8 +25,8 @@ class _Car:
     """The arbiter's surroundings: a telemetry source and the commands it publishes."""
 
     def __init__(self) -> None:
-        self.telemetry = Subject[Packet]()
-        self.commands = Subject[Packet]()
+        self.telemetry = Subject[WebSocketMessage]()
+        self.commands = Subject[WebSocketMessage]()
         self.sent = SubscriberSpy[dict[str, Any]]()
         self.collision_states = SubscriberSpy[dict[str, Any]]()
         self.arbiter = CommandArbiter(self.commands, self.telemetry, CollisionMonitor())

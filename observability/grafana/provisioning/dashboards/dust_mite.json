@@ -987,8 +987,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite_telemetry_packets_received[10s])",
-          "legendFormat": "Packets/s"
+          "expr": "rate(dust_mite_telemetry_messages_received[10s])",
+          "legendFormat": "Messages/s"
         }
       ]
     },

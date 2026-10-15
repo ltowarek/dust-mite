@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 _metrics: SimpleNamespace = SimpleNamespace(
     frames_processed=None,
-    telemetry_packets_received=None,
+    telemetry_messages_received=None,
     commands_sent=None,
     commands_blocked=None,
 )
@@ -47,10 +47,10 @@ def install_instruments(provider: MeterProvider) -> None:
         unit="{frame}",
         description="Number of camera frames processed",
     )
-    _metrics.telemetry_packets_received = meter.create_counter(
-        "dust_mite_telemetry_packets_received",
-        unit="{packet}",
-        description="Number of telemetry packets received from the car",
+    _metrics.telemetry_messages_received = meter.create_counter(
+        "dust_mite_telemetry_messages_received",
+        unit="{message}",
+        description="Number of telemetry messages received from the car",
     )
     _metrics.commands_sent = meter.create_counter(
         "dust_mite_commands_sent",
@@ -71,9 +71,9 @@ def record_frame() -> None:
 
 
 def record_telemetry_received() -> None:
-    """Record one received telemetry packet."""
-    if _metrics.telemetry_packets_received is not None:
-        _metrics.telemetry_packets_received.add(1)
+    """Record one received telemetry message."""
+    if _metrics.telemetry_messages_received is not None:
+        _metrics.telemetry_messages_received.add(1)
 
 
 def record_command_sent(command: Command) -> None:
