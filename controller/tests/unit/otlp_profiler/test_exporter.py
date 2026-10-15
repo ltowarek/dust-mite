@@ -1,6 +1,10 @@
+import pytest
 from opentelemetry.proto.collector.profiles.v1development import (
     profiles_service_pb2,
 )
+from opentelemetry.proto.common.v1 import common_pb2
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.util.types import AttributeValue
 
 from otlp_profiler import exporter
 from otlp_profiler.aggregator import SampleKey
@@ -9,7 +13,7 @@ _STACK_A = (("main", "app.py", 10), ("busy", "app.py", 20))
 _STACK_B = (("main", "app.py", 10),)
 _TRACE_ID = 0x0102030405060708090A0B0C0D0E0F10
 _SPAN_ID = 0x1234ABCD5678EF90
-_SETTINGS = exporter.ProfileSettings("svc", sample_rate=100)
+_SETTINGS = exporter.ProfileSettings(Resource({SERVICE_NAME: "svc"}), sample_rate=100)
 _WINDOW = exporter.ProfileWindow(
     time_unix_nano=1_700_000_000_000_000_000, duration_nano=500_000_000
 )
@@ -56,7 +60,7 @@ class TestBuildRequest:
         assert strings[profile.period_type.unit_strindex] == "count"
 
     def test_period_matches_sample_rate(self) -> None:
-        settings = exporter.ProfileSettings("svc", sample_rate=50)
+        settings = exporter.ProfileSettings(Resource({}), sample_rate=50)
 
         request = exporter.build_request(_sample_counts(), settings, _WINDOW)
 
@@ -114,30 +118,38 @@ class TestBuildRequest:
         ]
         assert names == ["svc"]
 
-    def test_resource_attributes_are_added_when_given(self) -> None:
-        settings = exporter.ProfileSettings(
-            "svc",
-            sample_rate=100,
-            resource_attributes={"service_repository": "https://github.com/o/r"},
-        )
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param(
+                "https://github.com/o/r",
+                common_pb2.AnyValue(string_value="https://github.com/o/r"),
+                id="string",
+            ),
+            pytest.param(True, common_pb2.AnyValue(bool_value=True), id="bool"),
+            pytest.param(7, common_pb2.AnyValue(int_value=7), id="int"),
+            pytest.param(0.5, common_pb2.AnyValue(double_value=0.5), id="float"),
+            pytest.param(
+                ("a", "b"),
+                common_pb2.AnyValue(
+                    array_value=common_pb2.ArrayValue(
+                        values=[
+                            common_pb2.AnyValue(string_value="a"),
+                            common_pb2.AnyValue(string_value="b"),
+                        ]
+                    )
+                ),
+                id="sequence",
+            ),
+        ],
+    )
+    def test_resource_attributes_keep_their_type(
+        self, value: AttributeValue, expected: common_pb2.AnyValue
+    ) -> None:
+        settings = exporter.ProfileSettings(Resource({"key": value}), sample_rate=100)
 
         request = exporter.build_request(_sample_counts(), settings, _WINDOW)
 
         resource = request.resource_profiles[0].resource
-        values = {kv.key: kv.value.string_value for kv in resource.attributes}
-        assert values["service_repository"] == "https://github.com/o/r"
-        assert values["service.name"] == "svc"
-
-    def test_no_extra_resource_attributes_when_none(self) -> None:
-        with_none = exporter.build_request(
-            _sample_counts(),
-            exporter.ProfileSettings("svc", sample_rate=100, resource_attributes=None),
-            _WINDOW,
-        )
-        without_arg = exporter.build_request(_sample_counts(), _SETTINGS, _WINDOW)
-
-        assert len(with_none.resource_profiles[0].resource.attributes) == 1
-        assert (
-            with_none.resource_profiles[0].resource
-            == without_arg.resource_profiles[0].resource
-        )
+        values = {kv.key: kv.value for kv in resource.attributes}
+        assert values["key"] == expected

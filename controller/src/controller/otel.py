@@ -7,6 +7,9 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 _COMMIT_ID_RE = re.compile(r"\+g([0-9a-f]+)")
 
+VCS_REPOSITORY_URL_FULL = "vcs.repository.url.full"
+VCS_REF_HEAD_REVISION = "vcs.ref.head.revision"
+
 
 def resolve_git_ref(package_version: str) -> str:
     """Extract the short commit hash from a `setuptools_scm`-derived version."""
@@ -27,8 +30,8 @@ def resolve_vcs_attributes(repository: str | None, git_ref: str) -> dict[str, st
     if not repository or not git_ref:
         return {}
     return {
-        "vcs.repository.url.full": repository,
-        "vcs.ref.head.revision": git_ref,
+        VCS_REPOSITORY_URL_FULL: repository,
+        VCS_REF_HEAD_REVISION: git_ref,
     }
 
 

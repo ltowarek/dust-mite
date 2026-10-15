@@ -7,7 +7,7 @@ different Pyroscope profile type is needed.
 
 import dataclasses
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 
 import requests
 from opentelemetry.proto.collector.profiles.v1development import (
@@ -16,7 +16,8 @@ from opentelemetry.proto.collector.profiles.v1development import (
 from opentelemetry.proto.common.v1 import common_pb2
 from opentelemetry.proto.profiles.v1development import profiles_pb2
 from opentelemetry.proto.resource.v1 import resource_pb2
-from opentelemetry.sdk.resources import SERVICE_NAME
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.util.types import AttributeValue
 
 from otlp_profiler.aggregator import SampleKey, Stack
 
@@ -40,10 +41,9 @@ class ProfileType:
 class ProfileSettings:
     """What every profile from one process carries, export after export."""
 
-    service_name: str
+    resource: Resource
     sample_rate: int
     profile_type: ProfileType = ProfileType()
-    resource_attributes: Mapping[str, str] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -176,6 +176,21 @@ class _DictionaryBuilder:
         )
 
 
+def _any_value(value: AttributeValue) -> common_pb2.AnyValue:
+    # bool before int: bool is a subclass of int.
+    if isinstance(value, bool):
+        return common_pb2.AnyValue(bool_value=value)
+    if isinstance(value, int):
+        return common_pb2.AnyValue(int_value=value)
+    if isinstance(value, float):
+        return common_pb2.AnyValue(double_value=value)
+    if isinstance(value, str):
+        return common_pb2.AnyValue(string_value=value)
+    return common_pb2.AnyValue(
+        array_value=common_pb2.ArrayValue(values=[_any_value(v) for v in value])
+    )
+
+
 def _build_samples(
     counts: dict[SampleKey, int], dictionary: _DictionaryBuilder
 ) -> list[profiles_pb2.Sample]:
@@ -223,17 +238,12 @@ def build_request(
         profile_id=os.urandom(16),
     )
 
-    attributes = [
-        common_pb2.KeyValue(
-            key=SERVICE_NAME,
-            value=common_pb2.AnyValue(string_value=settings.service_name),
-        )
-    ]
-    for key, value in (settings.resource_attributes or {}).items():
-        attributes.append(
-            common_pb2.KeyValue(key=key, value=common_pb2.AnyValue(string_value=value))
-        )
-    resource = resource_pb2.Resource(attributes=attributes)
+    resource = resource_pb2.Resource(
+        attributes=[
+            common_pb2.KeyValue(key=key, value=_any_value(value))
+            for key, value in settings.resource.attributes.items()
+        ]
+    )
     scope_profiles = profiles_pb2.ScopeProfiles(profiles=[profile])
     resource_profiles = profiles_pb2.ResourceProfiles(
         resource=resource, scope_profiles=[scope_profiles]

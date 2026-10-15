@@ -9,6 +9,7 @@ import requests
 from opentelemetry.proto.collector.profiles.v1development import (
     profiles_service_pb2,
 )
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 from otlp_profiler import exporter
 from otlp_profiler.aggregator import SampleKey
@@ -81,7 +82,7 @@ def _endpoint(server: _CollectorServer) -> str:
     return f"http://{host}:{port}{_PROFILES_PATH}"
 
 
-_SETTINGS = exporter.ProfileSettings("svc", sample_rate=100)
+_SETTINGS = exporter.ProfileSettings(Resource({SERVICE_NAME: "svc"}), sample_rate=100)
 _WINDOW = exporter.ProfileWindow(
     time_unix_nano=1_700_000_000_000_000_000, duration_nano=500_000_000
 )

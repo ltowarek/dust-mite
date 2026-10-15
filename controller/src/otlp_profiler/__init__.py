@@ -5,9 +5,9 @@ Linux-only: on-CPU filtering reads `/proc/<tid>/stat` (see
 """
 
 import logging
-from collections.abc import Mapping
 
 from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 
 from otlp_profiler.aggregator import Aggregator
@@ -22,16 +22,15 @@ _DEFAULT_EXPORT_INTERVAL_MS = 500
 
 
 def configure(
-    service_name: str,
     endpoint: str,
+    resource: Resource,
     sample_rate: int = _DEFAULT_SAMPLE_RATE,
     export_interval_ms: int = _DEFAULT_EXPORT_INTERVAL_MS,
-    resource_attributes: Mapping[str, str] | None = None,
 ) -> None:
     """Start continuous profiling and attach span/profile linking.
 
-    Starts a background sampler that periodically exports OTLP profiles to
-    `endpoint`, the full OTLP/HTTP profiles URL, and -- if a real
+    Starts a background sampler that periodically exports OTLP profiles of
+    `resource` to `endpoint`, the full OTLP/HTTP profiles URL, and -- if a real
     `TracerProvider` is the current global tracer provider -- attaches a
     `SpanProcessor` that stamps every span with a `pyroscope.profile.id`
     attribute and tags samples with whichever span is active on their
@@ -40,9 +39,7 @@ def configure(
     """
     aggregator = Aggregator()
     span_registry = ActiveSpanRegistry()
-    settings = ProfileSettings(
-        service_name, sample_rate, resource_attributes=resource_attributes
-    )
+    settings = ProfileSettings(resource, sample_rate)
 
     provider = trace.get_tracer_provider()
     if isinstance(provider, TracerProvider):
