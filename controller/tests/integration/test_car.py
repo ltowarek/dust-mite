@@ -5,8 +5,9 @@ from typing import Any
 import websockets.http11
 import websockets.sync.server
 
-from controller.car import CarFeed, Message, send_commands_to_car
+from controller.car import CarFeed, send_commands_to_car
 from controller.command import Command
+from controller.packet import Packet
 from controller.subject import Subject
 from tests.test_doubles import SubscriberSpy
 
@@ -70,7 +71,7 @@ def test_opens_the_control_connection_at_once(car_control: CarEndpointSpy) -> No
 def test_sends_each_published_command_to_the_car(
     car_control: CarEndpointSpy,
 ) -> None:
-    commands = Subject[Message]()
+    commands = Subject[Packet]()
     command = {"command": Command.ADVANCE.value, "value": _SPEED}
 
     with send_commands_to_car(car_control.uri, commands):

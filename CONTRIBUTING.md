@@ -303,7 +303,7 @@ auto span = esp_opentelemetry_tracer()->StartSpan("my.operation");
 span->SetAttribute("key", "value");
 span->End();
 
-// Span linked to a parent extracted from an incoming JSON message
+// Span linked to a parent extracted from an incoming JSON packet
 auto parent_ctx = tracing_extract(*json_obj);
 opentelemetry::trace::StartSpanOptions opts;
 opts.parent = opentelemetry::trace::GetSpan(parent_ctx)->GetContext();
@@ -333,8 +333,8 @@ with tracer.start_as_current_span("my.operation", context=parent_ctx) as span:
 **Web browser (JavaScript)** — use the module-level `tracer` and `propagation` from `web/src/index.js`:
 
 ```js
-// Span linked to a parent extracted from an incoming WebSocket JSON message
-const carrier = { traceparent: event_data.traceparent, tracestate: event_data.tracestate };
+// Span linked to a parent extracted from an incoming WebSocket JSON packet
+const carrier = { traceparent: packet.traceparent, tracestate: packet.tracestate };
 const parentContext = propagation.extract(context.active(), carrier);
 const span = tracer.startSpan("my.operation", {
     attributes: { "key": "value" },

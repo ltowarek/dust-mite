@@ -3,14 +3,14 @@
 import contextlib
 import threading
 from collections.abc import Callable, Iterator
-from typing import Any
 
 from opentelemetry import trace
 
-from .car import CarFeed, Message, prepare_command_packet
+from .car import CarFeed, prepare_command_packet
 from .collision_monitor import CollisionMonitor
 from .command import Command
 from .metrics import record_command_blocked, record_command_sent
+from .packet import Packet
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
 
@@ -36,8 +36,8 @@ class CommandArbiter:
 
     def __init__(
         self,
-        commands: Subject[Message],
-        telemetry: CarFeed | Subject[Message],
+        commands: Subject[Packet],
+        telemetry: CarFeed | Subject[Packet],
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""
@@ -48,10 +48,10 @@ class CommandArbiter:
         self._claimed = False
         # Race: only changes are published, so a client that subscribes after
         # the latest change sees no collision state until the next one.
-        self.collision_state: Subject[Message] = Subject()
+        self.collision_state: Subject[Packet] = Subject()
 
     @contextlib.contextmanager
-    def claim(self) -> Iterator[Callable[[Message], None]]:
+    def claim(self) -> Iterator[Callable[[Packet], None]]:
         """Hold the arbiter for the context; yield a function that sends commands.
 
         Raises `DriverAlreadyConnectedError` if another driver holds it.
@@ -70,7 +70,7 @@ class CommandArbiter:
             with self._lock:
                 self._claimed = False
 
-    def _submit(self, command_packet: dict[str, Any]) -> None:
+    def _submit(self, command_packet: Packet) -> None:
         operator_context = extract_trace_context(command_packet)
         with tracer.start_as_current_span(
             "streamer.handle_drive_command", context=operator_context
@@ -89,8 +89,8 @@ class CommandArbiter:
             self._commands.publish(prepare_command_packet(command_packet))
             record_command_sent(command)
 
-    def _on_telemetry(self, message: dict[str, Any]) -> None:
-        if self._collision_monitor.update(message["data"]["distance_ahead"]):
+    def _on_telemetry(self, packet: Packet) -> None:
+        if self._collision_monitor.update(packet["data"]["distance_ahead"]):
             self._publish_collision_state()
 
     def _publish_collision_state(self) -> None:
