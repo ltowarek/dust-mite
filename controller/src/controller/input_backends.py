@@ -73,9 +73,6 @@ class DualSenseInputBackend:
         command = Command.BRAKE
         value = None
 
-        # TODO: Split car and camera commands
-        # Currently there is no way to drive a car and look around
-        # What's more, you can't look horizontally and vertically and the same time
         if ds.state.DpadUp > 0:
             command, value = Command.ADVANCE, 50
         elif ds.state.DpadRight:

@@ -43,8 +43,9 @@ class CommandSender(Protocol):
 class WebSocketCommandSender:
     """Send commands to the car over a WebSocket connection.
 
-    Use as a context manager: connects to `uri` on entry, closes on exit.
-    `connect` opens the connection; tests pass one that returns a test double.
+    Connects to `uri` on construction; use as a context manager to close the
+    connection on exit. `connect` opens the connection; tests pass one that
+    returns a test double.
     """
 
     def __init__(
@@ -52,23 +53,15 @@ class WebSocketCommandSender:
         uri: str,
         connect: Callable[[str], _Connection] = websockets.sync.client.connect,
     ) -> None:
-        """Initialize the object."""
-        self._uri = uri
-        self._connect = connect
-        self._ws_conn: _Connection | None = None
-
-    def connect(self) -> None:
-        """Connect to the car."""
-        self._ws_conn = self._connect(self._uri)
+        """Connect to the car at `uri`."""
+        self._ws_conn = connect(uri)
 
     def close(self) -> None:
         """Close the connection."""
-        assert self._ws_conn is not None
         self._ws_conn.close()
 
     def __enter__(self) -> Self:
-        """Connect in a context manager."""
-        self.connect()
+        """Return the connected sender."""
         return self
 
     def __exit__(
@@ -83,8 +76,6 @@ class WebSocketCommandSender:
     @tracer.start_as_current_span("controller.send_command")
     def send(self, command: Command, value: int | None) -> None:
         """Send a command to the car."""
-        assert self._ws_conn is not None
-
         span = trace.get_current_span()
         span.set_attribute("network.protocol.name", "websocket")
         span.set_attribute("command_name", command.name)
