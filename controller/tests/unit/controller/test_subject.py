@@ -4,7 +4,7 @@ from tests.test_doubles import SubscriberSpy
 
 class TestSubject:
     def test_delivers_published_messages_to_every_subscriber(self) -> None:
-        subject = Subject()
+        subject = Subject[str]()
         first, second = SubscriberSpy[str](), SubscriberSpy[str]()
 
         with subject.subscription(first), subject.subscription(second):
@@ -14,7 +14,7 @@ class TestSubject:
         assert second.messages == ["frame"]
 
     def test_stops_delivering_once_the_subscription_ends(self) -> None:
-        subject = Subject()
+        subject = Subject[str]()
         subscriber = SubscriberSpy[str]()
 
         with subject.subscription(subscriber):
@@ -27,7 +27,7 @@ class TestSubject:
         self,
     ) -> None:
         events: list[str] = []
-        subject = Subject(
+        subject = Subject[str](
             on_active=lambda: events.append("active"),
             on_idle=lambda: events.append("idle"),
         )
@@ -40,4 +40,4 @@ class TestSubject:
         assert events == ["active", "both subscribed", "one left", "idle"]
 
     def test_publishing_without_subscribers_is_a_no_op(self) -> None:
-        Subject().publish("nobody listening")
+        Subject[str]().publish("nobody listening")

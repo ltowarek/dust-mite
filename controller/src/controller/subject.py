@@ -3,10 +3,9 @@
 import contextlib
 import threading
 from collections.abc import Callable, Iterator
-from typing import Any
 
 
-class Subject:
+class Subject[T]:
     """Delivers every published message to each current subscriber.
 
     `on_active` runs when the first subscriber arrives and `on_idle` after the
@@ -26,10 +25,10 @@ class Subject:
         self._on_idle = on_idle
         self._lifecycle_lock = threading.Lock()
         self._subscribers_lock = threading.Lock()
-        self._subscribers: list[Callable[[Any], None]] = []
+        self._subscribers: list[Callable[[T], None]] = []
 
     @contextlib.contextmanager
-    def subscription(self, callback: Callable[[Any], None]) -> Iterator[None]:
+    def subscription(self, callback: Callable[[T], None]) -> Iterator[None]:
         """Call `callback` with every message published while the context is open."""
         self._subscribe(callback)
         try:
@@ -37,14 +36,14 @@ class Subject:
         finally:
             self._unsubscribe(callback)
 
-    def publish(self, message: Any) -> None:  # noqa: ANN401 - subjects carry any payload
+    def publish(self, message: T) -> None:
         """Deliver `message` to every current subscriber."""
         with self._subscribers_lock:
             subscribers = list(self._subscribers)
         for callback in subscribers:
             callback(message)
 
-    def _subscribe(self, callback: Callable[[Any], None]) -> None:
+    def _subscribe(self, callback: Callable[[T], None]) -> None:
         with self._lifecycle_lock:
             with self._subscribers_lock:
                 first = not self._subscribers
@@ -52,7 +51,7 @@ class Subject:
             if first and self._on_active is not None:
                 self._on_active()
 
-    def _unsubscribe(self, callback: Callable[[Any], None]) -> None:
+    def _unsubscribe(self, callback: Callable[[T], None]) -> None:
         with self._lifecycle_lock:
             with self._subscribers_lock:
                 self._subscribers.remove(callback)

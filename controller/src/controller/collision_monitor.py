@@ -1,9 +1,9 @@
 """Collision monitor: keeps drive commands from advancing into an obstacle."""
 
 import threading
-from typing import Any
 
 from .command import Command
+from .packet import Packet
 
 
 class CollisionMonitor:
@@ -52,7 +52,7 @@ class CollisionMonitor:
         with self._lock:
             self._stopping = False
 
-    def filter(self, command_packet: dict[str, Any]) -> dict[str, Any]:
+    def filter(self, command_packet: Packet) -> Packet:
         """Return the command to send to the car in place of `command_packet`."""
         if self.stopping and command_packet.get("command") == Command.ADVANCE.value:
             return {"command": Command.BRAKE.value, "value": None}

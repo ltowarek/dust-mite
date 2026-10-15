@@ -4,10 +4,10 @@ import contextlib
 import curses
 import logging
 from collections.abc import Generator
-from typing import Protocol
+from typing import Protocol, override
 
 
-class _LogWindow(Protocol):
+class LogWindow(Protocol):
     """The subset of `curses.window` this module writes through.
 
     A structural type rather than `curses.window` itself, so tests can pass
@@ -16,9 +16,14 @@ class _LogWindow(Protocol):
 
     # `scrollok` and `addstr` mirror curses.window's C functions, which
     # only accept a positional bool/str, not a keyword.
-    def scrollok(self, flag: bool, /) -> None: ...  # noqa: FBT001
-    def addstr(self, text: str, /) -> None: ...
-    def refresh(self) -> None: ...
+    def scrollok(self, flag: bool, /) -> None:  # noqa: FBT001 - mirrors curses.window.scrollok's positional-only bool
+        """Let the window scroll when the cursor moves past its last line."""
+
+    def addstr(self, text: str, /) -> None:
+        """Write `text` at the cursor."""
+
+    def refresh(self) -> None:
+        """Show what was written on the terminal."""
 
 
 class CursesHandler(logging.Handler):
@@ -32,12 +37,13 @@ class CursesHandler(logging.Handler):
     `curses` track the cursor and scroll correctly.
     """
 
-    def __init__(self, window: _LogWindow) -> None:
+    def __init__(self, window: LogWindow) -> None:
         """Initialize the handler and enable scrolling on `window`."""
         super().__init__()
         self._window = window
-        self._window.scrollok(True)  # noqa: FBT003 -- positional-only, see above
+        self._window.scrollok(True)  # noqa: FBT003 - curses.window.scrollok takes only a positional bool
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         """Write the formatted `record` to the window."""
         try:
@@ -52,13 +58,13 @@ class CursesHandler(logging.Handler):
             # would reproduce the exact staircase bug this handler exists
             # to prevent.
             pass
-        except Exception:  # noqa: BLE001 -- never let a broken handler crash the caller
+        except Exception:  # noqa: BLE001 - logging.Handler.emit must pass every exception to handleError
             self.handleError(record)
 
 
 @contextlib.contextmanager
 def curses_console_logging(
-    window: _LogWindow, console_handler: logging.Handler
+    window: LogWindow, console_handler: logging.Handler
 ) -> Generator[None, None, None]:
     """Route console output through `window` for the duration of the block.
 

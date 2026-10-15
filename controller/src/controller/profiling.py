@@ -2,35 +2,39 @@
 
 import logging
 
+from opentelemetry.sdk.resources import Resource
+
 import otlp_profiler
-from controller.otel import resolve_current_git_ref
+from controller.otel import VCS_REF_HEAD_REVISION, VCS_REPOSITORY_URL_FULL
 
 logger = logging.getLogger(__name__)
 
 _ROOT_PATH = "controller"
 
 
-def resolve_source_attributes(
-    repository: str | None, git_ref: str, root_path: str
-) -> dict[str, str]:
-    """Return the Pyroscope GitHub source-linking resource attributes."""
-    if not repository or not git_ref:
+def source_link_attributes(resource: Resource) -> dict[str, str]:
+    """Return Pyroscope's GitHub source-linking attributes for `resource`.
+
+    Pyroscope reads the repository and revision from its own attribute
+    names, not from the OpenTelemetry `vcs.*` ones the resource carries.
+    """
+    repository = resource.attributes.get(VCS_REPOSITORY_URL_FULL)
+    git_ref = resource.attributes.get(VCS_REF_HEAD_REVISION)
+    if not isinstance(repository, str) or not isinstance(git_ref, str):
         return {}
-    attributes = {"service_repository": repository, "service_git_ref": git_ref}
-    if root_path:
-        attributes["service_root_path"] = root_path
-    return attributes
+    return {
+        "service_repository": repository,
+        "service_git_ref": git_ref,
+        "service_root_path": _ROOT_PATH,
+    }
 
 
-def configure_profiling(
-    service_name: str, endpoint: str | None, repository: str | None
-) -> None:
-    """Configure continuous CPU profiling for `service_name`.
+def configure_profiling(endpoint: str | None, resource: Resource) -> None:
+    """Export continuous CPU profiles over OTLP/HTTP.
 
     ``endpoint`` is the full OTLP/HTTP profiles URL, on the OTel Collector:
     unlike the ESP32 firmware pipeline there is no symbolizer hop.
-    Configuration is skipped if it is empty. Pyroscope links profiles to
-    ``repository``.
+    Configuration is skipped if it is empty.
 
     Call after `configure_tracing()`, which must have already set the global
     TracerProvider for span/profile linking to attach to.
@@ -39,10 +43,6 @@ def configure_profiling(
         logger.debug("No OTLP profiles endpoint, skipping profiler configuration")
         return
 
-    resource_attributes = resolve_source_attributes(
-        repository, resolve_current_git_ref(), _ROOT_PATH
-    )
-
     otlp_profiler.configure(
-        service_name, endpoint, resource_attributes=resource_attributes
+        endpoint, resource.merge(Resource(source_link_attributes(resource)))
     )

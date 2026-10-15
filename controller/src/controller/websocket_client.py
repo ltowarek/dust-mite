@@ -57,8 +57,6 @@ class ClientConnection:
                 keep_client_connection = True
 
                 while not self._stop_event.is_set() and keep_client_connection:
-                    # TODO: Rewrite with asyncio
-                    # So "w" and "r" can be supported at the same time
                     if "w" in self._mode:
                         # A read-write connection must not wait here, or it
                         # would delay reading; a write-only one would spin.

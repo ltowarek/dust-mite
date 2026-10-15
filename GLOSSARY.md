@@ -23,3 +23,9 @@ The endpoint (`/telemetry`) on which the car sends sensor readings.
 
 **Push endpoint**:
 The Camera or Telemetry endpoint: the car sends and the client only reads.
+
+### Packets
+
+**Packet**:
+One JSON object carried by a WebSocket message: a drive command, a camera frame, a telemetry reading or a collision-monitor state.
+_Avoid_: Message (the WebSocket unit that carries a packet), payload

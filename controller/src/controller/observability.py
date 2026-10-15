@@ -81,4 +81,4 @@ def configure_observability(service_name: str, settings: ObservabilitySettings) 
     if not settings.profiling_enabled:
         logger.debug("Profiling not enabled, skipping profiler configuration")
         return
-    configure_profiling(service_name, settings.profiles_endpoint, settings.repository)
+    configure_profiling(settings.profiles_endpoint, resource)

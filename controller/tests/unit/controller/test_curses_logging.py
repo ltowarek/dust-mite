@@ -1,12 +1,17 @@
 import curses
 import logging
+from typing import override
 
 import pytest
 
-from controller.curses_logging import CursesHandler, curses_console_logging
+from controller.curses_logging import (
+    CursesHandler,
+    LogWindow,
+    curses_console_logging,
+)
 
 
-class WindowSpy:
+class WindowSpy(LogWindow):
     """Minimal stand-in for `curses.window`, recording calls made to it."""
 
     def __init__(self) -> None:
@@ -14,15 +19,36 @@ class WindowSpy:
         self.scrollok_calls: list[bool] = []
         self.refresh_calls = 0
 
-    def scrollok(self, flag: bool, /) -> None:  # noqa: FBT001 -- mirrors
-        # curses.window.scrollok, a C function that only takes a positional bool
+    @override
+    def scrollok(self, flag: bool, /) -> None:
         self.scrollok_calls.append(flag)
 
+    @override
     def addstr(self, text: str, /) -> None:
         self.written.append(text)
 
+    @override
     def refresh(self) -> None:
         self.refresh_calls += 1
+
+
+class RaisingWindowStub(LogWindow):
+    """Stub `curses.window` whose every write raises `error`."""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    @override
+    def scrollok(self, flag: bool, /) -> None:
+        """Accept the handler's scrolling setup."""
+
+    @override
+    def addstr(self, text: str, /) -> None:
+        raise self._error
+
+    @override
+    def refresh(self) -> None:
+        """Accept the handler's refresh."""
 
 
 def _record(msg: str = "hello", args: tuple[object, ...] = ()) -> logging.LogRecord:
@@ -76,21 +102,20 @@ class TestCursesHandler:
 
     def test_swallows_curses_error_from_addstr(self) -> None:
         """The bottom-right-cell write raises `curses.error` even on success."""
-        bottom_right_cell_error = curses.error("add_wch() returned ERR")
-
-        class RaisingWindowStub:
-            def scrollok(self, _flag: object, /) -> None:
-                """Accept the handler's scrolling setup."""
-
-            def addstr(self, _text: str, /) -> None:
-                raise bottom_right_cell_error
-
-            def refresh(self) -> None:
-                """Accept the handler's refresh."""
-
-        handler = CursesHandler(RaisingWindowStub())
+        handler = CursesHandler(
+            RaisingWindowStub(curses.error("add_wch() returned ERR"))
+        )
 
         handler.emit(_record())  # must not raise
+
+    def test_reports_any_other_error_through_handle_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        handler = CursesHandler(RaisingWindowStub(OSError("terminal is gone")))
+
+        handler.emit(_record())
+
+        assert "OSError: terminal is gone" in capsys.readouterr().err
 
 
 class TestCursesConsoleLogging:

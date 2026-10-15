@@ -2,6 +2,7 @@
 
 import contextlib
 import threading
+from typing import override
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
@@ -79,10 +80,11 @@ class SpanLinkingProcessor(SpanProcessor):
         """Create a processor that records active spans into `registry`."""
         self._registry = registry
 
+    @override
     def on_start(
         self,
         span: Span,
-        parent_context: Context | None = None,  # noqa: ARG002 -- required by base class
+        parent_context: Context | None = None,
     ) -> None:
         """Record `span` as active on the current thread and stamp its profile id."""
         span_context = span.get_span_context()
@@ -91,6 +93,7 @@ class SpanLinkingProcessor(SpanProcessor):
             threading.get_ident(), span_context.trace_id, span_context.span_id
         )
 
+    @override
     def on_end(self, span: ReadableSpan) -> None:
         """Remove `span` as the active span on its owning thread."""
         context = span.get_span_context()
@@ -98,12 +101,14 @@ class SpanLinkingProcessor(SpanProcessor):
             return
         self._registry.pop(context.span_id)
 
+    @override
     def shutdown(self) -> None:
         """No resources to release."""
 
+    @override
     def force_flush(
         self,
-        timeout_millis: int = 30000,  # noqa: ARG002 -- required by base class
+        timeout_millis: int = 30000,
     ) -> bool:
         """Nothing to flush; always succeeds."""
         return True

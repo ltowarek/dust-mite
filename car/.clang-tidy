@@ -1,4 +1,16 @@
 ---
+# Every check is enabled except:
+# - llvmlibc-*, altera-*, llvm-* and fuchsia-*: the conventions of LLVM's
+#   libc, Altera FPGA OpenCL, the LLVM project and Fuchsia OS, none of which
+#   apply to ESP32 firmware.
+# - bugprone-easily-swappable-parameters: flags every function with adjacent
+#   parameters of the same type, which would need a wrapper type per
+#   parameter to satisfy.
+# - portability-template-virtual-member-function: guards against MSVC
+#   instantiating a class template's virtual members differently from GCC
+#   and Clang; the firmware only builds with ESP-IDF's GCC and Clang.
+# Comments cannot go inside the folded `Checks` value: they would become part
+# of the check list.
 Checks: >
   *,
   -llvmlibc-*,
@@ -7,6 +19,8 @@ Checks: >
   -fuchsia-*,
   -bugprone-easily-swappable-parameters,
   -portability-template-virtual-member-function
+# Findings are reported as warnings for now, so the check fails only when
+# clang-tidy itself fails.
 WarningsAsErrors: ''
 HeaderFilterRegex: 'car/(main|components/(camera|motor|telemetry|tracing|web_server|wifi))/.*'
 FormatStyle: file

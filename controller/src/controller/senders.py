@@ -28,6 +28,10 @@ class _Connection(Protocol):
     def close(self) -> None: ...
 
 
+class SenderNotConnectedError(Exception):
+    """A command sender was used before `connect()` or outside its context."""
+
+
 class DriveConnectionClosedError(Exception):
     """The connection commands are sent over was closed, with the reason given."""
 
@@ -63,8 +67,7 @@ class WebSocketCommandSender:
 
     def close(self) -> None:
         """Close the connection."""
-        assert self._ws_conn is not None
-        self._ws_conn.close()
+        self._require_connection().close()
 
     def __enter__(self) -> Self:
         """Connect in a context manager."""
@@ -83,7 +86,7 @@ class WebSocketCommandSender:
     @tracer.start_as_current_span("controller.send_command")
     def send(self, command: Command, value: int | None) -> None:
         """Send a command to the car."""
-        assert self._ws_conn is not None
+        connection = self._require_connection()
 
         span = trace.get_current_span()
         span.set_attribute("network.protocol.name", "websocket")
@@ -95,8 +98,14 @@ class WebSocketCommandSender:
         payload = inject_trace_context(payload)
 
         try:
-            self._ws_conn.send(json.dumps(payload))
+            connection.send(json.dumps(payload))
         except websockets.exceptions.ConnectionClosed as e:
             reason = e.rcvd.reason if e.rcvd is not None else ""
             raise DriveConnectionClosedError(reason or "connection lost") from e
         record_command_sent(command)
+
+    def _require_connection(self) -> _Connection:
+        if self._ws_conn is None:
+            msg = "connect() has not been called"
+            raise SenderNotConnectedError(msg)
+        return self._ws_conn

@@ -22,6 +22,7 @@ from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received
 from .observability import ObservabilitySettings, configure_observability
+from .packet import Packet
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_frame
@@ -32,13 +33,13 @@ logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
 
-# How long an idle client handler waits for a message before rechecking
+# How long an idle client handler waits for a packet before rechecking
 # whether its client has disconnected.
 _OUTBOX_POLL_S = 0.2
 
 
 class _Outbox:
-    """One client's view of some feeds, keeping the newest message of each type.
+    """One client's view of some feeds, keeping the newest packet of each type.
 
     Use as a context manager: it subscribes to `feeds` on entry and
     unsubscribes on exit. A client that falls behind skips stale camera
@@ -46,11 +47,11 @@ class _Outbox:
     shares.
     """
 
-    def __init__(self, *feeds: CarFeed | Subject) -> None:
+    def __init__(self, *feeds: CarFeed | Subject[Packet]) -> None:
         self._feeds = feeds
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
-        self._pending: dict[str, dict[str, Any]] = {}
+        self._pending: dict[str, Packet] = {}
 
     def __enter__(self) -> Self:
         # Unsubscribes from the feeds already entered if a later one fails.
@@ -68,16 +69,16 @@ class _Outbox:
     ) -> None:
         self._subscriptions.close()
 
-    def take(self, timeout: float) -> list[dict[str, Any]]:
+    def take(self, timeout: float) -> list[Packet]:
         with self._condition:
             self._condition.wait_for(lambda: self._pending, timeout)
-            messages = list(self._pending.values())
+            packets = list(self._pending.values())
             self._pending.clear()
-            return messages
+            return packets
 
-    def _put(self, message: dict[str, Any]) -> None:
+    def _put(self, packet: Packet) -> None:
         with self._condition:
-            self._pending[message["type"]] = message
+            self._pending[packet["type"]] = packet
             self._condition.notify()
 
 
@@ -136,7 +137,7 @@ def _serve_camera(
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
     telemetry: CarFeed,
-    collision_state: Subject,
+    collision_state: Subject[Packet],
 ) -> None:
     with _Outbox(telemetry, collision_state) as outbox:
         _send_until_closed(websocket, outbox)
@@ -146,13 +147,13 @@ def _send_until_closed(
     websocket: websockets.sync.server.ServerConnection, outbox: _Outbox
 ) -> None:
     while websocket.close_code is None:
-        for message in outbox.take(timeout=_OUTBOX_POLL_S):
-            websocket.send(json.dumps(message))
+        for packet in outbox.take(timeout=_OUTBOX_POLL_S):
+            websocket.send(json.dumps(packet))
 
 
-def camera_message(raw: str | bytes) -> dict[str, Any]:
-    """Process one camera frame from the car into a client message."""
-    packet: dict[str, Any] = json.loads(raw)
+def relay_camera_packet(raw: str | bytes) -> Packet:
+    """Turn one camera packet from the car into a stream packet for clients."""
+    packet: Packet = json.loads(raw)
     car_context = extract_trace_context(packet)
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame", context=car_context
@@ -162,14 +163,14 @@ def camera_message(raw: str | bytes) -> dict[str, Any]:
         return prepare_camera_frame_packet(frame)
 
 
-def prepare_camera_frame_packet(frame: bytes) -> dict[str, Any]:
+def prepare_camera_frame_packet(frame: bytes) -> Packet:
     """Build a stream packet for a processed camera frame with trace context."""
     packet = {"type": "stream", "data": base64.encodebytes(frame).decode("ascii")}
     return inject_trace_context(packet)
 
 
-def telemetry_message(raw: str | bytes) -> dict[str, Any]:
-    """Turn one telemetry packet from the car into a client message."""
+def relay_telemetry_packet(raw: str | bytes) -> Packet:
+    """Turn one telemetry packet from the car into a telemetry packet for clients."""
     telemetry: dict[str, Any] = json.loads(raw)
     record_telemetry_received()
     car_context = extract_trace_context(telemetry)
@@ -200,7 +201,7 @@ class StreamerSettings:
         )
 
 
-def prepare_telemetry_packet(telemetry: dict[str, Any]) -> dict[str, Any]:
+def prepare_telemetry_packet(telemetry: dict[str, Any]) -> Packet:
     """Build a telemetry packet with trace context."""
     packet = {"type": "telemetry", "data": telemetry}
     return inject_trace_context(packet)
@@ -210,9 +211,9 @@ def main() -> None:
     """Run the main entry point."""
     settings = StreamerSettings.from_env(os.environ)
     configure_observability("dust-mite-streamer", settings.observability)
-    commands = Subject()
-    camera = CarFeed(settings.camera_uri, camera_message)
-    telemetry = CarFeed(settings.telemetry_uri, telemetry_message)
+    commands: Subject[Packet] = Subject()
+    camera = CarFeed(settings.camera_uri, relay_camera_packet)
+    telemetry = CarFeed(settings.telemetry_uri, relay_telemetry_packet)
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
     handler = functools.partial(server_handler, camera, telemetry, arbiter)
     try:

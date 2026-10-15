@@ -3,6 +3,7 @@ import pytest
 from tests.helpers.query import (
     LOKI_UID,
     TEMPO_UID,
+    Poll,
     has_logs,
     has_traces,
     log_label_values,
@@ -61,8 +62,7 @@ def test_streamer_server_handler_log_resolves_to_a_real_trace() -> None:
                     TEMPO_UID,
                     "tempo",
                     trace_id_query(trace_id),
-                    time_range="now-1h",
-                    timeout=10.0,
+                    Poll(time_range="now-1h", timeout=10.0),
                 )
             )
         ),
