@@ -400,7 +400,8 @@ fictional. The sampler/span-link/exporter mechanics are covered by
 [esp-opentelemetry-cpp](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations)'s
 own CI (QEMU), including a regression test for the profile export starving the tasks around it of
 internal RAM, the only memory FreeRTOS objects, lwIP sockets and DMA buffers can use. dust-mite's
-CI builds the car with the profiling overlay (`main-profiling`). On the car,
+CI builds the car with the profiling overlay (`main-profiling`), and the overlay smoke test (see
+[Car test types](#car-test-types)) runs it on the car. Also on the car,
 [pytest_web_server_profiling.py](car/components/web_server/test_apps/pytest_web_server_profiling.py)
 measures how much internal RAM each profile export takes while clients stream; it needs the web
 server test app built with its `sdkconfig.defaults.profiling` overlay and is skipped otherwise.
@@ -996,6 +997,14 @@ Build, flash, and run all component test apps in sequence:
 ```bash
 ./scripts/run_tests.sh
 ```
+
+The script ends with an overlay smoke test,
+[car/test_apps/e2e/pytest_overlays.py](car/test_apps/e2e/pytest_overlays.py). CI builds the debug
+overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.all`) but never runs them, so the script
+builds the production firmware once per overlay (`build/`, `build_profiling/`, `build_all/`) and the
+test flashes each one, streams the Camera endpoint for a minute, and fails on any reset or fault in
+the serial log. Run it before merging a firmware change that touches an overlay or the observability
+setup.
 
 ### Feature flags
 

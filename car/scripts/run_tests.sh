@@ -59,6 +59,23 @@ pushd "$CAR_ROOT/test_apps/e2e" > /dev/null
 pytest pytest_e2e.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
 popd > /dev/null
 
+# pytest_overlays.py flashes each of these by directory name; "build" is the base build above.
+build_overlay() {
+    local name="$1" overlay="$2"
+    echo "=== Building firmware with $overlay ==="
+    pushd "$CAR_ROOT" > /dev/null
+    SDKCONFIG_DEFAULTS="sdkconfig.defaults;$overlay" \
+        idf.py -B "build_$name" -D SDKCONFIG="$CAR_ROOT/build_$name/sdkconfig" build
+    popd > /dev/null
+}
+build_overlay profiling sdkconfig.defaults.profiling
+build_overlay all sdkconfig.defaults.all
+
+echo "=== Running overlay smoke tests ==="
+pushd "$CAR_ROOT/test_apps/e2e" > /dev/null
+pytest pytest_overlays.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
+popd > /dev/null
+
 if [ "$FAILED" -ne 0 ]; then
     echo "=== Some tests failed ==="
     exit 1
