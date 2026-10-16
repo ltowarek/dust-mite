@@ -33,6 +33,7 @@ struct TaskStat {
   char core[4] = {};
   uint32_t prev_run_time = 0;
   UBaseType_t priority = 0;
+  configSTACK_DEPTH_TYPE stack_min_free = 0;
   float cpu_pct = 0.0f;
 };
 static TaskStat s_task_stats[kMaxTasks];
@@ -93,6 +94,7 @@ static void refresh_task_stats() {
     s_task_stats[i].name[configMAX_TASK_NAME_LEN] = '\0';
     s_task_stats[i].prev_run_time = snap[i].ulRunTimeCounter;
     s_task_stats[i].priority = snap[i].uxCurrentPriority;
+    s_task_stats[i].stack_min_free = snap[i].usStackHighWaterMark;
     s_task_stats[i].cpu_pct = pct;
   }
   s_task_count = n;
@@ -138,6 +140,13 @@ static void cb_task_priority(opentelemetry::metrics::ObserverResult obs, void*) 
     observe_task_metric(obs, static_cast<int64_t>(s_task_stats[i].priority), s_task_stats[i].name,
                         s_task_stats[i].core);
 }
+// ESP-IDF's StackType_t is one byte wide, so the high-water mark is already in bytes.
+static void cb_task_stack_min_free(opentelemetry::metrics::ObserverResult obs, void*) {
+  refresh_task_stats();
+  for (UBaseType_t i = 0; i < s_task_count; i++)
+    observe_task_metric(obs, static_cast<int64_t>(s_task_stats[i].stack_min_free),
+                        s_task_stats[i].name, s_task_stats[i].core);
+}
 #endif  // CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
 
 // Base instruments (free heap, min free heap, internal free heap, free psram,
@@ -150,7 +159,7 @@ static constexpr size_t kLargestFreeBlockInstruments = 1;
 static constexpr size_t kLargestFreeBlockInstruments = 0;
 #endif
 #ifdef CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED
-static constexpr size_t kTaskStatsInstruments = 2;
+static constexpr size_t kTaskStatsInstruments = 3;
 #else
 static constexpr size_t kTaskStatsInstruments = 0;
 #endif
@@ -219,6 +228,12 @@ void system_metrics_setup() {
   s_instruments[idx] = meter->CreateInt64ObservableGauge("dust_mite_task_priority",
                                                          "Per-task FreeRTOS priority", "1");
   s_instruments[idx]->AddCallback(cb_task_priority, nullptr);
+  idx++;
+
+  s_instruments[idx] =
+      meter->CreateInt64ObservableGauge("dust_mite_task_stack_min_free_bytes",
+                                        "Per-task minimum free stack since the task started", "By");
+  s_instruments[idx]->AddCallback(cb_task_stack_min_free, nullptr);
   idx++;
 #endif
 
