@@ -395,11 +395,16 @@ To profile a build:
    task dominance means the workload is not CPU-bound (hardware/scheduling limited); a specific
    application or esp-idf frame dominating means there is code to optimise.
 
-QEMU is not used for profiling — its Xtensa core is not cycle-accurate, so durations would be
+QEMU is not used to read profiles — its Xtensa core is not cycle-accurate, so durations would be
 fictional. The sampler/span-link/exporter mechanics are covered by
 [esp-opentelemetry-cpp](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations)'s
-own CI (QEMU); dust-mite's CI does not build the profiling overlay at all, so it is validated
-live on real hardware only.
+own CI (QEMU), including a regression test for the profile export starving the tasks around it of
+internal RAM, the only memory FreeRTOS objects, lwIP sockets and DMA buffers can use. dust-mite's
+CI builds the car with the profiling overlay (`main-profiling`). On the car,
+[pytest_web_server_profiling.py](car/components/web_server/test_apps/pytest_web_server_profiling.py)
+measures how much internal RAM each profile export takes while clients stream; it needs the web
+server test app built with its `sdkconfig.defaults.profiling` overlay and is skipped otherwise.
+Flame graphs themselves are validated on real hardware only.
 
 #### Span profiles (trace → flame graph)
 
