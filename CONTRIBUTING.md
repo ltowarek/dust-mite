@@ -389,7 +389,8 @@ To profile a build:
    [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)), then flash it:
    `./scripts/run_build.sh --profiling . && idf.py flash`
    Symbols need no publishing step: the symbolizer mounts `car/` and finds the
-   matching ELF by hash (the profile `build_id` equals the ELF's sha256).
+   matching ELF by hash (the profile `build_id` equals the ELF's sha256) in `build/` or any
+   `build_<overlay>/`, for the firmware and the component test apps.
 3. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-car"}`, optionally split by `thread_name` (FreeRTOS task). Idle
    task dominance means the workload is not CPU-bound (hardware/scheduling limited); a specific
