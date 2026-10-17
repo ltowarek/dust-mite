@@ -389,17 +389,25 @@ To profile a build:
    [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)), then flash it:
    `./scripts/run_build.sh --profiling . && idf.py flash`
    Symbols need no publishing step: the symbolizer mounts `car/` and finds the
-   matching ELF by hash (the profile `build_id` equals the ELF's sha256).
+   matching ELF by hash (the profile `build_id` equals the ELF's sha256) in `build/` or any
+   `build_<overlay>/`, for the firmware and the component test apps.
 3. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-car"}`, optionally split by `thread_name` (FreeRTOS task). Idle
    task dominance means the workload is not CPU-bound (hardware/scheduling limited); a specific
    application or esp-idf frame dominating means there is code to optimise.
 
-QEMU is not used for profiling — its Xtensa core is not cycle-accurate, so durations would be
+QEMU is not used to read profiles — its Xtensa core is not cycle-accurate, so durations would be
 fictional. The sampler/span-link/exporter mechanics are covered by
 [esp-opentelemetry-cpp](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations)'s
-own CI (QEMU); dust-mite's CI does not build the profiling overlay at all, so it is validated
-live on real hardware only.
+own CI (QEMU), including a regression test for the profile export starving the tasks around it of
+internal RAM, the only memory FreeRTOS objects, lwIP sockets and DMA buffers can use. dust-mite's
+CI builds the car with the profiling overlay (`main-profiling`), and the overlay smoke test (see
+[Car test types](#car-test-types)) runs it on the car. Also on the car,
+[pytest_web_server_profiling.py](car/components/web_server/test_apps/pytest_web_server_profiling.py)
+measures how much internal RAM each profile export takes while clients stream; it needs the web
+server test app built with its `sdkconfig.defaults.profiling` overlay, which `car/scripts/run_tests.sh`
+builds into `build_profiling/`, and is skipped otherwise.
+Flame graphs themselves are validated on real hardware only.
 
 #### Span profiles (trace → flame graph)
 
@@ -991,6 +999,19 @@ Build, flash, and run all component test apps in sequence:
 ```bash
 ./scripts/run_tests.sh
 ```
+
+The script ends with an overlay smoke test,
+[car/test_apps/e2e/pytest_overlays.py](car/test_apps/e2e/pytest_overlays.py). CI builds the debug
+overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.all`) but never runs them, so the script
+builds the production firmware once without an overlay (`build/`) and once per
+`car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
+Camera endpoint for a minute, and fails on any reset or fault in the serial log. In a build with
+profiling enabled it also fails on any profiling warning, which is how a missing profiles exporter or
+a failed export shows, so the profiling case needs the headless stack running (see
+[Profiling (firmware CPU)](#profiling-firmware-cpu)). Run it before merging a firmware change that
+touches an overlay or the observability setup. The profiling build sorts last, so it is still
+flashed when the script ends; then run `test_car_has_profile_samples` from [observability/tests/e2e/](observability/tests/e2e/) (see
+[Observability tests](#observability-tests)) to check that its profiles reached Pyroscope.
 
 ### Feature flags
 

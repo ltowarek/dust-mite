@@ -48,6 +48,9 @@ jobs:
           - name: main-all-features
             path: car
             sdkconfig_overlay: sdkconfig.defaults.all
+          - name: main-profiling
+            path: car
+            sdkconfig_overlay: sdkconfig.defaults.profiling
           - name: test-tracing
             path: car/components/tracing/test_apps
           - name: test-camera
