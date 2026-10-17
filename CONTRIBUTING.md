@@ -404,7 +404,8 @@ CI builds the car with the profiling overlay (`main-profiling`), and the overlay
 [Car test types](#car-test-types)) runs it on the car. Also on the car,
 [pytest_web_server_profiling.py](car/components/web_server/test_apps/pytest_web_server_profiling.py)
 measures how much internal RAM each profile export takes while clients stream; it needs the web
-server test app built with its `sdkconfig.defaults.profiling` overlay and is skipped otherwise.
+server test app built with its `sdkconfig.defaults.profiling` overlay, which `car/scripts/run_tests.sh`
+builds into `build_profiling/`, and is skipped otherwise.
 Flame graphs themselves are validated on real hardware only.
 
 #### Span profiles (trace → flame graph)
@@ -1001,10 +1002,15 @@ Build, flash, and run all component test apps in sequence:
 The script ends with an overlay smoke test,
 [car/test_apps/e2e/pytest_overlays.py](car/test_apps/e2e/pytest_overlays.py). CI builds the debug
 overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.all`) but never runs them, so the script
-builds the production firmware once per overlay (`build/`, `build_profiling/`, `build_all/`) and the
-test flashes each one, streams the Camera endpoint for a minute, and fails on any reset or fault in
-the serial log. Run it before merging a firmware change that touches an overlay or the observability
-setup.
+builds the production firmware once without an overlay (`build/`) and once per
+`car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
+Camera endpoint for a minute, and fails on any reset or fault in the serial log. In a build with
+profiling enabled it also fails on any profiling warning, which is how a missing profiles exporter or
+a failed export shows, so the profiling case needs the headless stack running (see
+[Profiling (firmware CPU)](#profiling-firmware-cpu)). Run it before merging a firmware change that
+touches an overlay or the observability setup. The profiling build sorts last, so it is still
+flashed when the script ends; then run `test_car_has_profile_samples` from [observability/tests/e2e/](observability/tests/e2e/) (see
+[Observability tests](#observability-tests)) to check that its profiles reached Pyroscope.
 
 ### Feature flags
 

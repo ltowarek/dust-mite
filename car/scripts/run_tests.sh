@@ -32,6 +32,17 @@ build() {
     popd > /dev/null
 }
 
+# Builds <dir> with its sdkconfig.defaults.<overlay> into build_<overlay>/, the directory the
+# overlay's tests flash.
+build_overlay() {
+    local dir="$1" overlay="$2"
+    echo "=== Building $dir with sdkconfig.defaults.$overlay ==="
+    pushd "$dir" > /dev/null
+    SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.$overlay" \
+        idf.py -B "build_$overlay" -D SDKCONFIG="$dir/build_$overlay/sdkconfig" build
+    popd > /dev/null
+}
+
 for project in "${COMPONENT_TEST_PROJECTS[@]}"; do
     echo "=== Building $project ==="
     build "$CAR_ROOT/$project"
@@ -42,6 +53,14 @@ for project in "${COMPONENT_TEST_PROJECTS[@]}"; do
         --embedded-services idf,esp --port "$PORT" -v || FAILED=1
     popd > /dev/null
 done
+
+WEB_SERVER_TEST_APP="$CAR_ROOT/components/web_server/test_apps"
+build_overlay "$WEB_SERVER_TEST_APP" profiling
+echo "=== Testing components/web_server/test_apps with sdkconfig.defaults.profiling ==="
+pushd "$WEB_SERVER_TEST_APP" > /dev/null
+pytest pytest_web_server_profiling.py --build-dir build_profiling \
+    --embedded-services idf,esp --port "$PORT" -v || FAILED=1
+popd > /dev/null
 
 echo "=== Building integration tests ==="
 build "$CAR_ROOT/test_apps/integration"
@@ -59,17 +78,10 @@ pushd "$CAR_ROOT/test_apps/e2e" > /dev/null
 pytest pytest_e2e.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
 popd > /dev/null
 
-# pytest_overlays.py flashes each of these by directory name; "build" is the base build above.
-build_overlay() {
-    local name="$1" overlay="$2"
-    echo "=== Building firmware with $overlay ==="
-    pushd "$CAR_ROOT" > /dev/null
-    SDKCONFIG_DEFAULTS="sdkconfig.defaults;$overlay" \
-        idf.py -B "build_$name" -D SDKCONFIG="$CAR_ROOT/build_$name/sdkconfig" build
-    popd > /dev/null
-}
-build_overlay profiling sdkconfig.defaults.profiling
-build_overlay all sdkconfig.defaults.all
+# pytest_overlays.py finds the same overlays; "build" is the base build above.
+for defaults in "$CAR_ROOT"/sdkconfig.defaults.*; do
+    build_overlay "$CAR_ROOT" "${defaults##*.}"
+done
 
 echo "=== Running overlay smoke tests ==="
 pushd "$CAR_ROOT/test_apps/e2e" > /dev/null

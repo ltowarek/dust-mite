@@ -10,12 +10,10 @@ from operator import attrgetter
 import pexpect
 import pytest
 import websockets
-from helpers import CarEndpoints, Endpoint
+from helpers import CLOSE_TIMEOUT_S, OPEN_TIMEOUT_S, CarEndpoints, Endpoint
 from pytest_embedded import Dut
 from websockets.sync.client import connect
 
-CLOSE_TIMEOUT_S = 10.0
-OPEN_TIMEOUT_S = 8.0
 # How long to wait for a drive command to show up in the car's log before calling it lost.
 COMMAND_ARRIVAL_TIMEOUT_S = 15.0
 

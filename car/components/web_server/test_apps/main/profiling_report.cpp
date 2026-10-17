@@ -10,9 +10,9 @@ namespace {
 // sampler's aggregation and this export's document build. FreeRTOS objects, lwIP sockets and DMA
 // buffers can only use internal RAM, so a profiler that takes it in proportion to the profile
 // starves the server it samples.
-class InternalRamReportingExporter final : public esp_opentelemetry::ProfilesExporter {
+class InternalRamExporterSpy final : public esp_opentelemetry::ProfilesExporter {
  public:
-  InternalRamReportingExporter()
+  InternalRamExporterSpy()
       : window_start_free_(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)) {
     heap_caps_monitor_local_minimum_free_size_start();
   }
@@ -35,5 +35,5 @@ class InternalRamReportingExporter final : public esp_opentelemetry::ProfilesExp
 }  // namespace
 
 void profiling_report_setup() {
-  esp_opentelemetry_profiling_setup(std::make_unique<InternalRamReportingExporter>());
+  esp_opentelemetry_profiling_setup(std::make_unique<InternalRamExporterSpy>());
 }
