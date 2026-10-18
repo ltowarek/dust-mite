@@ -18,9 +18,12 @@ RUN python3 -m venv /opt/qemu-builder-venv
 ENV PATH="/opt/qemu-builder-venv/bin:$PATH"
 RUN pip install --disable-pip-version-check --no-cache-dir meson==1.7.0 tomli==2.2.1
 
-RUN git clone --depth 1 --branch apptrace \
-        https://github.com/ltowarek/espressif-qemu.git /tmp/espressif-qemu \
+ARG ESPRESSIF_QEMU_COMMIT=ca3bac91db4d4dfc4eb179c39b2eb4908cabb8ec
+RUN git init -q /tmp/espressif-qemu \
     && cd /tmp/espressif-qemu \
+    && git fetch -q --depth 1 https://github.com/ltowarek/espressif-qemu.git \
+           "$ESPRESSIF_QEMU_COMMIT" \
+    && git checkout -q FETCH_HEAD \
     && ./configure --target-list=xtensa-softmmu \
                    --prefix=/opt/espressif-qemu \
                    --without-default-features \
