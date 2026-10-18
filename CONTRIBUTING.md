@@ -863,7 +863,8 @@ test app, or each in its own boot, as in the web server test app (see
   twice.
 
 `run_coverage.sh` requires the patched QEMU binary via the `QEMU_PROG_PATH` environment variable.
-The devcontainer image builds the patched esp-qemu (`ltowarek/espressif-qemu@apptrace`) and sets
+The devcontainer image builds the patched esp-qemu (`ltowarek/espressif-qemu@apptrace`, pinned by
+`ESPRESSIF_QEMU_COMMIT` in [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)) and sets
 `QEMU_PROG_PATH` automatically, so no manual export is needed inside the devcontainer.
 
 Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
