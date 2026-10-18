@@ -12,8 +12,7 @@ namespace {
 // starves the server it samples.
 class InternalRamExporterSpy final : public esp_opentelemetry::ProfilesExporter {
  public:
-  InternalRamExporterSpy()
-      : window_start_free_(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)) {
+  InternalRamExporterSpy() : window_start_free_(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)) {
     heap_caps_monitor_local_minimum_free_size_start();
   }
 
