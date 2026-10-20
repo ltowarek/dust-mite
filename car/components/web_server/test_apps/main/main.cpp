@@ -52,6 +52,7 @@ extern "C" void app_main(void) {
 
   esp_opentelemetry_tracing_setup({{"service.name", CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME}});
 #ifdef CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED
+  // Before web_server_setup: the profiler swaps the context storage spans are activated in.
   profiling_report_setup();
 #endif
   wifi_setup();

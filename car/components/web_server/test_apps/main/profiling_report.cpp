@@ -6,10 +6,6 @@
 
 namespace {
 
-// Each export reports how far internal RAM fell since the previous one, a window that holds the
-// sampler's aggregation and this export's document build. FreeRTOS objects, lwIP sockets and DMA
-// buffers can only use internal RAM, so a profiler that takes it in proportion to the profile
-// starves the server it samples.
 class InternalRamExporterSpy final : public esp_opentelemetry::ProfilesExporter {
  public:
   InternalRamExporterSpy() : window_start_free_(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)) {
