@@ -11,7 +11,9 @@
 #include "wifi.hpp"
 #include "telemetry.hpp"
 #include "unity.h"
+#include "esp_event.h"
 #include "esp_log.h"
+#include "freertos/semphr.h"
 #include "sdkconfig.h"
 #ifdef CONFIG_WEB_SERVER_TEST_QEMU_MODE
 #include "qemu_peripherals.hpp"
@@ -41,6 +43,27 @@ static i2c_master_bus_handle_t i2c_bus_init() {
 
 QueueHandle_t test_app_command_queue = nullptr;
 
+#ifndef CONFIG_WEB_SERVER_TEST_QEMU_MODE
+ESP_EVENT_DEFINE_BASE(TEST_APP_EVENT);
+
+static void event_loop_drained(void* arg, esp_event_base_t base, int32_t id, void* data) {
+  xSemaphoreGive(static_cast<SemaphoreHandle_t>(arg));
+}
+
+// The default event loop runs handlers in order, so once an event posted now has run, every
+// handler of the got-IP event that came before it, the web server's included, has finished.
+static void wait_for_event_loop_to_drain() {
+  SemaphoreHandle_t drained = xSemaphoreCreateBinary();
+  esp_event_handler_instance_t instance = nullptr;
+  ESP_ERROR_CHECK(esp_event_handler_instance_register(TEST_APP_EVENT, 0, event_loop_drained,
+                                                      drained, &instance));
+  ESP_ERROR_CHECK(esp_event_post(TEST_APP_EVENT, 0, nullptr, 0, portMAX_DELAY));
+  xSemaphoreTake(drained, portMAX_DELAY);
+  ESP_ERROR_CHECK(esp_event_handler_instance_unregister(TEST_APP_EVENT, 0, instance));
+  vSemaphoreDelete(drained);
+}
+#endif
+
 extern "C" void app_main(void) {
   QueueHandle_t command_queue = xQueueCreate(1, sizeof(drive_command_t));
   test_app_command_queue = command_queue;
@@ -59,8 +82,10 @@ extern "C" void app_main(void) {
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
-  // The server stops whenever the car loses Wi-Fi, so the cases start only once it has connected.
+  // The server stops whenever the car loses Wi-Fi, so the cases start only once it has connected
+  // and the servers have restarted, which keeps their logs out of the case's output.
   wifi_wait_for_ip();
+  wait_for_event_loop_to_drain();
 #else
   qemu_ethernet_setup();
   web_server_setup(frame_queue, command_queue, telemetry_queue);
