@@ -78,14 +78,14 @@ pushd "$CAR_ROOT/test_apps/e2e" > /dev/null
 pytest pytest_e2e.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
 popd > /dev/null
 
-# pytest_overlays.py finds the same overlays; "build" is the base build above.
+# pytest_smoke.py finds the same overlays; "build" is the base build above.
 for defaults in "$CAR_ROOT"/sdkconfig.defaults.*; do
     build_overlay "$CAR_ROOT" "${defaults##*.}"
 done
 
-echo "=== Running overlay smoke tests ==="
+echo "=== Running smoke tests ==="
 pushd "$CAR_ROOT/test_apps/e2e" > /dev/null
-pytest pytest_overlays.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
+pytest pytest_smoke.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
 popd > /dev/null
 
 if [ "$FAILED" -ne 0 ]; then
