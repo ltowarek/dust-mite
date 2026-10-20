@@ -14,8 +14,7 @@ EXPORT_WINDOWS = 6
 EXPORT_LINE = rb'profiles export: \d+ bytes, internal RAM drop (\d+) bytes'
 # sdkconfig.defaults.profiling exports every second; the first export waits for a full window.
 EXPORT_TIMEOUT_S = 30.0
-# Streaming alone moves the car's internal RAM by up to about 20 KB between two exports, and a
-# document built in internal RAM grows with the profile to most of what the car has free.
+# Streaming alone moves internal RAM by up to about 20 KB between two exports.
 INTERNAL_RAM_DROP_BUDGET_BYTES = 48 * 1024
 
 
@@ -38,9 +37,7 @@ def test_profile_exports_leave_internal_ram_to_the_server(dut: Dut, car: CarEndp
 
     drops = []
     try:
-        # Exports printed before the clients connected are still buffered; the server logs this
-        # only once the camera client is in, and the export after it covers a window that started
-        # before streaming (and the server's session setup), so it is not measured either.
+        # The first export after streaming starts covers a window from before it.
         dut.expect_exact('Stream started', timeout=OPEN_TIMEOUT_S)
         dut.expect(EXPORT_LINE, timeout=EXPORT_TIMEOUT_S)
         for _ in range(EXPORT_WINDOWS):
