@@ -1,9 +1,6 @@
 """Every sdkconfig overlay must keep the car running while it streams.
 
-CI only builds the debug overlays, and what breaks in one at runtime, such as a crash loop under load,
-does not show in a build. scripts/run_tests.sh builds the base firmware into build/ and each
-car/sdkconfig.defaults.<overlay> into build_<overlay>/; each case flashes one, streams the Camera
-endpoint and fails on any reset or fault the firmware prints.
+Flashes build/ and each build_<overlay>/ that scripts/run_tests.sh builds.
 """
 
 import threading

@@ -1,10 +1,6 @@
-"""On the car, the profiler must leave the server it samples the internal RAM it runs on.
+"""Profile exports must leave the web server enough internal RAM while clients stream.
 
-Needs the test app built with sdkconfig.defaults.profiling; scripts/run_tests.sh builds it into
-build_profiling/. Every profile export prints how far internal RAM fell since the previous export, a
-window that holds the sampler's aggregation and the export's document build while clients stream
-from the server. Wi-Fi and the camera, which QEMU lacks, take internal RAM of their own, so only
-the car shows what is left.
+Needs the test app built with sdkconfig.defaults.profiling into build_profiling/.
 """
 
 import threading
