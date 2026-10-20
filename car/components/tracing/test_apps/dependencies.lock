@@ -33,14 +33,22 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 1.3.1
+  espressif/json_generator:
+    component_hash: c24b782de6b3681540ae5a50cdd5212eb09cefec78b374fbe417e7d1fcf5a23d
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.0.0
   idf:
     source:
       type: idf
-    version: 6.0.1
+    version: 6.0.3
 direct_dependencies:
 - espressif/cjson
 - espressif/esp32-camera
+- espressif/json_generator
 - idf
-manifest_hash: 911421cdce94da1ed2bc6de5b3e378be9793a680401c558085611d3a71cad054
+manifest_hash: 932470ce1a29ff25c051c2d55a38ff5d66f587d4486dc014c417bbafd485df47
 target: esp32s3
 version: 3.0.0
