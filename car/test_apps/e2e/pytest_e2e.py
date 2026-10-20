@@ -1,6 +1,7 @@
 import asyncio
 import json
 import math
+import threading
 import time
 from collections.abc import Callable
 from operator import attrgetter
@@ -8,8 +9,9 @@ from operator import attrgetter
 import pytest
 import websockets
 from pytest_embedded import Dut
+from websockets.sync.client import connect
 
-from helpers import CarEndpoints, Endpoint, car_endpoints, get_dut_ip
+from helpers import CLOSE_TIMEOUT_S, OPEN_TIMEOUT_S, CarEndpoints, Endpoint, car_endpoints, get_dut_ip, open_stream, read_part
 
 # Command constants mirrored from motor.hpp
 COMMAND_ADVANCE = 1
@@ -29,7 +31,7 @@ DRIVE_COMMAND_WATCHDOG_MS = 1000
 _ENDPOINTS = [pytest.param(attrgetter(name), id=name) for name in ('drive', 'camera', 'telemetry')]
 
 
-async def _connect_twice(endpoint: Endpoint) -> tuple[int | None, bool]:
+async def _connect_twice_websocket(endpoint: Endpoint) -> tuple[int | None, bool]:
     """Holds one connection, tries a second, and returns the second's refusal status and whether the first
     still answers a ping afterwards. No command frames are sent, so the car does not move."""
     async with websockets.connect(endpoint.uri) as first:
@@ -45,13 +47,33 @@ async def _connect_twice(endpoint: Endpoint) -> tuple[int | None, bool]:
     return status, True
 
 
+def _connect_twice_stream(endpoint: Endpoint) -> tuple[int | None, bool]:
+    """Holds the Camera stream, tries a second, and returns the second's status and whether the first
+    still sends parts afterwards."""
+    with open_stream(endpoint) as first:
+        read_part(first)
+        with open_stream(endpoint) as second:
+            status = second.status
+        try:
+            read_part(first)
+        except (ConnectionError, OSError):
+            return status, False
+    return status, True
+
+
+def _connect_twice(endpoint: Endpoint) -> tuple[int | None, bool]:
+    if endpoint.scheme == 'http':
+        return _connect_twice_stream(endpoint)
+    return asyncio.run(_connect_twice_websocket(endpoint))
+
+
 @pytest.mark.parametrize('endpoint_of', _ENDPOINTS)
-def test_second_connection_refused_before_upgrade(dut: Dut, endpoint_of: Callable[[CarEndpoints], Endpoint]) -> None:
-    """Each endpoint serves one client and refuses a second with 503 before the WebSocket upgrade."""
+def test_second_connection_refused(dut: Dut, endpoint_of: Callable[[CarEndpoints], Endpoint]) -> None:
+    """Each endpoint serves one client and refuses a second with 503."""
     endpoint = endpoint_of(car_endpoints(get_dut_ip(dut)))
     dut.expect(r'Serving every endpoint', timeout=70)
 
-    status, _ = asyncio.run(_connect_twice(endpoint))
+    status, _ = _connect_twice(endpoint)
 
     assert status == HTTP_SERVICE_UNAVAILABLE
 
@@ -63,7 +85,7 @@ def test_first_connection_stays_open_after_second_is_refused(
     endpoint = endpoint_of(car_endpoints(get_dut_ip(dut)))
     dut.expect(r'Serving every endpoint', timeout=70)
 
-    _, first_open = asyncio.run(_connect_twice(endpoint))
+    _, first_open = _connect_twice(endpoint)
 
     assert first_open, f'refusing a second connection to {endpoint.path} closed the first one'
 
@@ -185,48 +207,43 @@ def test_concurrent_stream_and_telemetry(dut: Dut) -> None:
     """
     car = car_endpoints(get_dut_ip(dut))
     dut.expect(r'Serving every endpoint', timeout=70)
+    window_s = 10.0
+    counts = {'stream': 0, 'telemetry': 0}
 
-    async def run():
-        async with websockets.connect(car.camera.uri) as stream_ws, \
-                   websockets.connect(car.telemetry.uri) as tel_ws:
-
-            stream_count = 0
-            tel_count = 0
-            deadline = time.monotonic() + 10.0
-
-            # Track tasks by WebSocket identity to avoid concurrent recv() on the
-            # same connection (ConcurrencyError). Only recreate a task when it completes.
-            task_info: dict = {}
-            t = asyncio.ensure_future(stream_ws.recv())
-            task_info[t] = (stream_ws, 'stream')
-            t = asyncio.ensure_future(tel_ws.recv())
-            task_info[t] = (tel_ws, 'tel')
-
+    def _read_stream(deadline: float) -> None:
+        with open_stream(car.camera) as stream:
             while time.monotonic() < deadline:
-                done, _ = await asyncio.wait(
-                    list(task_info.keys()),
-                    timeout=2.0,
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for task in done:
-                    ws, kind = task_info.pop(task)
-                    if kind == 'stream':
-                        stream_count += 1
-                    else:
-                        tel_count += 1
-                    new_task = asyncio.ensure_future(ws.recv())
-                    task_info[new_task] = (ws, kind)
+                read_part(stream)
+                counts['stream'] += 1
 
-            for task in task_info:
-                task.cancel()
+    def _read_telemetry(deadline: float) -> None:
+        with connect(car.telemetry.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S) as telemetry:
+            while time.monotonic() < deadline:
+                telemetry.recv(timeout=5)
+                counts['telemetry'] += 1
 
-        return stream_count, tel_count
+    deadline = time.monotonic() + window_s
+    readers = [threading.Thread(target=read, args=(deadline,)) for read in (_read_stream, _read_telemetry)]
+    for reader in readers:
+        reader.start()
+    for reader in readers:
+        reader.join()
 
-    stream_count, tel_count = asyncio.run(run())
-    assert stream_count >= 3, \
-        f'stream delivered only {stream_count} frames in 10 s'
-    assert tel_count >= 3, \
-        f'telemetry delivered only {tel_count} messages in 10 s'
+    assert counts['stream'] >= 3, \
+        f'stream delivered only {counts["stream"]} frames in {window_s:.0f} s'
+    assert counts['telemetry'] >= 3, \
+        f'telemetry delivered only {counts["telemetry"]} messages in {window_s:.0f} s'
+
+
+def test_stream_parts_carry_traceparent(dut: Dut) -> None:
+    """Each Camera stream part carries its frame's trace context, which the streamer continues."""
+    car = car_endpoints(get_dut_ip(dut))
+    dut.expect(r'Serving every endpoint', timeout=70)
+
+    with open_stream(car.camera) as stream:
+        headers, _ = read_part(stream)
+
+    assert headers.get('traceparent', '').startswith('00-')
 
 
 def test_pan_tilt(dut: Dut) -> None:

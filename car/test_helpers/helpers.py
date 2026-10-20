@@ -1,4 +1,8 @@
+import contextlib
+import http.client
+import socket
 import threading
+from collections.abc import Iterator
 from typing import NamedTuple
 
 from pytest_embedded import Dut
@@ -18,10 +22,11 @@ class Endpoint(NamedTuple):
     host: str
     port: int
     path: str
+    scheme: str = 'ws'
 
     @property
     def uri(self) -> str:
-        return f'ws://{self.host}:{self.port}{self.path}'
+        return f'{self.scheme}://{self.host}:{self.port}{self.path}'
 
 
 class CarEndpoints(NamedTuple):
@@ -35,7 +40,7 @@ def car_endpoints(
 ) -> CarEndpoints:
     return CarEndpoints(
         drive=Endpoint(host, drive_port, '/'),
-        camera=Endpoint(host, camera_port, '/stream'),
+        camera=Endpoint(host, camera_port, '/stream', 'http'),
         telemetry=Endpoint(host, telemetry_port, '/telemetry'),
     )
 
@@ -49,6 +54,39 @@ def drain(ws: ClientConnection, stop: threading.Event) -> None:
             continue
         except ConnectionClosed:
             return
+
+
+@contextlib.contextmanager
+def open_stream(endpoint: Endpoint, sock: socket.socket | None = None) -> Iterator[http.client.HTTPResponse]:
+    """Requests the Camera stream, over sock when given, and yields the response."""
+    connection = http.client.HTTPConnection(endpoint.host, endpoint.port, timeout=OPEN_TIMEOUT_S)
+    connection.sock = sock
+    try:
+        connection.request('GET', endpoint.path)
+        yield connection.getresponse()
+    finally:
+        connection.close()
+
+
+def read_part(response: http.client.HTTPResponse) -> tuple[dict[str, str], bytes]:
+    """Reads the next part of a Camera stream: its headers, then the JPEG its Content-Length sizes."""
+    headers: dict[str, str] = {}
+    while True:
+        line = response.readline()
+        if not line:
+            raise ConnectionError('the Camera stream ended')
+        line = line.strip()
+        if not line and headers:
+            break
+        if not line or line.startswith(b'--'):
+            continue
+        name, _, value = line.decode().partition(':')
+        headers[name.strip().lower()] = value.strip()
+    length = int(headers['content-length'])
+    jpeg = response.read(length)
+    if len(jpeg) != length:
+        raise ConnectionError('the Camera stream ended mid-part')
+    return headers, jpeg
 
 
 def get_dut_ip(dut: Dut) -> str:

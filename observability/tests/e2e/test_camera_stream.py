@@ -19,9 +19,9 @@ _REASON = (
     "requires the car flashed with sdkconfig.defaults.all and "
     "sdkconfig.defaults.profiling, streaming through the headless stack"
 )
-SEND_SPAN = "ws.stream.send"
-MESSAGE_SIZE = "ws.message.size"
-STREAM_TASK = "ws_stream_task"
+SEND_SPAN = "camera.frame.send"
+MESSAGE_SIZE = "camera.part.size"
+STREAM_TASK = "stream_task"
 STREAM_S = 60.0
 FRAME_TIMEOUT_S = 5.0
 # Spans, metrics and profiles are exported in batches well within this.
