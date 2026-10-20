@@ -13,6 +13,7 @@ class StackSettings:
     grafana_url: str
     otlp_endpoint: str
     metrics_endpoint: str
+    camera_uri: str
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> Self:
@@ -26,6 +27,7 @@ class StackSettings:
                 "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
                 "http://mimir:8080/otlp/v1/metrics",
             ),
+            camera_uri=environ.get("STREAMER_CAMERA_URI", "ws://python:8765/camera"),
         )
 
 
