@@ -137,3 +137,35 @@ TEST_CASE("inject extract roundtrip", "[tracing]") {
 
   cJSON_Delete(out);
 }
+
+static opentelemetry::nostd::unique_ptr<opentelemetry::context::Token> attach_span(
+    opentelemetry::nostd::shared_ptr<opentelemetry::trace::TraceState> trace_state) {
+  const uint8_t trace_bytes[16] = {0x4b, 0xf9, 0x2f, 0x35, 0x77, 0xb3, 0x4d, 0xa6,
+                                   0xa3, 0xce, 0x92, 0x9d, 0x0e, 0x0e, 0x47, 0x36};
+  const uint8_t span_bytes[8] = {0x00, 0xf0, 0x67, 0xaa, 0x0b, 0xa9, 0x02, 0xb7};
+  opentelemetry::trace::SpanContext sc(
+      opentelemetry::trace::TraceId(trace_bytes), opentelemetry::trace::SpanId(span_bytes),
+      opentelemetry::trace::TraceFlags(opentelemetry::trace::TraceFlags::kIsSampled), false,
+      trace_state);
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> span(
+      new opentelemetry::trace::DefaultSpan(sc));
+  opentelemetry::context::Context current = opentelemetry::context::RuntimeContext::GetCurrent();
+  return opentelemetry::context::RuntimeContext::Attach(
+      opentelemetry::trace::SetSpan(current, span));
+}
+
+TEST_CASE("headers with no active span have no traceparent", "[tracing]") {
+  TEST_ASSERT_TRUE(tracing_headers().traceparent.empty());
+}
+
+TEST_CASE("headers carry the active span's traceparent", "[tracing]") {
+  auto token = attach_span(opentelemetry::trace::TraceState::GetDefault());
+
+  TEST_ASSERT_EQUAL_STRING(traceparent, tracing_headers().traceparent.c_str());
+}
+
+TEST_CASE("headers carry the active span's tracestate", "[tracing]") {
+  auto token = attach_span(opentelemetry::trace::TraceState::FromHeader("vendor=value"));
+
+  TEST_ASSERT_EQUAL_STRING("vendor=value", tracing_headers().tracestate.c_str());
+}
