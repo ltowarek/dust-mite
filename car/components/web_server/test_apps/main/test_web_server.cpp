@@ -1,4 +1,6 @@
 #include <atomic>
+#include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 #include "esp_event.h"
@@ -35,9 +37,8 @@ static const endpoint_t ENDPOINTS[] = {DRIVE, CAMERA, TELEMETRY};
 enum : EventBits_t {
   WS_OPENED = BIT0,
   WS_REFUSED = BIT1,
-  WS_CLOSE_REPLIED = BIT2,
-  WS_DISCONNECTED = BIT3,
-  WS_CLOSE_DONE = BIT4,
+  WS_DISCONNECTED = BIT2,
+  WS_CLOSE_DONE = BIT3,
 };
 
 struct ws_client_t {
@@ -45,7 +46,6 @@ struct ws_client_t {
   EventGroupHandle_t events;
   std::atomic<int> handshake_status;
   std::atomic<int> messages;
-  std::atomic<int> malformed;
 };
 
 static void ws_client_on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
@@ -64,32 +64,18 @@ static void ws_client_on_event(void* arg, esp_event_base_t base, int32_t id, voi
     case WEBSOCKET_EVENT_DISCONNECTED:
       xEventGroupSetBits(client->events, WS_DISCONNECTED);
       break;
-    case WEBSOCKET_EVENT_DATA: {
-      if (event->op_code == WS_TRANSPORT_OPCODES_CLOSE) {
-        xEventGroupSetBits(client->events, WS_CLOSE_REPLIED);
-        break;
+    case WEBSOCKET_EVENT_DATA:
+      if (event->op_code == WS_TRANSPORT_OPCODES_TEXT &&
+          event->payload_offset + event->data_len >= event->payload_len) {
+        client->messages++;
       }
-      if (event->op_code != WS_TRANSPORT_OPCODES_TEXT) {
-        break;
-      }
-      if (event->payload_offset == 0 && (event->data_len == 0 || event->data_ptr[0] != '{')) {
-        client->malformed++;
-      }
-      if (event->payload_offset + event->data_len < event->payload_len) {
-        break;
-      }
-      if (event->data_len == 0 || event->data_ptr[event->data_len - 1] != '}') {
-        client->malformed++;
-      }
-      client->messages++;
       break;
-    }
     default:
       break;
   }
 }
 
-static ws_client_t* ws_connect(const endpoint_t& endpoint, size_t ping_interval_sec = 0) {
+static ws_client_t* ws_connect(const endpoint_t& endpoint) {
   auto* client = new ws_client_t{};
   client->events = xEventGroupCreate();
 
@@ -99,8 +85,6 @@ static ws_client_t* ws_connect(const endpoint_t& endpoint, size_t ping_interval_
   config.path = endpoint.path;
   config.disable_auto_reconnect = true;
   config.network_timeout_ms = OPEN_TIMEOUT_MS;
-  config.ping_interval_sec = ping_interval_sec;
-  config.pingpong_timeout_sec = ping_interval_sec * 3;
   client->handle = esp_websocket_client_init(&config);
   esp_websocket_register_events(client->handle, WEBSOCKET_EVENT_ANY, ws_client_on_event, client);
   esp_websocket_client_start(client->handle);
@@ -147,14 +131,6 @@ static ws_client_t* ws_try_connect_when_free(const endpoint_t& endpoint) {
   }
 }
 
-static ws_client_t* ws_connect_when_free(const endpoint_t& endpoint) {
-  ws_client_t* client = ws_try_connect_when_free(endpoint);
-  if (client == nullptr) {
-    TEST_FAIL_MESSAGE("connection was not opened once the endpoint was free");
-  }
-  return client;
-}
-
 static bool ws_wait_for_messages(ws_client_t* client, int count, int timeout_ms) {
   const int poll_interval_ms = 10;
   TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
@@ -193,111 +169,258 @@ static bool ws_wait_for_close(ws_client_t* client, int timeout_ms) {
   return bits & WS_CLOSE_DONE;
 }
 
-static bool ws_wait_for_close_reply(ws_client_t* client, int timeout_ms) {
-  EventBits_t bits = xEventGroupWaitBits(client->events, WS_CLOSE_REPLIED, pdFALSE, pdFALSE,
-                                         pdMS_TO_TICKS(timeout_ms));
-  return bits & WS_CLOSE_REPLIED;
+// A Camera stream client over a plain socket, so a test can count parts and leave abruptly.
+struct stream_client_t {
+  int fd = -1;
+  int status = 0;
+  char content_type[64] = {};
+  std::atomic<int> parts{0};
+  std::atomic<bool> stop{false};
+  SemaphoreHandle_t reader_done = nullptr;
+};
+
+static const char STREAM_PART_START[] = "--frame\r\n";
+static const int STREAM_READ_TIMEOUT_MS = 1000;
+
+static int http_connect(uint16_t port) {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  timeval timeout = {.tv_sec = STREAM_READ_TIMEOUT_MS / 1000, .tv_usec = 0};
+  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+  sockaddr_in address = {};
+  address.sin_family = AF_INET;
+  address.sin_port = htons(port);
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+    close(fd);
+    return -1;
+  }
+  return fd;
 }
 
-TEST_CASE("stream_close_handshake_completes_promptly", "[web_server]") {
-  ws_client_t* ws = ws_connect_or_fail(CAMERA);
-  ws_wait_for_messages_or_fail(ws, 5);
-
-  ws_close_in_background(ws);
-
-  TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_close_reply(ws, CLOSE_BUDGET_MS),
-                           "server did not reply to CLOSE in time; the streaming task is not "
-                           "servicing inbound frames");
-}
-
-TEST_CASE("stream_reconnect_receives_data_while_previous_closes", "[web_server]") {
-  ws_client_t* first = ws_connect_or_fail(CAMERA);
-  ws_wait_for_messages_or_fail(first, 5);
-  ws_close_in_background(first);
-
-  ws_client_t* second = ws_connect_when_free(CAMERA);
-
-  TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_messages(second, 1, FIRST_FRAME_BUDGET_MS),
-                           "reconnected /stream produced no frame");
-}
-
-static const int REPEATED_CONNECTION_COUNT = 6;
-
-// Fills closing with the connections that were opened, and returns how many there are.
-static int connect_and_close_stream_repeatedly(ws_client_t* closing[]) {
-  int closing_count = 0;
-  for (int i = 0; i < REPEATED_CONNECTION_COUNT; ++i) {
-    ws_client_t* ws = ws_connect(CAMERA);
-    if (ws_is_open(ws)) {
-      closing[closing_count++] = ws;
-      ws_close_in_background(ws);
+// Sends a GET and reads the response head; returns its status, or 0 when none arrived.
+static int http_get(int fd, const char* path, char* head, size_t head_size) {
+  char request[96];
+  int len = snprintf(request, sizeof(request), "GET %s HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", path);
+  if (send(fd, request, len, 0) != len) {
+    return 0;
+  }
+  size_t used = 0;
+  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(OPEN_TIMEOUT_MS);
+  while (used + 1 < head_size && xTaskGetTickCount() < deadline) {
+    if (recv(fd, head + used, 1, 0) != 1) {
       continue;
     }
-    if (ws->handshake_status != HTTP_SERVICE_UNAVAILABLE) {
-      TEST_FAIL_MESSAGE("a repeated /stream connection was refused with a status other than 503");
-    }
-    ws_destroy(ws);
-  }
-  return closing_count;
-}
-
-TEST_CASE("stream_serves_frames_after_repeated_connect_and_close", "[web_server]") {
-  ws_client_t* closing[REPEATED_CONNECTION_COUNT];
-  connect_and_close_stream_repeatedly(closing);
-
-  ws_client_t* ws = ws_connect_when_free(CAMERA);
-
-  TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_messages(ws, 1, FIRST_FRAME_BUDGET_MS),
-                           "no frame after repeated connect and close");
-}
-
-TEST_CASE("stream_replies_to_close_of_every_repeated_connection", "[web_server]") {
-  ws_client_t* closing[REPEATED_CONNECTION_COUNT];
-  int closing_count = connect_and_close_stream_repeatedly(closing);
-
-  int unanswered = 0;
-  for (int i = 0; i < closing_count; ++i) {
-    ws_client_t* ws = closing[i];
-    if (!ws_wait_for_close(ws, CLOSE_TIMEOUT_MS + CLOSE_BUDGET_MS)) {
-      TEST_FAIL_MESSAGE("a repeated /stream connection did not finish closing");
-    }
-    if (!(xEventGroupGetBits(ws->events) & WS_CLOSE_REPLIED)) {
-      ++unanswered;
+    head[++used] = '\0';
+    if (used >= 4 && strcmp(head + used - 4, "\r\n\r\n") == 0) {
+      int status = 0;
+      return sscanf(head, "HTTP/1.1 %d", &status) == 1 ? status : 0;
     }
   }
+  return 0;
+}
 
-  TEST_ASSERT_EQUAL_INT_MESSAGE(0, unanswered,
-                                "repeated /stream connections were dropped without a CLOSE reply");
+static int http_status_of(uint16_t port, const char* path) {
+  int fd = http_connect(port);
+  if (fd < 0) {
+    return 0;
+  }
+  char head[512] = {};
+  int status = http_get(fd, path, head, sizeof(head));
+  close(fd);
+  return status;
+}
+
+static void copy_header(const char* head, const char* name, char* out, size_t out_size) {
+  const char* value = strstr(head, name);
+  if (value == nullptr) {
+    return;
+  }
+  value += strlen(name);
+  size_t len = strcspn(value, "\r");
+  snprintf(out, out_size, "%.*s", static_cast<int>(len), value);
+}
+
+// Counts the matches of pattern that end in the newly read bytes, which follow carried bytes.
+static int count_new_matches(const char* window, size_t carried, size_t len, const char* pattern) {
+  size_t pattern_len = strlen(pattern);
+  int matches = 0;
+  for (size_t i = 0; i + pattern_len <= len; ++i) {
+    if (i + pattern_len > carried && memcmp(window + i, pattern, pattern_len) == 0) {
+      ++matches;
+    }
+  }
+  return matches;
+}
+
+static void stream_read_task(void* arg) {
+  auto* client = static_cast<stream_client_t*>(arg);
+  const size_t carry = sizeof(STREAM_PART_START) - 2;
+  char window[carry + 1024];
+  size_t carried = 0;
+  while (!client->stop) {
+    int received = recv(client->fd, window + carried, sizeof(window) - carried, 0);
+    if (received == 0 || (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+      break;
+    }
+    if (received < 0) {
+      continue;
+    }
+    size_t len = carried + received;
+    client->parts += count_new_matches(window, carried, len, STREAM_PART_START);
+    carried = len < carry ? len : carry;
+    memmove(window, window + len - carried, carried);
+  }
+  xSemaphoreGive(client->reader_done);
+  vTaskDelete(NULL);
+}
+
+// Leaves the client unread when the response is not a stream.
+static stream_client_t* stream_open(uint16_t port = CAMERA.port) {
+  auto* client = new stream_client_t{};
+  client->reader_done = xSemaphoreCreateBinary();
+  client->fd = http_connect(port);
+  if (client->fd < 0) {
+    return client;
+  }
+  char head[512] = {};
+  client->status = http_get(client->fd, CAMERA.path, head, sizeof(head));
+  copy_header(head, "Content-Type: ", client->content_type, sizeof(client->content_type));
+  if (client->status == 200) {
+    xTaskCreate(stream_read_task, "stream_read", 4096, client, 5, nullptr);
+  }
+  return client;
+}
+
+// Drops the connection without waiting for the server, as a departing viewer does.
+static void stream_close(stream_client_t* client) {
+  client->stop = true;
+  if (client->status == 200) {
+    shutdown(client->fd, SHUT_RDWR);
+    xSemaphoreTake(client->reader_done, portMAX_DELAY);
+  }
+  if (client->fd >= 0) {
+    close(client->fd);
+  }
+  vSemaphoreDelete(client->reader_done);
+  delete client;
+}
+
+static stream_client_t* stream_open_or_fail() {
+  stream_client_t* client = stream_open();
+  if (client->status != 200) {
+    TEST_FAIL_MESSAGE("the stream was not served");
+  }
+  return client;
+}
+
+// The camera serves one client and refuses others with 503 until it has noticed the previous one
+// leave, which takes a failed send.
+static stream_client_t* stream_try_open_when_free() {
+  const int busy_retry_interval_ms = 100;
+  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(CLOSE_TIMEOUT_MS);
+  while (true) {
+    stream_client_t* client = stream_open();
+    if (client->status == 200) {
+      return client;
+    }
+    int status = client->status;
+    stream_close(client);
+    if (status != HTTP_SERVICE_UNAVAILABLE || xTaskGetTickCount() > deadline) {
+      return nullptr;
+    }
+    vTaskDelay(pdMS_TO_TICKS(busy_retry_interval_ms));
+  }
+}
+
+static bool wait_for_count(const std::atomic<int>& counter, int count, int timeout_ms) {
+  const int poll_interval_ms = 10;
+  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  while (counter < count) {
+    if (xTaskGetTickCount() > deadline) {
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
+  }
+  return true;
+}
+
+static bool stream_served_again() {
+  stream_client_t* client = stream_try_open_when_free();
+  return client != nullptr && wait_for_count(client->parts, 1, FIRST_FRAME_BUDGET_MS);
+}
+
+TEST_CASE("stream_responds_with_multipart_jpeg", "[web_server]") {
+  stream_client_t* client = stream_open_or_fail();
+
+  TEST_ASSERT_EQUAL_STRING("multipart/x-mixed-replace;boundary=frame", client->content_type);
+}
+
+TEST_CASE("stream_sends_parts", "[web_server]") {
+  stream_client_t* client = stream_open_or_fail();
+
+  TEST_ASSERT_TRUE_MESSAGE(wait_for_count(client->parts, 5, FIRST_FRAME_BUDGET_MS),
+                           "the stream sent no parts");
+}
+
+TEST_CASE("stream_served_again_after_its_client_leaves", "[web_server]") {
+  stream_client_t* first = stream_open_or_fail();
+  wait_for_count(first->parts, 5, FIRST_FRAME_BUDGET_MS);
+  stream_close(first);
+
+  TEST_ASSERT_TRUE_MESSAGE(stream_served_again(), "no part after the previous client left");
+}
+
+TEST_CASE("stream_served_again_after_repeated_connect_and_leave", "[web_server]") {
+  const int repeated_connection_count = 6;
+  for (int i = 0; i < repeated_connection_count; ++i) {
+    stream_client_t* client = stream_open();
+    if (client->status != 200 && client->status != HTTP_SERVICE_UNAVAILABLE) {
+      TEST_FAIL_MESSAGE("a repeated stream connection got a status other than 200 or 503");
+    }
+    stream_close(client);
+  }
+
+  TEST_ASSERT_TRUE_MESSAGE(stream_served_again(), "no part after repeated connect and leave");
 }
 
 TEST_CASE("camera_serves_frames_while_drive_and_telemetry_are_held", "[web_server]") {
   ws_connect_or_fail(DRIVE);
   ws_connect_or_fail(TELEMETRY);
 
-  ws_client_t* ws = ws_connect_or_fail(CAMERA);
+  stream_client_t* client = stream_open_or_fail();
 
-  TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_messages(ws, 1, FIRST_FRAME_BUDGET_MS),
-                           "no frame while the other endpoints were held");
+  TEST_ASSERT_TRUE_MESSAGE(wait_for_count(client->parts, 1, FIRST_FRAME_BUDGET_MS),
+                           "no part while the other endpoints were held");
 }
 
-TEST_CASE("stream_answers_ping_mid_stream", "[web_server]") {
-  const size_t ping_interval_sec = 2;
-  const int stream_duration_ms = 10000;
-  ws_client_t* ws = ws_connect(CAMERA, ping_interval_sec);
-  if (!ws_is_open(ws)) {
-    TEST_FAIL_MESSAGE("connection was not opened");
+static int refuse_second_streams() {
+  const int attempts = 2;
+  int refused = 0;
+  for (int i = 0; i < attempts; ++i) {
+    stream_client_t* second = stream_open();
+    if (second->status == HTTP_SERVICE_UNAVAILABLE) {
+      ++refused;
+    }
+    stream_close(second);
   }
+  return refused;
+}
 
-  EventBits_t bits = xEventGroupWaitBits(ws->events, WS_DISCONNECTED, pdFALSE, pdFALSE,
-                                         pdMS_TO_TICKS(stream_duration_ms));
-  if (bits & WS_DISCONNECTED) {
-    TEST_FAIL_MESSAGE("connection dropped; pings were not answered");
-  }
-  if (ws->malformed > 0) {
-    TEST_FAIL_MESSAGE("a frame was malformed");
-  }
+TEST_CASE("stream_second_connection_refused", "[web_server]") {
+  stream_open_or_fail();
 
-  TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, ws->messages, "no frames received");
+  TEST_ASSERT_EQUAL_INT_MESSAGE(2, refuse_second_streams(),
+                                "a second connection was not refused with 503");
+}
+
+TEST_CASE("stream_served_again_after_refusing_second_connection", "[web_server]") {
+  stream_client_t* served = stream_open_or_fail();
+  refuse_second_streams();
+  stream_close(served);
+
+  TEST_ASSERT_TRUE_MESSAGE(stream_served_again(),
+                           "the stream was not served after its served client left");
 }
 
 static int refuse_second_connections(const endpoint_t& endpoint) {
@@ -336,20 +459,12 @@ TEST_CASE("drive_second_connection_refused_before_upgrade", "[web_server]") {
   second_connection_refused_before_upgrade(DRIVE);
 }
 
-TEST_CASE("stream_second_connection_refused_before_upgrade", "[web_server]") {
-  second_connection_refused_before_upgrade(CAMERA);
-}
-
 TEST_CASE("telemetry_second_connection_refused_before_upgrade", "[web_server]") {
   second_connection_refused_before_upgrade(TELEMETRY);
 }
 
 TEST_CASE("drive_served_again_after_refusing_second_connection", "[web_server]") {
   served_again_after_refusing_second_connection(DRIVE);
-}
-
-TEST_CASE("stream_served_again_after_refusing_second_connection", "[web_server]") {
-  served_again_after_refusing_second_connection(CAMERA);
 }
 
 TEST_CASE("telemetry_served_again_after_refusing_second_connection", "[web_server]") {
@@ -412,12 +527,8 @@ TEST_CASE("command_in_a_binary_frame_is_dropped", "[web_server]") {
   TEST_ASSERT_FALSE_MESSAGE(command_received(&received), "a binary frame was queued");
 }
 
-// A server that refuses a second connection with 503 is still running.
 static bool endpoint_answers(const endpoint_t& endpoint) {
-  ws_client_t* ws = ws_connect(endpoint);
-  bool answered = ws_is_open(ws) || ws->handshake_status != 0;
-  ws_destroy(ws);
-  return answered;
+  return http_status_of(endpoint.port, "/probe") != 0;
 }
 
 static int count_answering_endpoints() {
@@ -521,15 +632,26 @@ TEST_CASE("no_server_runs_when_one_fails_to_start", "[web_server]") {
                                 "servers kept running after another one failed to start");
 }
 
-TEST_CASE("served_connection_survives_wifi_getting_an_ip_again", "[web_server]") {
-  ws_client_t* ws = ws_connect_or_fail(CAMERA);
-  ws_wait_for_messages_or_fail(ws, 1);
+TEST_CASE("served_stream_survives_wifi_getting_an_ip_again", "[web_server]") {
+  stream_client_t* client = stream_open_or_fail();
+  wait_for_count(client->parts, 1, FIRST_FRAME_BUDGET_MS);
 
   post_got_ip_and_wait_until_handled();
-  int received = ws->messages;
+  int received = client->parts;
 
-  TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_messages(ws, received + 1, FIRST_FRAME_BUDGET_MS),
-                           "the served connection stopped after Wi-Fi got an IP again");
+  TEST_ASSERT_TRUE_MESSAGE(wait_for_count(client->parts, received + 1, FIRST_FRAME_BUDGET_MS),
+                           "the served stream stopped after Wi-Fi got an IP again");
+}
+
+TEST_CASE("stream_served_again_after_wifi_drops_mid_stream", "[web_server]") {
+  stream_client_t* client = stream_open_or_fail();
+  wait_for_count(client->parts, 1, FIRST_FRAME_BUDGET_MS);
+  stop_servers_or_fail();
+  stream_close(client);
+
+  post_got_ip_and_wait_until_handled();
+
+  TEST_ASSERT_TRUE_MESSAGE(stream_served_again(), "no part after Wi-Fi dropped mid-stream");
 }
 
 static void keeps_sending_after_a_client_frame(const endpoint_t& endpoint) {
@@ -542,10 +664,6 @@ static void keeps_sending_after_a_client_frame(const endpoint_t& endpoint) {
 
   TEST_ASSERT_TRUE_MESSAGE(ws_wait_for_messages(ws, received + 2, CLOSE_TIMEOUT_MS),
                            "the endpoint stopped sending after the client sent a frame");
-}
-
-TEST_CASE("camera_keeps_sending_after_a_client_frame", "[web_server]") {
-  keeps_sending_after_a_client_frame(CAMERA);
 }
 
 TEST_CASE("telemetry_keeps_sending_after_a_client_frame", "[web_server]") {

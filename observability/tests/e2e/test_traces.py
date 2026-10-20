@@ -2,11 +2,11 @@ import pytest
 
 from tests.helpers.query import TEMPO_UID, has_traces, query, traceql_query
 
-# Excludes ws.stream.connection / ws.telemetry.connection / streamer.server_handler /
+# Excludes GET /stream / ws.telemetry.connection / streamer.server_handler /
 # ws.connection: these are long-lived, connection-scoped spans that only export
 # when their socket closes, making "a recent trace exists" an unreliable check.
 CASES = [
-    ("dust-mite-car", "ws.stream.send"),
+    ("dust-mite-car", "camera.frame.send"),
     ("dust-mite-car", "ws.telemetry.send"),
     ("dust-mite-car", "ws.command.receive"),
     ("dust-mite-streamer", "streamer.handle_camera_frame"),

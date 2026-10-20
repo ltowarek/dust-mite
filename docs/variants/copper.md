@@ -61,8 +61,8 @@
 
 ## SW notes
 
-- In `Copper`, the ESP32 handles motor actuation and exposes three WebSocket endpoints, each served by its own HTTP server instance on its own port: the Drive endpoint `/` on port 80, the Camera endpoint `/stream` on port 81, and the Telemetry endpoint `/telemetry` on port 82. Each instance runs on its own task, so a client that reads the Camera or Telemetry endpoint slowly, or stops reading, does not delay drive commands. A request for an endpoint on another endpoint's port receives HTTP 404. The decision is recorded in [ADR 0001](../adr/0001-one-http-server-per-car-endpoint.md).
-- Each endpoint serves one client at a time. While one is connected, the ESP32 refuses another connection to the same endpoint with HTTP 503 before the WebSocket upgrade; the client retries until the first connection has closed.
+- In `Copper`, the ESP32 handles motor actuation and exposes three endpoints, each served by its own HTTP server instance on its own port: the Drive endpoint `/` on port 80 and the Telemetry endpoint `/telemetry` on port 82 over WebSocket, and the Camera endpoint `/stream` on port 81 as MJPEG over HTTP (`multipart/x-mixed-replace`), one part per Camera frame with its `traceparent` as a part header ([ADR 0002](../adr/0002-mjpeg-over-http-for-camera-frames.md)). Each instance runs on its own task, so a client that reads the Camera or Telemetry endpoint slowly, or stops reading, does not delay drive commands. A request for an endpoint on another endpoint's port receives HTTP 404. The decision is recorded in [ADR 0001](../adr/0001-one-http-server-per-car-endpoint.md).
+- Each endpoint serves one client at a time. While one is connected, the ESP32 refuses another connection to the same endpoint with HTTP 503, before the WebSocket upgrade on the Drive and Telemetry endpoints; the client retries until the first connection has closed. The Camera endpoint notices that its client has gone when sending the next part fails.
 - The ESP32 keeps Wi-Fi power saving off (`WIFI_PS_NONE`). With ESP-IDF's default modem sleep, the radio dozes between access point beacons and the car can take several hundred milliseconds to answer, which delays drive commands.
 - Steering is skid-steering, with left/right drive commands generated from host-side input.
 - On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to the streamer's `/drive` endpoint (`STREAMER_DRIVE_URI`), like the web page, so the same collision monitor applies. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected. If another driver already holds `/drive`, the CLI exits with the streamer's reason.
@@ -117,7 +117,7 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 
 | Metric | Unit | Description |
 |---|---|---|
-| `dust_mite_frames_sent` | {frame} | Camera frames sent over WebSocket (counter) |
+| `dust_mite_frames_sent` | {frame} | Camera frames sent on the Camera endpoint (counter) |
 
 **Controller package metrics** (emitted by [controller/src/controller/metrics.py](../../controller/src/controller/metrics.py)):
 
@@ -176,7 +176,7 @@ graph LR
             ESP_TEL[Telemetry]
             ESP_CAM[Camera]
             ESP_WS_CTRL["WebSocket Server [/]"]
-            ESP_WS_STREAM["WebSocket Server [/stream]"]
+            ESP_WS_STREAM["HTTP Server [/stream]"]
             ESP_WS_TEL["WebSocket Server [/telemetry]"]
         end
     end
