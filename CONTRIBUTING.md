@@ -559,6 +559,8 @@ Run from the Observability devcontainer with `--dut`:
 ./scripts/run_tests.sh -- tests/e2e --dut
 ```
 
+`tests/e2e/test_camera_stream.py` watches the Camera stream through the streamer (`STREAMER_CAMERA_URI`) for a minute, then checks the viewer's frame rate, the car's send latency, the stream task's stack headroom and the send profile. It needs the car built with both `sdkconfig.defaults.all` and `sdkconfig.defaults.profiling`. Each test records its figures as JUnit properties in `results.xml`.
+
 Dependencies use [pip-compile-multi](https://pypi.org/project/pip-compile-multi/), same as [controller/](controller/): edit `requirements/base.in`/`requirements/dev.in`, then run `./scripts/update_requirements.sh` (or `upgrade_requirements.sh`/`upgrade_package.sh <name>`).
 
 ## Variants
