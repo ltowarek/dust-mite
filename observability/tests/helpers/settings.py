@@ -27,7 +27,7 @@ class StackSettings:
                 "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
                 "http://mimir:8080/otlp/v1/metrics",
             ),
-            camera_uri=environ.get("STREAMER_CAMERA_URI", "ws://python:8765/camera"),
+            camera_uri=environ.get("STREAMER_CAMERA_URI", "http://python:8766/camera"),
         )
 
 
