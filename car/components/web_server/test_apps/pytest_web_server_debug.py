@@ -1,4 +1,4 @@
-"""Profile exports must leave the web server enough internal RAM while clients stream.
+"""The debug build must keep the camera's rate and leave the web server internal RAM during profile exports.
 
 Needs the test app built with sdkconfig.defaults.debug into build_debug/.
 """
@@ -27,8 +27,13 @@ def _drain_stream(camera: Endpoint, stop: threading.Event) -> None:
 
 @pytest.fixture(autouse=True)
 def _debug_build(dut: Dut) -> None:
-    if dut.app.sdkconfig.get('ESP_OPENTELEMETRY_PROFILING_ENABLED') is not True:
+    if dut.app.sdkconfig.get('SYSTEM_METRICS_TASK_STATS_ENABLED') is not True:
         pytest.skip('needs the debug build (sdkconfig.defaults.debug)')
+
+
+@pytest.mark.dut(reason='measures the frame rate of the real camera')
+def test_stream_keeps_the_camera_rate(dut: Dut) -> None:
+    dut.run_single_board_case('stream_keeps_the_camera_rate', reset=True, timeout=60)
 
 
 @pytest.mark.dut(reason='measures internal RAM with Wi-Fi and the camera running')
