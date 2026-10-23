@@ -1,15 +1,16 @@
 """Camera frames must reach a viewer at the camera's rate, cheaply for the car."""
 
 import dataclasses
+import http.client
 import statistics
 import time
+import urllib.parse
 from collections import defaultdict
 from collections.abc import Callable
 from typing import Any, cast
 
 import pytest
 import requests
-from websockets.sync.client import connect
 
 from tests.helpers.producers import PROFILE_TYPE
 from tests.helpers.query import MIMIR_UID, PYROSCOPE_UID, query
@@ -62,14 +63,38 @@ class SendSpan:
     profile_id: str
 
 
+def _read_part(stream: http.client.HTTPResponse) -> None:
+    """Reads one MJPEG part: its headers, then the JPEG its Content-Length sizes."""
+    length = None
+    while True:
+        line = stream.readline()
+        if not line:
+            raise EOFError
+        line = line.strip()
+        if not line and length is not None:
+            break
+        name, _, value = line.decode().partition(":")
+        if name.strip().lower() == "content-length":
+            length = int(value)
+    stream.read(length)
+
+
 @pytest.fixture(scope="module")
 def window() -> StreamWindow:
+    camera = urllib.parse.urlsplit(STACK_SETTINGS.camera_uri)
+    viewer = http.client.HTTPConnection(
+        camera.hostname or "", camera.port, timeout=FRAME_TIMEOUT_S
+    )
     start = time.time()
     frames = 0
-    with connect(STACK_SETTINGS.camera_uri) as viewer:
+    try:
+        viewer.request("GET", camera.path)
+        stream = viewer.getresponse()
         while time.time() < start + STREAM_S:
-            viewer.recv(timeout=FRAME_TIMEOUT_S)
+            _read_part(stream)
             frames += 1
+    finally:
+        viewer.close()
     end = time.time()
     time.sleep(INGEST_S)
     return StreamWindow(start, end, frames)
