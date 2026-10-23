@@ -690,32 +690,17 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
   g_stream_requests = xQueueCreate(1, sizeof(httpd_req_t*));
   ws_endpoint_init(g_telemetry, telemetry_queue);
 
-  {
-    // Allocate stream_task stack from PSRAM to avoid exhausting internal DRAM.
-    StackType_t* stream_stack =
-        static_cast<StackType_t*>(heap_caps_malloc(32768, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    StaticTask_t* stream_tcb = static_cast<StaticTask_t*>(
-        heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (!stream_stack || !stream_tcb) {
-      ESP_LOGE(TAG, "xTaskCreate(stream_task) failed - no PSRAM");
-      return;
-    }
-    xTaskCreateStaticPinnedToCore(stream_task, "stream_task", 32768 / sizeof(StackType_t), nullptr,
-                                  1, stream_stack, stream_tcb, tskNO_AFFINITY);
+  // Both stacks live in PSRAM to spare internal RAM.
+  constexpr UBaseType_t stack_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+  if (xTaskCreateWithCaps(stream_task, "stream_task", 12288, nullptr, 1, nullptr, stack_caps) !=
+      pdPASS) {
+    ESP_LOGE(TAG, "xTaskCreate(stream_task) failed - no PSRAM");
+    return;
   }
-  {
-    // Allocate ws_telemetry_task stack from PSRAM to avoid exhausting internal DRAM.
-    StackType_t* tel_stack =
-        static_cast<StackType_t*>(heap_caps_malloc(32768, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    StaticTask_t* tel_tcb = static_cast<StaticTask_t*>(
-        heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (!tel_stack || !tel_tcb) {
-      ESP_LOGE(TAG, "xTaskCreate(ws_telemetry_task) failed - no PSRAM");
-      return;
-    }
-    xTaskCreateStaticPinnedToCore(ws_telemetry_task, "ws_telemetry_task",
-                                  32768 / sizeof(StackType_t), nullptr, 1, tel_stack, tel_tcb,
-                                  tskNO_AFFINITY);
+  if (xTaskCreateWithCaps(ws_telemetry_task, "ws_telemetry_task", 32768, nullptr, 1, nullptr,
+                          stack_caps) != pdPASS) {
+    ESP_LOGE(TAG, "xTaskCreate(ws_telemetry_task) failed - no PSRAM");
+    return;
   }
 
   // Start the servers before registering event handlers to avoid a race where
