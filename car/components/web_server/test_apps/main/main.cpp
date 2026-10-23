@@ -15,8 +15,11 @@
 #include "sdkconfig.h"
 #ifdef CONFIG_WEB_SERVER_TEST_QEMU_MODE
 #include "qemu_peripherals.hpp"
-#elif defined(CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED)
+#else
+#ifdef CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED
 #include "profiling_report.hpp"
+#endif
+#include "metrics_collection.hpp"
 #endif
 #ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
 extern "C" {
@@ -59,6 +62,7 @@ extern "C" void app_main(void) {
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
+  metrics_collection_setup();
   wifi_wait_for_ip();
   web_server_wait_for_serving();
 #else

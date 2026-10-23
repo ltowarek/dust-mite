@@ -1003,6 +1003,14 @@ Build, flash, and run all component test apps in sequence:
 ./scripts/run_tests.sh
 ```
 
+Two Unity cases measure the Camera's frame rate on the car. The camera test app's `performance`
+reads frames alone; the web server test app's `stream_keeps_the_camera_rate` reads the Camera stream
+over loopback: the camera in the car's capture mode, the stream task and the car's metrics, without
+Wi-Fi. The script also runs the latter through
+[pytest_web_server_all.py](car/components/web_server/test_apps/pytest_web_server_all.py), on the
+test app built with its `sdkconfig.defaults.all` overlay, which adds the debug metrics, into
+`build_all/`, so a debug metric that costs frames fails there before the observability e2e test.
+
 The script ends with a smoke test,
 [car/test_apps/e2e/pytest_smoke.py](car/test_apps/e2e/pytest_smoke.py). CI builds the debug
 overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.all`) but never runs them, so the script
