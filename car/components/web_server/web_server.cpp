@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "freertos/event_groups.h"
 #include <stdio.h>
 #include <unistd.h>
 #include "esp_err.h"
@@ -30,6 +31,9 @@
 #include "opentelemetry/trace/context.h"
 
 static const char* TAG = "web_server";
+
+static EventGroupHandle_t s_web_server_events;
+#define WEB_SERVER_SERVING_BIT BIT0
 
 static QueueHandle_t g_command_queue = NULL;
 
@@ -564,6 +568,7 @@ static esp_err_t start_endpoint_server(ws_endpoint_t& endpoint) {
 }
 
 static void stop_web_servers() {
+  xEventGroupClearBits(s_web_server_events, WEB_SERVER_SERVING_BIT);
   for (ws_endpoint_t* endpoint : g_endpoints) {
     if (endpoint->server == nullptr) {
       continue;
@@ -596,6 +601,11 @@ static void start_web_servers() {
   if (started) {
     ESP_LOGI(TAG, "Serving every endpoint");
   }
+  xEventGroupSetBits(s_web_server_events, WEB_SERVER_SERVING_BIT);
+}
+
+void web_server_wait_for_serving() {
+  xEventGroupWaitBits(s_web_server_events, WEB_SERVER_SERVING_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
 }
 
 static void web_server_handler_on_got_ip(void* arg, esp_event_base_t event_base, int32_t event_id,
@@ -610,6 +620,7 @@ static void web_server_handler_on_wifi_disconnect(void* arg, esp_event_base_t ev
 
 void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
                       QueueHandle_t telemetry_queue) {
+  s_web_server_events = xEventGroupCreate();
   g_command_queue = command_queue;
   ws_endpoint_init(g_camera, frame_queue);
   ws_endpoint_init(g_telemetry, telemetry_queue);

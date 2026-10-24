@@ -18,6 +18,7 @@ extern "C" {
 
 void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
                       QueueHandle_t telemetry_queue);
+void web_server_wait_for_serving();
 
 bool parse_drive_command(const char* json, drive_command_t* out);
 
