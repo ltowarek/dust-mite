@@ -66,9 +66,9 @@
 - The ESP32 keeps Wi-Fi power saving off (`WIFI_PS_NONE`). With ESP-IDF's default modem sleep, the radio dozes between access point beacons and the car can take several hundred milliseconds to answer, which delays drive commands.
 - Steering is skid-steering, with left/right drive commands generated from host-side input.
 - On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to the streamer's `/drive` endpoint (`STREAMER_DRIVE_URI`), like the web page, so the same collision monitor applies. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected. If another driver already holds `/drive`, the CLI exits with the streamer's reason.
-- On the Linux host, `streamer.py` reads Camera frames as MJPEG from `STREAM_CLIENT_URI`, continuing the car's trace from each part's `traceparent`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and serves them from a local WebSocket server with one endpoint per channel: `ws://localhost:8765/camera` (processed camera frames), `ws://localhost:8765/telemetry` (telemetry), and `ws://localhost:8765/drive` (drive commands in).
+- On the Linux host, `streamer.py` reads Camera frames as MJPEG from `STREAM_CLIENT_URI`, continuing the car's trace from each part's `traceparent`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and serves them to viewers as MJPEG on `http://localhost:8766/camera`, one part per Camera frame with its `traceparent` as a part header. It serves the other channels from a local WebSocket server with one endpoint each: `ws://localhost:8765/telemetry` (telemetry) and `ws://localhost:8765/drive` (drive commands in).
 - `streamer.py` accepts drive commands on `ws://localhost:8765/drive` from one driver at a time, closing any other `/drive` connection with code 1013 (try again later), and forwards them to the car's Drive endpoint at `DRIVE_CLIENT_URI` through a collision monitor, which turns `ADVANCE` into `BRAKE` while `distance_ahead` is below 5 cm, until it is at least 10 cm again, and publishes whether it is stopping the car on `/telemetry` as a `collision_monitor` WebSocket message. It holds one connection per car endpoint, shared by every client: the Drive endpoint connection for as long as the streamer runs, and the Camera and Telemetry endpoint connections only while something subscribes to them.
-- The web page served by the JavaScript devcontainer opens `/camera` and `/telemetry` on the streamer and displays the processed camera stream with live telemetry.
+- The web page served by the JavaScript devcontainer shows the processed Camera stream in an `<img>` whose `src` is `VITE_CAMERA_URL`, and opens `/telemetry` on the streamer for live telemetry.
 - The web page also drives the car over the streamer's `/drive` endpoint: W/A/S/D to drive and the arrow keys to pan and tilt the camera from the keyboard, or a DualSense or similar controller through the Gamepad API. It sends the held command every 100 ms, then `BRAKE` once when every key is released or the page loses focus. If the streamer refuses or drops `/drive`, the page shows why it is not driving.
 
 ### Metrics
@@ -124,6 +124,7 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | Metric | Unit | Description | Emitted by |
 |---|---|---|---|
 | `dust_mite_frames_processed` | {frame} | Camera frames processed (counter) | `dust-mite-streamer` |
+| `dust_mite_viewer_frames_sent` | {frame} | Camera frames sent to viewers, summed over viewers (counter); each `streamer.send_camera_frame` span carries the viewer's `client.address` | `dust-mite-streamer` |
 | `dust_mite_telemetry_messages_received` | {message} | Telemetry messages from the car (counter) | `dust-mite-streamer` |
 | `dust_mite_commands_sent` | {command} | Drive commands sent, attributed by `command.name` (counter) | `dust-mite-streamer`, `dust-mite-controller` |
 | `dust_mite_commands_blocked` | {command} | Drive commands the collision monitor replaced with `BRAKE`, attributed by the requested `command.name` (counter) | `dust-mite-streamer` |
@@ -138,12 +139,6 @@ backend read a still-held key as released. Each `BRAKE` the collision
 monitor substitutes for an `ADVANCE` is also counted in
 `dust_mite_commands_blocked`, and its `streamer.handle_drive_command` span
 carries both `requested_command_name` and `command_name`.
-
-**Web browser metrics** (emitted by [web/src/metrics.js](../../web/src/metrics.js)):
-
-| Metric | Unit | Description |
-|---|---|---|
-| `dust_mite_frames_displayed` | {frame} | JPEG frames rendered in the browser (counter) |
 
 ### Components
 
@@ -164,7 +159,7 @@ graph LR
                 PC_STR_WS_TEL["WebSocket Client [/telemetry]"]
                 PC_STR_WS_CTRL["WebSocket Client [/]"]
                 PC_STR_MUX["CommandArbiter + CollisionMonitor"]
-                PC_STR_WS_CAMERA["WebSocket Server [/camera]"]
+                PC_STR_WS_CAMERA["HTTP Server [/camera]"]
                 PC_STR_WS_TEL_OUT["WebSocket Server [/telemetry]"]
                 PC_STR_WS_DRIVE["WebSocket Server [/drive]"]
             end

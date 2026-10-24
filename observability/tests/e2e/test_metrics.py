@@ -34,8 +34,8 @@ STREAMER_METRICS = [
     "dust_mite_frames_processed",
     "dust_mite_telemetry_messages_received",
     "dust_mite_commands_sent",
+    "dust_mite_viewer_frames_sent",
 ]
-WEB_METRICS = ["dust_mite_frames_displayed"]
 
 
 @pytest.mark.dut
@@ -49,14 +49,6 @@ def test_car_metric_has_metrics(metric_name: str) -> None:
 @pytest.mark.dut
 @pytest.mark.parametrize("metric_name", STREAMER_METRICS)
 def test_streamer_metric_has_metrics(metric_name: str) -> None:
-    assert has_metrics(
-        query(MIMIR_UID, "prometheus", {"expr": metric_name, "instant": True})
-    )
-
-
-@pytest.mark.dut
-@pytest.mark.parametrize("metric_name", WEB_METRICS)
-def test_web_metric_has_metrics(metric_name: str) -> None:
     assert has_metrics(
         query(MIMIR_UID, "prometheus", {"expr": metric_name, "instant": True})
     )

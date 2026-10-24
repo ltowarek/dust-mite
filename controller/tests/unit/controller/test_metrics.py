@@ -9,6 +9,7 @@ from controller.metrics import (
     record_command_sent,
     record_frame,
     record_telemetry_received,
+    record_viewer_frame_sent,
 )
 
 from .conftest import counter_values_by_command
@@ -37,6 +38,11 @@ def test_record_frame(reader: InMemoryMetricReader) -> None:
     for _ in range(calls):
         record_frame()
     assert _counter_value(reader, "dust_mite_frames_processed") == calls
+
+
+def test_record_viewer_frame_sent(reader: InMemoryMetricReader) -> None:
+    record_viewer_frame_sent()
+    assert _counter_value(reader, "dust_mite_viewer_frames_sent") == 1
 
 
 def test_record_telemetry_received(reader: InMemoryMetricReader) -> None:
