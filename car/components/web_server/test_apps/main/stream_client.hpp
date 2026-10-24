@@ -12,7 +12,8 @@ inline constexpr int OPEN_TIMEOUT_MS = 8000;
 inline constexpr int FIRST_FRAME_BUDGET_MS = 2000;
 inline constexpr char STREAM_PATH[] = "/stream";
 
-// A Camera stream client over a plain socket, so a test can count parts and leave abruptly.
+// Plain sockets, not esp_http_client: it posts every read to the default event loop, which the
+// web server's Wi-Fi handlers run on.
 struct stream_client_t {
   int fd = -1;
   int status = 0;
@@ -27,7 +28,6 @@ int http_connect(uint16_t port);
 int http_get(int fd, const char* path, char* head, size_t head_size);
 // Leaves the client unread when the response is not a stream.
 stream_client_t* stream_open(uint16_t port = WEB_SERVER_CAMERA_PORT);
-// Drops the connection without waiting for the server, as a departing viewer does.
 void stream_close(stream_client_t* client);
 stream_client_t* stream_open_or_fail();
 bool wait_for_count(const std::atomic<int>& counter, int count, int timeout_ms);

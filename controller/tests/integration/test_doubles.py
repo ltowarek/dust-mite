@@ -48,7 +48,6 @@ class CarEndpointSpy:
 
     @contextlib.contextmanager
     def connected(self) -> Iterator[None]:
-        """Count one open connection while the context is open."""
         with self._lock:
             self.open_connections += 1
             self.peak_connections = max(self.peak_connections, self.open_connections)

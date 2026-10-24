@@ -37,8 +37,6 @@ MIN_STACK_FREE_BYTES = 4096
 
 @dataclasses.dataclass(frozen=True)
 class StreamWindow:
-    """When a viewer watched the Camera stream and how many frames it got."""
-
     start: float
     end: float
     frames: int
@@ -56,15 +54,12 @@ class StreamWindow:
 
 @dataclasses.dataclass(frozen=True)
 class SendSpan:
-    """One car send of a Camera frame."""
-
     duration_ms: float
     size: int
     profile_id: str
 
 
 def _read_part(stream: http.client.HTTPResponse) -> None:
-    """Reads one MJPEG part: its headers, then the JPEG its Content-Length sizes."""
     length = None
     while True:
         line = stream.readline()
@@ -147,7 +142,6 @@ def send_spans(window: StreamWindow) -> list[SendSpan]:
 
 
 def _flame_graph_rows(result: dict[str, Any]) -> list[tuple[str, int]]:
-    """Each flame-graph node's function name and self samples."""
     rows: list[tuple[str, int]] = []
     for frame in result.get("frames", []):
         fields = frame["schema"]["fields"]
@@ -207,7 +201,6 @@ def test_stream_task_keeps_stack_headroom(
 def send_profile_top(
     window: StreamWindow, send_spans: list[SendSpan]
 ) -> list[tuple[str, int]]:
-    """The functions with the most self samples while the car sent frames."""
     result = query(
         PYROSCOPE_UID,
         "grafana-pyroscope-datasource",

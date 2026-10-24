@@ -44,7 +44,6 @@ def car_endpoints(
 
 @contextlib.contextmanager
 def open_stream(endpoint: Endpoint, sock: socket.socket | None = None) -> Iterator[http.client.HTTPResponse]:
-    """Requests the Camera stream, over sock when given, and yields the response."""
     connection = http.client.HTTPConnection(endpoint.host, endpoint.port, timeout=OPEN_TIMEOUT_S)
     connection.sock = sock
     try:
@@ -55,7 +54,6 @@ def open_stream(endpoint: Endpoint, sock: socket.socket | None = None) -> Iterat
 
 
 def read_part(response: http.client.HTTPResponse) -> tuple[dict[str, str], bytes]:
-    """Reads the next part of a Camera stream: its headers, then the JPEG its Content-Length sizes."""
     headers: dict[str, str] = {}
     while True:
         line = response.readline()
