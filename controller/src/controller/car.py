@@ -34,7 +34,7 @@ type ConnectionProvider[T] = Callable[
 ]
 
 
-class CarFeed[T]:
+class CarFeed[T, M]:
     """A RefCount over one car endpoint: connected only while it has subscribers.
 
     Every client subscribes to the same feed, so the car serves one
@@ -44,19 +44,17 @@ class CarFeed[T]:
     def __init__(
         self,
         connection_provider: ConnectionProvider[T],
-        to_message: Callable[[T], WebSocketMessage],
+        to_message: Callable[[T], M],
     ) -> None:
         """Initialize the object; each first subscriber calls `connection_provider`."""
         self._connection_provider = connection_provider
         self._to_message = to_message
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._subject: Subject[WebSocketMessage] = Subject(
-            on_active=self._start, on_idle=self._stop
-        )
+        self._subject: Subject[M] = Subject(on_active=self._start, on_idle=self._stop)
 
     def subscription(
-        self, callback: Callable[[WebSocketMessage], None]
+        self, callback: Callable[[M], None]
     ) -> contextlib.AbstractContextManager[None]:
         """Call `callback` with each message from the car while the context is open."""
         return self._subject.subscription(callback)
