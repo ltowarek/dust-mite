@@ -2,7 +2,7 @@ import io
 
 import pytest
 
-from controller.mjpeg import read_part
+from controller.mjpeg import Part, format_part, read_part
 
 _JPEG = b"\xff\xd8\xff\xd9"
 _TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
@@ -42,3 +42,17 @@ def test_reads_parts_in_order() -> None:
 def test_a_stream_that_ends_mid_part_raises_eof(stream: bytes) -> None:
     with pytest.raises(EOFError):
         read_part(io.BytesIO(stream))
+
+
+def _round_trip() -> Part:
+    return read_part(
+        io.BytesIO(format_part(Part({"traceparent": _TRACEPARENT}, _JPEG)))
+    )
+
+
+def test_a_formatted_part_reads_back_its_jpeg() -> None:
+    assert _round_trip().jpeg == _JPEG
+
+
+def test_a_formatted_part_reads_back_its_headers() -> None:
+    assert _round_trip().headers["traceparent"] == _TRACEPARENT

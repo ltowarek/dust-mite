@@ -86,10 +86,11 @@ The Python and JS devcontainers use different host ports than the headless `pyth
 
 | Service | Devcontainer (manual) | Main / headless |
 |---|---|---|
-| Python streamer | `ws://localhost:8766` | `ws://localhost:8765` |
+| Python streamer, WebSocket | `ws://localhost:8767` | `ws://localhost:8765` |
+| Python streamer, Camera stream | `http://localhost:8768/camera` | `http://localhost:8766/camera` |
 | JS dev server | `http://localhost:5174` | `http://localhost:5173` |
 
-Container-internal ports (`python:8765`, `js:5173`) are unchanged. To point a host browser at the Python devcontainer's streamer directly, override `VITE_WS_URL=ws://localhost:8766` — `.env` defaults to `8765` for the headless/byobu workflows. The C++ devcontainer publishes no ports, so it has no conflict.
+Container-internal ports (`python:8765`, `python:8766`, `js:5173`) are unchanged. To point a host browser at the Python devcontainer's streamer directly, override `VITE_WS_URL=ws://localhost:8767` and `VITE_CAMERA_URL=http://localhost:8768/camera` — `.env` defaults to `8765` and `8766` for the headless/byobu workflows. The C++ devcontainer publishes no ports, so it has no conflict.
 
 ### Open the correct workspace in container
 
@@ -176,14 +177,13 @@ flowchart LR
     end
 
     FW -- "MJPEG over HTTP, WebSocket + traceparent" --> STR
-    STR -- "WebSocket + traceparent" --> WEB
+    STR -- "MJPEG over HTTP, WebSocket + traceparent" --> WEB
     FW -- "OTLP/HTTP traces" --> OC
     FW -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP traces" --> OC
     STR -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP profiles (opt-in)" --> OC
     WEB -- "OTLP/HTTP traces" --> OC
-    WEB -- "OTLP/HTTP metrics" --> MIMIR
     OC -- "OTLP/gRPC" --> TEMPO
     OC -- "OTLP/HTTP profiles" --> PYRO
     OC -- "OTLP/HTTP logs" --> LOKI
@@ -204,19 +204,17 @@ The observability stack covers distributed tracing, real-time metrics, continuou
 
 ### Instrumented services
 
-All three services export traces via OTLP/HTTP to the OTel Collector and metrics directly to Mimir:
+All three services export traces via OTLP/HTTP to the OTel Collector; the firmware and the streamer also export metrics directly to Mimir:
 
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
 | ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
 | Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces` (default `http://otel-collector:4318/v1/traces`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
-| Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `/otlp`), proxied by Vite straight to Mimir |
+| Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | none |
 
 The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
 
 The firmware's logs endpoint (`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL`) reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
-
-Mimir has no CORS support (no config option to set `Access-Control-Allow-Origin`), so a browser page can't POST metrics to it cross-origin. `web/vite.config.js`'s dev server proxies its own `/otlp` path straight to Mimir, keeping the browser's request same-origin — no CORS header is ever needed. Traces still go through the OTel Collector, whose receiver has CORS enabled, since that path isn't proxied.
 
 ### Metrics
 

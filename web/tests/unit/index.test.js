@@ -1,16 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { updateCollisionMonitor, updateStream, updateTelemetry } from "../../src/messages.js";
-
-describe("updateStream", () => {
-  test("sets image src to base64 JPEG data URI", () => {
-    document.body.innerHTML = '<img id="image">';
-    const image = document.getElementById("image");
-
-    updateStream(image, "dGVzdA==");
-
-    expect(image.src).toBe("data:image/jpeg;base64,dGVzdA==");
-  });
-});
+import { updateCollisionMonitor, updateTelemetry } from "../../src/messages.js";
 
 describe("updateTelemetry", () => {
   let elements;

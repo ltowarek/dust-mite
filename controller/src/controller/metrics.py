@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _metrics: SimpleNamespace = SimpleNamespace(
     frames_processed=None,
+    viewer_frames_sent=None,
     telemetry_messages_received=None,
     commands_sent=None,
     commands_blocked=None,
@@ -47,6 +48,11 @@ def install_instruments(provider: MeterProvider) -> None:
         unit="{frame}",
         description="Number of camera frames processed",
     )
+    _metrics.viewer_frames_sent = meter.create_counter(
+        "dust_mite_viewer_frames_sent",
+        unit="{frame}",
+        description="Number of camera frames sent to viewers",
+    )
     _metrics.telemetry_messages_received = meter.create_counter(
         "dust_mite_telemetry_messages_received",
         unit="{message}",
@@ -68,6 +74,12 @@ def record_frame() -> None:
     """Record one processed camera frame."""
     if _metrics.frames_processed is not None:
         _metrics.frames_processed.add(1)
+
+
+def record_viewer_frame_sent() -> None:
+    """Record one camera frame sent to one viewer."""
+    if _metrics.viewer_frames_sent is not None:
+        _metrics.viewer_frames_sent.add(1)
 
 
 def record_telemetry_received() -> None:
