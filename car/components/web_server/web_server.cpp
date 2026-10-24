@@ -27,7 +27,6 @@
 #include "web_server_metrics.hpp"
 #include "socket_address.hpp"
 #include <cJSON.h>
-#include "mbedtls/base64.h"
 #include "opentelemetry/trace/context.h"
 
 static const char* TAG = "web_server";
@@ -68,6 +67,7 @@ struct ws_endpoint_t {
   // 0 keeps the httpd default.
   size_t stack_size;
   esp_err_t (*handler)(httpd_req_t* req);
+  bool is_websocket = true;
   httpd_handle_t server = nullptr;
   // Read and written only on this endpoint's httpd task.
   ws_connection_t owner = {};
@@ -337,11 +337,13 @@ static ws_endpoint_t g_drive{.path = "/",
                              // StartSpan.
                              .stack_size = 16384,
                              .handler = drive_handler};
+static esp_err_t stream_handler(httpd_req_t* req);
 static ws_endpoint_t g_camera{.path = "/stream",
                               .port = WEB_SERVER_CAMERA_PORT,
                               .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 1,
                               .stack_size = 0,
-                              .handler = push_handler};
+                              .handler = stream_handler,
+                              .is_websocket = false};
 static ws_endpoint_t g_telemetry{.path = "/telemetry",
                                  .port = WEB_SERVER_TELEMETRY_PORT,
                                  .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 2,
@@ -349,104 +351,162 @@ static ws_endpoint_t g_telemetry{.path = "/telemetry",
                                  .handler = push_handler};
 static ws_endpoint_t* const g_endpoints[] = {&g_drive, &g_camera, &g_telemetry};
 
-void ws_stream_task(void* p) {
-  ESP_LOGI(TAG, "Starting stream task");
-  camera_fb_t* frame = NULL;
-  ws_connection_t connection = {NULL, -1};
-  bool active = false;
-  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> connection_span;
+// The Camera endpoint is plain HTTP: one multipart/x-mixed-replace response per client and one
+// part per Camera frame (docs/adr/0002-mjpeg-over-http-for-camera-frames.md).
+static const char STREAM_CONTENT_TYPE[] = "multipart/x-mixed-replace;boundary=frame";
+// W3C Trace Context caps tracestate at 512 characters.
+constexpr size_t STREAM_TRACESTATE_MAX = 512;
+constexpr size_t STREAM_PART_HEAD_SIZE = 768;
+// How often a stream waiting for a frame checks whether the server is stopping.
+constexpr int STREAM_FRAME_WAIT_MS = 100;
+// httpd's default send timeout, plus a margin for the stream to finish a part.
+constexpr int STREAM_RELEASE_TIMEOUT_MS = 7000;
 
-  auto teardown = [&]() {
-    active = false;
-    g_camera.served = nullptr;
-    camera_stop();
-    ESP_LOGI(TAG, "Stream stopped");
-    connection_span->End();
-    connection_span = nullptr;
-  };
+static QueueHandle_t g_frame_queue = NULL;
+static QueueHandle_t g_stream_requests = NULL;
+// Set by the Camera endpoint's httpd task when it hands a request over, cleared by the stream task
+// once it has given the request back.
+static std::atomic<bool> g_streaming{false};
+static std::atomic<bool> g_stream_stopping{false};
 
-  while (true) {
-    if (!active) {
-      ESP_LOGI(TAG, "Waiting for notification to start the stream");
-      if (xQueueReceive(g_camera.req_queue, &connection, portMAX_DELAY) != pdPASS) {
-        ESP_LOGE(TAG, "xQueueReceive(g_camera.req_queue) failed");
-        break;
-      }
-      g_camera.served = connection.token;
-      if (!ws_connection_is_live(connection)) {
-        ESP_LOGI(TAG, "Queued stream connection was closed before it started");
-        g_camera.served = nullptr;
-        continue;
-      }
-      opentelemetry::trace::StartSpanOptions stream_opts;
-      stream_opts.kind = opentelemetry::trace::SpanKind::kServer;
-      connection_span = esp_opentelemetry_tracer()->StartSpan("ws.stream.connection", stream_opts);
-      ws_set_connection_attributes(*connection_span, g_camera, connection);
-      camera_start();
-      active = true;
-      ESP_LOGI(TAG, "Stream started");
-    }
-
-    if (!ws_wait_for_item(g_camera, connection, &frame)) {
-      teardown();
-      continue;
-    }
-    if (!ws_connection_is_live(connection)) {
-      esp_camera_fb_return(frame);
-      teardown();
-      continue;
-    }
-
-    opentelemetry::trace::StartSpanOptions send_opts;
-    send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
-    send_opts.parent = connection_span->GetContext();
-    auto send_span = esp_opentelemetry_tracer()->StartSpan(
-        "ws.stream.send",
-        {{"ws.message.type", "stream"}, {"ws.frame.size", static_cast<int64_t>(frame->len)}},
-        send_opts);
-    ws_set_connection_attributes(*send_span, g_camera, connection);
-    auto send_scope = opentelemetry::trace::Scope(send_span);
-
-    size_t b64_len = 0;
-    mbedtls_base64_encode(NULL, 0, &b64_len, frame->buf, frame->len);
-    char* b64_buf = (char*)heap_caps_malloc(b64_len + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!b64_buf) {
-      ESP_LOGE(TAG, "Failed to allocate base64 buffer");
-      send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "alloc failed");
-      send_span->End();
-      esp_camera_fb_return(frame);
-      continue;
-    }
-    mbedtls_base64_encode((unsigned char*)b64_buf, b64_len + 1, &b64_len, frame->buf, frame->len);
-    b64_buf[b64_len] = '\0';
-
-    cJSON* message_json = cJSON_CreateObject();
-    cJSON_AddStringToObject(message_json, "data", b64_buf);
-    heap_caps_free(b64_buf);
-    tracing_inject(message_json);
-
-    char* message_json_str = cJSON_PrintUnformatted(message_json);
-    cJSON_Delete(message_json);
-    size_t payload_len = strlen(message_json_str);
-    send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
-
-    uint32_t seq = 0;
-    esp_err_t ret = ws_queue_send(g_camera, connection, message_json_str, payload_len, &seq);
-    if (ret != ESP_OK) {
-      ESP_LOGW(TAG, "ws_queue_send failed: %s", esp_err_to_name(ret));
-      send_span->SetStatus(opentelemetry::trace::StatusCode::kError, "ws send failed");
-      send_span->End();
-      esp_camera_fb_return(frame);
-      continue;
-    }
-
-    web_server_metrics_update();
-    esp_camera_fb_return(frame);
-    ws_wait_until_sent(g_camera, seq);
-    send_span->End();
+static esp_err_t stream_handler(httpd_req_t* req) {
+  if (g_streaming || g_stream_stopping) {
+    ESP_LOGW(TAG, "Refusing %s: already serving a connection", req->uri);
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_FAIL;
   }
-  ESP_LOGW(TAG, "Stream task stopped");
-  vTaskDelete(NULL);
+  // The stream task owns the request from here, which leaves this task free to refuse others.
+  httpd_req_t* stream_req = nullptr;
+  if (httpd_req_async_handler_begin(req, &stream_req) != ESP_OK) {
+    ESP_LOGE(TAG, "Could not hand %s over to the stream task", req->uri);
+    httpd_resp_send_500(req);
+    return ESP_FAIL;
+  }
+  g_streaming = true;
+  xQueueOverwrite(g_stream_requests, &stream_req);
+  return ESP_OK;
+}
+
+static void stream_set_request_attributes(opentelemetry::trace::Span& span, int fd) {
+  socket_address_t server = {};
+  socket_address_t client = {};
+  ws_read_address(getsockname, fd, &server);
+  ws_read_address(getpeername, fd, &client);
+  span.SetAttribute("http.request.method", "GET");
+  span.SetAttribute("http.route", g_camera.path);
+  span.SetAttribute("url.path", g_camera.path);
+  span.SetAttribute("url.scheme", "http");
+  span.SetAttribute("server.address", server.host);
+  span.SetAttribute("server.port", static_cast<int64_t>(server.port));
+  span.SetAttribute("client.address", client.host);
+  span.SetAttribute("client.port", static_cast<int64_t>(client.port));
+  span.SetAttribute("network.transport", "tcp");
+  span.SetAttribute("network.protocol.name", "http");
+  span.SetAttribute("network.protocol.version", "1.1");
+}
+
+static size_t stream_format_part_head(char* head, size_t frame_len,
+                                      const trace_headers_t& trace_headers) {
+  int len = snprintf(head, STREAM_PART_HEAD_SIZE,
+                     "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n",
+                     static_cast<unsigned>(frame_len));
+  if (!trace_headers.traceparent.empty()) {
+    len += snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "traceparent: %s\r\n",
+                    trace_headers.traceparent.c_str());
+  }
+  if (!trace_headers.tracestate.empty() &&
+      trace_headers.tracestate.size() <= STREAM_TRACESTATE_MAX) {
+    len += snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "tracestate: %s\r\n",
+                    trace_headers.tracestate.c_str());
+  }
+  len += snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "\r\n");
+  return len;
+}
+
+// Sends the frame straight from its frame buffer; false once the client has gone.
+static bool stream_send_part(httpd_req_t* req, const camera_fb_t& frame,
+                             const opentelemetry::trace::Span& request_span) {
+  opentelemetry::trace::StartSpanOptions send_opts;
+  send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
+  send_opts.parent = request_span.GetContext();
+  auto span = esp_opentelemetry_tracer()->StartSpan(
+      "camera.frame.send", {{"camera.frame.size", static_cast<int64_t>(frame.len)}}, send_opts);
+  auto scope = opentelemetry::trace::Scope(span);
+
+  char head[STREAM_PART_HEAD_SIZE];
+  size_t head_len = stream_format_part_head(head, frame.len, tracing_headers());
+  span->SetAttribute("camera.part.size", static_cast<int64_t>(head_len + frame.len));
+  esp_err_t err = httpd_resp_send_chunk(req, head, head_len);
+  if (err == ESP_OK) {
+    err = httpd_resp_send_chunk(req, reinterpret_cast<const char*>(frame.buf), frame.len);
+  }
+  if (err != ESP_OK) {
+    span->SetStatus(opentelemetry::trace::StatusCode::kError, "send failed");
+  }
+  span->End();
+  return err == ESP_OK;
+}
+
+static void stream_serve(httpd_req_t* req) {
+  opentelemetry::trace::StartSpanOptions request_opts;
+  request_opts.kind = opentelemetry::trace::SpanKind::kServer;
+  auto request_span = esp_opentelemetry_tracer()->StartSpan("GET /stream", request_opts);
+  stream_set_request_attributes(*request_span, httpd_req_to_sockfd(req));
+  request_span->SetAttribute("http.response.status_code", static_cast<int64_t>(200));
+  httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
+
+  camera_start();
+  ESP_LOGI(TAG, "Stream started");
+  while (!g_stream_stopping) {
+    camera_fb_t* frame = nullptr;
+    if (xQueueReceive(g_frame_queue, &frame, pdMS_TO_TICKS(STREAM_FRAME_WAIT_MS)) != pdPASS) {
+      continue;
+    }
+    bool sent = stream_send_part(req, *frame, *request_span);
+    esp_camera_fb_return(frame);
+    if (!sent) {
+      break;
+    }
+    web_server_metrics_update();
+  }
+  camera_stop();
+  ESP_LOGI(TAG, "Stream stopped");
+  request_span->End();
+}
+
+void stream_task(void* p) {
+  ESP_LOGI(TAG, "Starting stream task");
+  while (true) {
+    httpd_req_t* req = nullptr;
+    if (xQueueReceive(g_stream_requests, &req, portMAX_DELAY) != pdPASS) {
+      continue;
+    }
+    if (!g_stream_stopping) {
+      stream_serve(req);
+    }
+    // The stream's response is never finished, so its connection ends with it.
+    httpd_handle_t hd = req->handle;
+    int fd = httpd_req_to_sockfd(req);
+    httpd_req_async_handler_complete(req);
+    httpd_sess_trigger_close(hd, fd);
+    g_streaming = false;
+  }
+}
+
+// httpd_stop() frees the server a handed-over request points into, so the stream gives its request
+// back first.
+static void stream_release() {
+  g_stream_stopping = true;
+  const int poll_interval_ms = 10;
+  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(STREAM_RELEASE_TIMEOUT_MS);
+  while (g_streaming) {
+    if (xTaskGetTickCount() > deadline) {
+      ESP_LOGE(TAG, "The stream did not stop in time");
+      return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
+  }
 }
 
 void ws_telemetry_task(void* p) {
@@ -545,7 +605,9 @@ static esp_err_t start_endpoint_server(ws_endpoint_t& endpoint) {
   }
   config.global_user_ctx = &endpoint;
   config.global_user_ctx_free_fn = ws_keep_endpoint;
-  config.close_fn = ws_close_session;
+  if (endpoint.is_websocket) {
+    config.close_fn = ws_close_session;
+  }
 
   ESP_LOGI(TAG, "Starting the %s server on port %d", endpoint.path, endpoint.port);
   esp_err_t err = httpd_start(&endpoint.server, &config);
@@ -558,17 +620,18 @@ static esp_err_t start_endpoint_server(ws_endpoint_t& endpoint) {
       .method = HTTP_GET,
       .handler = endpoint.handler,
       .user_ctx = &endpoint,
-      .is_websocket = true,
+      .is_websocket = endpoint.is_websocket,
       .handle_ws_control_frames = false,
       .supported_subprotocol = NULL,
-      .ws_pre_handshake_cb = ws_refuse_if_busy,
-      .ws_post_handshake_cb = ws_hand_over,
+      .ws_pre_handshake_cb = endpoint.is_websocket ? ws_refuse_if_busy : nullptr,
+      .ws_post_handshake_cb = endpoint.is_websocket ? ws_hand_over : nullptr,
   };
   return httpd_register_uri_handler(endpoint.server, &uri);
 }
 
 static void stop_web_servers() {
   xEventGroupClearBits(s_web_server_events, WEB_SERVER_SERVING_BIT);
+  stream_release();
   for (ws_endpoint_t* endpoint : g_endpoints) {
     if (endpoint->server == nullptr) {
       continue;
@@ -580,6 +643,7 @@ static void stop_web_servers() {
     }
     endpoint->server = nullptr;
   }
+  g_stream_stopping = false;
 }
 
 // Starts every server that is not running. The servers run all together or not at all, so a
@@ -622,36 +686,21 @@ void web_server_setup(QueueHandle_t frame_queue, QueueHandle_t command_queue,
                       QueueHandle_t telemetry_queue) {
   s_web_server_events = xEventGroupCreate();
   g_command_queue = command_queue;
-  ws_endpoint_init(g_camera, frame_queue);
+  g_frame_queue = frame_queue;
+  g_stream_requests = xQueueCreate(1, sizeof(httpd_req_t*));
   ws_endpoint_init(g_telemetry, telemetry_queue);
 
-  {
-    // Allocate ws_stream_task stack from PSRAM: base64 encoding of VGA JPEG frames plus
-    // cJSON serialization and OTel span creation exhaust an 8KB DRAM stack.
-    StackType_t* stream_stack =
-        static_cast<StackType_t*>(heap_caps_malloc(32768, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    StaticTask_t* stream_tcb = static_cast<StaticTask_t*>(
-        heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (!stream_stack || !stream_tcb) {
-      ESP_LOGE(TAG, "xTaskCreate(ws_stream_task) failed - no PSRAM");
-      return;
-    }
-    xTaskCreateStaticPinnedToCore(ws_stream_task, "ws_stream_task", 32768 / sizeof(StackType_t),
-                                  nullptr, 1, stream_stack, stream_tcb, tskNO_AFFINITY);
+  // Both stacks live in PSRAM to spare internal RAM.
+  constexpr UBaseType_t stack_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+  if (xTaskCreateWithCaps(stream_task, "stream_task", 12288, nullptr, 1, nullptr, stack_caps) !=
+      pdPASS) {
+    ESP_LOGE(TAG, "xTaskCreate(stream_task) failed - no PSRAM");
+    return;
   }
-  {
-    // Allocate ws_telemetry_task stack from PSRAM to avoid exhausting internal DRAM.
-    StackType_t* tel_stack =
-        static_cast<StackType_t*>(heap_caps_malloc(32768, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    StaticTask_t* tel_tcb = static_cast<StaticTask_t*>(
-        heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (!tel_stack || !tel_tcb) {
-      ESP_LOGE(TAG, "xTaskCreate(ws_telemetry_task) failed - no PSRAM");
-      return;
-    }
-    xTaskCreateStaticPinnedToCore(ws_telemetry_task, "ws_telemetry_task",
-                                  32768 / sizeof(StackType_t), nullptr, 1, tel_stack, tel_tcb,
-                                  tskNO_AFFINITY);
+  if (xTaskCreateWithCaps(ws_telemetry_task, "ws_telemetry_task", 32768, nullptr, 1, nullptr,
+                          stack_caps) != pdPASS) {
+    ESP_LOGE(TAG, "xTaskCreate(ws_telemetry_task) failed - no PSRAM");
+    return;
   }
 
   // Start the servers before registering event handlers to avoid a race where

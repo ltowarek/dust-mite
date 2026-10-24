@@ -11,6 +11,7 @@ legacy_tox_ini = """
         GRAFANA_URL
         OTEL_EXPORTER_OTLP_ENDPOINT
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+        STREAMER_CAMERA_URI
     commands = pytest --junitxml=results.xml -o junit_family=legacy {posargs:tests/}
 """
 

@@ -3,10 +3,11 @@
 Needs the test app built with sdkconfig.defaults.profiling into build_profiling/.
 """
 
+import contextlib
 import threading
 
 import pytest
-from helpers import CLOSE_TIMEOUT_S, OPEN_TIMEOUT_S, CarEndpoints, drain
+from helpers import CLOSE_TIMEOUT_S, OPEN_TIMEOUT_S, CarEndpoints, Endpoint, drain, open_stream, read_part
 from pytest_embedded import Dut
 from websockets.sync.client import connect
 
@@ -18,6 +19,12 @@ EXPORT_TIMEOUT_S = 30.0
 INTERNAL_RAM_DROP_BUDGET_BYTES = 48 * 1024
 
 
+def _drain_stream(camera: Endpoint, stop: threading.Event) -> None:
+    with open_stream(camera) as stream, contextlib.suppress(ConnectionError, OSError):
+        while not stop.is_set():
+            read_part(stream)
+
+
 @pytest.fixture(autouse=True)
 def _profiling_build(dut: Dut) -> None:
     if dut.app.sdkconfig.get('ESP_OPENTELEMETRY_PROFILING_ENABLED') is not True:
@@ -27,11 +34,11 @@ def _profiling_build(dut: Dut) -> None:
 @pytest.mark.dut(reason='measures internal RAM with Wi-Fi and the camera running')
 def test_profile_exports_leave_internal_ram_to_the_server(dut: Dut, car: CarEndpoints) -> None:
     stop = threading.Event()
-    clients = [
-        connect(endpoint.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S)
-        for endpoint in (car.camera, car.telemetry)
+    telemetry = connect(car.telemetry.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S)
+    readers = [
+        threading.Thread(target=_drain_stream, args=(car.camera, stop), daemon=True),
+        threading.Thread(target=drain, args=(telemetry, stop), daemon=True),
     ]
-    readers = [threading.Thread(target=drain, args=(ws, stop), daemon=True) for ws in clients]
     for reader in readers:
         reader.start()
 
@@ -45,7 +52,8 @@ def test_profile_exports_leave_internal_ram_to_the_server(dut: Dut, car: CarEndp
             drops.append(int(match.group(1)))
     finally:
         stop.set()
-        for ws in clients:
-            ws.close()
+        telemetry.close()
+        for reader in readers:
+            reader.join()
 
     assert max(drops) <= INTERNAL_RAM_DROP_BUDGET_BYTES, f'internal RAM drop per profile export: {drops}'
