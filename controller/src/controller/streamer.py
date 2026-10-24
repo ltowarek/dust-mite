@@ -8,9 +8,9 @@ import json
 import logging
 import os
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Protocol, Self
 
 import websockets.exceptions
 import websockets.sync.server
@@ -25,6 +25,7 @@ from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_frame
+from .websocket_client import ClientConnection
 from .websocket_message import WebSocketMessage
 
 logging.basicConfig()
@@ -38,6 +39,12 @@ tracer = trace.get_tracer(__name__)
 _OUTBOX_POLL_S = 0.2
 
 
+class _Feed(Protocol):
+    def subscription(
+        self, callback: Callable[[WebSocketMessage], None]
+    ) -> contextlib.AbstractContextManager[None]: ...
+
+
 class _Outbox:
     """One client's view of some feeds, keeping the newest message of each type.
 
@@ -47,7 +54,7 @@ class _Outbox:
     shares.
     """
 
-    def __init__(self, *feeds: CarFeed | Subject[WebSocketMessage]) -> None:
+    def __init__(self, *feeds: _Feed) -> None:
         self._feeds = feeds
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
@@ -89,8 +96,8 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
-    camera: CarFeed,
-    telemetry: CarFeed,
+    camera: CarFeed[str | bytes],
+    telemetry: CarFeed[str | bytes],
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
 ) -> None:
@@ -128,7 +135,7 @@ def _serve_driver(
 
 
 def _serve_camera(
-    websocket: websockets.sync.server.ServerConnection, camera: CarFeed
+    websocket: websockets.sync.server.ServerConnection, camera: CarFeed[str | bytes]
 ) -> None:
     with _Outbox(camera) as outbox:
         _send_until_closed(websocket, outbox)
@@ -136,7 +143,7 @@ def _serve_camera(
 
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
-    telemetry: CarFeed,
+    telemetry: CarFeed[str | bytes],
     collision_state: Subject[WebSocketMessage],
 ) -> None:
     with _Outbox(telemetry, collision_state) as outbox:
@@ -212,8 +219,14 @@ def main() -> None:
     settings = StreamerSettings.from_env(os.environ)
     configure_observability("dust-mite-streamer", settings.observability)
     commands: Subject[WebSocketMessage] = Subject()
-    camera = CarFeed(settings.camera_uri, relay_camera_message)
-    telemetry = CarFeed(settings.telemetry_uri, relay_telemetry_message)
+    camera = CarFeed(
+        functools.partial(ClientConnection, settings.camera_uri, "r"),
+        relay_camera_message,
+    )
+    telemetry = CarFeed(
+        functools.partial(ClientConnection, settings.telemetry_uri, "r"),
+        relay_telemetry_message,
+    )
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
     handler = functools.partial(server_handler, camera, telemetry, arbiter)
     try:

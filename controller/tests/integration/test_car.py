@@ -1,3 +1,4 @@
+import functools
 import http
 import json
 from typing import Any
@@ -8,6 +9,7 @@ import websockets.sync.server
 from controller.car import CarFeed, send_commands_to_car
 from controller.command import Command
 from controller.subject import Subject
+from controller.websocket_client import ClientConnection
 from controller.websocket_message import WebSocketMessage
 from tests.test_doubles import SubscriberSpy
 
@@ -20,7 +22,9 @@ _SPEED = 50
 def test_feed_subscribers_share_one_car_connection(
     camera_feed: CarEndpointSpy,
 ) -> None:
-    feed = CarFeed(camera_feed.uri, json.loads)
+    feed = CarFeed(
+        functools.partial(ClientConnection, camera_feed.uri, "r"), json.loads
+    )
     first, second = SubscriberSpy[dict[str, Any]](), SubscriberSpy[dict[str, Any]]()
 
     with feed.subscription(first), feed.subscription(second):
@@ -32,7 +36,9 @@ def test_feed_subscribers_share_one_car_connection(
 def test_feed_disconnects_after_the_last_subscriber_leaves(
     camera_feed: CarEndpointSpy,
 ) -> None:
-    feed = CarFeed(camera_feed.uri, json.loads)
+    feed = CarFeed(
+        functools.partial(ClientConnection, camera_feed.uri, "r"), json.loads
+    )
     recorder = SubscriberSpy[dict[str, Any]]()
 
     with feed.subscription(recorder):
@@ -56,7 +62,7 @@ def test_feed_retries_while_the_car_refuses_as_busy() -> None:
 
     recorder = SubscriberSpy[dict[str, Any]]()
     with car_feed_stub(camera_frame, process_request=refuse_first) as camera:
-        feed = CarFeed(camera.uri, json.loads)
+        feed = CarFeed(functools.partial(ClientConnection, camera.uri, "r"), json.loads)
         with feed.subscription(recorder):
             assert wait_for(lambda: bool(recorder.messages))
 
