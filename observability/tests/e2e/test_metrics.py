@@ -12,6 +12,7 @@ CAR_METRICS = [
     "dust_mite_temperature",
     "dust_mite_task_cpu_usage",
     "dust_mite_task_priority",
+    "dust_mite_task_stack_min_free_bytes",
     "dust_mite_rssi",
     "dust_mite_speed",
     "dust_mite_distance_ahead",

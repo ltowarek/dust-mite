@@ -1,11 +1,12 @@
 menu "System metrics"
     config SYSTEM_METRICS_TASK_STATS_ENABLED
-        bool "Enable per-task CPU usage / priority metrics (debug only)"
+        bool "Enable per-task CPU usage / priority / stack metrics (debug only)"
         depends on ESP_OPENTELEMETRY_METRICS_ENABLED
         default n
         help
-            Collects dust_mite_task_cpu_usage and dust_mite_task_priority via
-            FreeRTOS uxTaskGetSystemState(). FreeRTOS documents this whole API
+            Collects dust_mite_task_cpu_usage, dust_mite_task_priority and
+            dust_mite_task_stack_min_free_bytes via FreeRTOS
+            uxTaskGetSystemState(). FreeRTOS documents this whole API
             family as debug-only, not for production use. On a dual-core
             ESP-IDF build it holds the kernel lock, with interrupts masked,
             while it walks every task and scans its stack for the high-water

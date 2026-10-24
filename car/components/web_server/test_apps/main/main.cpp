@@ -59,8 +59,8 @@ extern "C" void app_main(void) {
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
-  // The server stops whenever the car loses Wi-Fi, so the cases start only once it has connected.
   wifi_wait_for_ip();
+  web_server_wait_for_serving();
 #else
   qemu_ethernet_setup();
   web_server_setup(frame_queue, command_queue, telemetry_queue);

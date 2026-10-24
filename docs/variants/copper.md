@@ -92,6 +92,7 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | `dust_mite_temperature` | Cel | ESP32-S3 die temperature |
 | `dust_mite_task_cpu_usage` | % | Per-task CPU usage between the last two task stats refreshes (`CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS`); `task` and `core` attributes identify each series |
 | `dust_mite_task_priority` | 1 | Current FreeRTOS priority per task; `task` and `core` attributes identify each series |
+| `dust_mite_task_stack_min_free_bytes` | By | Minimum free stack per task since the task started; `task` and `core` attributes identify each series |
 
 [car/components/telemetry/telemetry_metrics.cpp](../../car/components/telemetry/telemetry_metrics.cpp) — sensor readings:
 
