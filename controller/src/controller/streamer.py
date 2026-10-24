@@ -17,10 +17,11 @@ import websockets.sync.server
 from opentelemetry import trace
 from websockets.frames import CloseCode
 
-from .car import CarFeed, camera_frame_jpeg, send_commands_to_car
+from .car import CarFeed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received
+from .mjpeg import MjpegClient, Part
 from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
@@ -96,7 +97,7 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
-    camera: CarFeed[str | bytes],
+    camera: CarFeed[Part],
     telemetry: CarFeed[str | bytes],
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
@@ -135,7 +136,7 @@ def _serve_driver(
 
 
 def _serve_camera(
-    websocket: websockets.sync.server.ServerConnection, camera: CarFeed[str | bytes]
+    websocket: websockets.sync.server.ServerConnection, camera: CarFeed[Part]
 ) -> None:
     with _Outbox(camera) as outbox:
         _send_until_closed(websocket, outbox)
@@ -158,15 +159,14 @@ def _send_until_closed(
             websocket.send(json.dumps(message))
 
 
-def relay_camera_message(raw: str | bytes) -> WebSocketMessage:
-    """Turn one camera message from the car into a stream message for clients."""
-    message: WebSocketMessage = json.loads(raw)
-    car_context = extract_trace_context(message)
+def relay_camera_part(part: Part) -> WebSocketMessage:
+    """Turn one Camera frame part from the car into a stream message for clients."""
+    car_context = extract_trace_context(part.headers)
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame", context=car_context
     ) as span:
-        span.set_attribute("network.protocol.name", "websocket")
-        frame = process_frame(camera_frame_jpeg(message))
+        span.set_attribute("network.protocol.name", "http")
+        frame = process_frame(part.jpeg)
         return prepare_camera_frame_message(frame)
 
 
@@ -220,8 +220,7 @@ def main() -> None:
     configure_observability("dust-mite-streamer", settings.observability)
     commands: Subject[WebSocketMessage] = Subject()
     camera = CarFeed(
-        functools.partial(ClientConnection, settings.camera_uri, "r"),
-        relay_camera_message,
+        functools.partial(MjpegClient, settings.camera_uri), relay_camera_part
     )
     telemetry = CarFeed(
         functools.partial(ClientConnection, settings.telemetry_uri, "r"),

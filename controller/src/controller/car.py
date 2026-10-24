@@ -1,6 +1,5 @@
 """The streamer's side of the car: its endpoints and its message format."""
 
-import base64
 import contextlib
 import json
 import logging
@@ -95,11 +94,6 @@ def send_commands_to_car(
         commands.subscription(lambda command: connection.send(json.dumps(command))),
     ):
         yield
-
-
-def camera_frame_jpeg(message: WebSocketMessage) -> bytes:
-    """Return the JPEG carried by a camera message from the car."""
-    return base64.b64decode(message["data"])
 
 
 def prepare_drive_command(command: WebSocketMessage) -> WebSocketMessage:

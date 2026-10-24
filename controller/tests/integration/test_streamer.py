@@ -20,9 +20,10 @@ from controller.car import CarFeed, send_commands_to_car
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
 from controller.command_arbiter import DRIVER_ALREADY_CONNECTED, CommandArbiter
+from controller.mjpeg import MjpegClient
 from controller.senders import WebSocketCommandSender
 from controller.streamer import (
-    relay_camera_message,
+    relay_camera_part,
     relay_telemetry_message,
     server_handler,
 )
@@ -47,9 +48,7 @@ def _streamer(
     camera: CarEndpointSpy, telemetry: CarEndpointSpy, control: CarEndpointSpy
 ) -> Iterator[websockets.sync.server.Server]:
     commands = Subject[WebSocketMessage]()
-    car_camera = CarFeed(
-        functools.partial(ClientConnection, camera.uri, "r"), relay_camera_message
-    )
+    car_camera = CarFeed(functools.partial(MjpegClient, camera.uri), relay_camera_part)
     car_telemetry = CarFeed(
         functools.partial(ClientConnection, telemetry.uri, "r"),
         relay_telemetry_message,
