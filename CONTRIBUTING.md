@@ -1003,8 +1003,8 @@ Build, flash, and run all component test apps in sequence:
 
 The script ends with a smoke test,
 [car/test_apps/e2e/pytest_smoke.py](car/test_apps/e2e/pytest_smoke.py). CI builds the debug
-overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.all`) but never runs them, so the script
-builds the production firmware once without an overlay (`build/`) and once per
+overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.debug`) but never runs them,
+so the script builds the production firmware once without an overlay (`build/`) and once per
 `car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
 Camera endpoint for a minute, and fails when the frames stop for more than a few seconds. Run it
 before merging a firmware change that touches an overlay or the observability setup. The profiling
@@ -1018,13 +1018,14 @@ relevant component's `Kconfig.projbuild`, with help text explaining what the
 flag does and why it defaults off.
 
 Every feature flag must be built and tested in CI, regardless of its default.
-[car/sdkconfig.defaults.all](car/sdkconfig.defaults.all) is an overlay that
-enables every off-by-default feature flag; CI builds `car/` with this overlay
-applied on top of `sdkconfig.defaults` so every flag-guarded code path
-compiles even though it's never built by the default config. When adding a
-new off-by-default feature flag, also set it in this overlay. It also doubles
-as a ready-made profile for flashing real hardware while debugging (see the
-file's header comment).
+Each off-by-default flag is set in a `car/sdkconfig.defaults.<overlay>` that
+CI builds on top of `sdkconfig.defaults`, one overlay per concern, so every
+flag-guarded code path compiles even though the default config never builds
+it: [car/sdkconfig.defaults.debug](car/sdkconfig.defaults.debug)
+for the debug metrics, [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)
+for the profiler. Set a new flag in the overlay for its concern, or add an
+overlay and its CI matrix entry. Each overlay doubles as a ready-made profile
+for flashing real hardware while debugging (see its header comment).
 
 ## Documentation
 
