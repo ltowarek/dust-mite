@@ -9,9 +9,8 @@ menu "System metrics"
             family as debug-only, not for production use. On a dual-core
             ESP-IDF build it holds the kernel lock, with interrupts masked,
             while it walks every task and scans its stack for the high-water
-            mark. The camera misses DMA interrupts meanwhile and drops a frame
-            or two at each refresh (issues #43, #182) - leave disabled unless
-            actively debugging task scheduling/CPU usage.
+            mark, so interrupts on both cores wait for each refresh - leave
+            disabled unless actively debugging task scheduling/CPU usage.
 
     config SYSTEM_METRICS_TASK_STATS_REFRESH_MS
         int "Task stats refresh interval (ms)"
@@ -21,7 +20,7 @@ menu "System metrics"
         help
             How often the task stats are read again. Collections in between
             report the last read, so a short interval gives finer CPU usage
-            and costs the camera more frames.
+            and masks interrupts more often.
 
     config SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
         bool "Enable largest free heap block metric (debug only)"
