@@ -1,4 +1,4 @@
-# Overlay for pytest_web_server_profiling.py, on the car.
+# Overlay for pytest_web_server_debug.py, on the car.
 CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED=y
 # TLS pointer index 1 hosts the profiler's per-task active-span slot (index 0 = pthread).
 CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2

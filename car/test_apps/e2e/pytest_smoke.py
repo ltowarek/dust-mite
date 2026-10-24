@@ -16,7 +16,7 @@ from helpers import CLOSE_TIMEOUT_S, OPEN_TIMEOUT_S, car_endpoints, get_dut_ip
 CAR_ROOT = Path(__file__).resolve().parents[2]
 READY = 'Serving every endpoint'
 BOOT_TIMEOUT_S = 70.0
-# Long enough for several profile exports in the profiling build.
+# Long enough for several profile exports in the debug build.
 STREAM_S = 60.0
 # The camera sends several frames a second; a reset drops the connection and ends them.
 MAX_FRAME_GAP_S = 5.0

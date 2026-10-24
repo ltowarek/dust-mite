@@ -1,6 +1,6 @@
 """Profile exports must leave the web server enough internal RAM while clients stream.
 
-Needs the test app built with sdkconfig.defaults.profiling into build_profiling/.
+Needs the test app built with sdkconfig.defaults.debug into build_debug/.
 """
 
 import threading
@@ -12,16 +12,16 @@ from websockets.sync.client import connect
 
 EXPORT_WINDOWS = 6
 EXPORT_LINE = rb'profiles export: \d+ bytes, internal RAM drop (\d+) bytes'
-# sdkconfig.defaults.profiling exports every second; the first export waits for a full window.
+# sdkconfig.defaults.debug exports profiles every second; the first export waits for a full window.
 EXPORT_TIMEOUT_S = 30.0
 # Streaming alone moves internal RAM by up to about 20 KB between two exports.
 INTERNAL_RAM_DROP_BUDGET_BYTES = 48 * 1024
 
 
 @pytest.fixture(autouse=True)
-def _profiling_build(dut: Dut) -> None:
+def _debug_build(dut: Dut) -> None:
     if dut.app.sdkconfig.get('ESP_OPENTELEMETRY_PROFILING_ENABLED') is not True:
-        pytest.skip('needs a profiling build (sdkconfig.defaults.profiling)')
+        pytest.skip('needs the debug build (sdkconfig.defaults.debug)')
 
 
 @pytest.mark.dut(reason='measures internal RAM with Wi-Fi and the camera running')

@@ -11,7 +11,7 @@ from tests.helpers.query import (
 )
 
 _CAR_PROFILING_REASON = (
-    "requires firmware built with sdkconfig.defaults.profiling, real ESP32 "
+    "requires firmware built with sdkconfig.defaults.debug, real ESP32 "
     "hardware, and the profiling-symbolizer container"
 )
 _STREAMER_PROFILING_REASON = "requires PROFILING_ENABLED=1 on the streamer"
