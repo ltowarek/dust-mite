@@ -28,8 +28,14 @@ class Receiver[T](Protocol):
         ...
 
 
+# A provider: each call returns a new connection, not yet open.
+type ConnectionProvider[T] = Callable[
+    [], contextlib.AbstractContextManager[Receiver[T]]
+]
+
+
 class CarFeed[T]:
-    """Reads one car endpoint, connected only while it has subscribers.
+    """A RefCount over one car endpoint: connected only while it has subscribers.
 
     Every client subscribes to the same feed, so the car serves one
     connection per endpoint no matter how many clients are connected.
@@ -37,11 +43,11 @@ class CarFeed[T]:
 
     def __init__(
         self,
-        connect: Callable[[], contextlib.AbstractContextManager[Receiver[T]]],
+        connection_provider: ConnectionProvider[T],
         to_message: Callable[[T], WebSocketMessage],
     ) -> None:
-        """Initialize the object; `connect` opens a connection to the endpoint."""
-        self._connect = connect
+        """Initialize the object; each first subscriber calls `connection_provider`."""
+        self._connection_provider = connection_provider
         self._to_message = to_message
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -66,7 +72,7 @@ class CarFeed[T]:
             self._thread.join()
 
     def _run(self) -> None:
-        with self._connect() as client:
+        with self._connection_provider() as client:
             while not self._stop_event.is_set():
                 try:
                     raw = client.recv(timeout=_FEED_STOP_CHECK_S)
