@@ -154,7 +154,7 @@ def _send_until_closed(
 
 
 CAMERA_PATH = "/camera"
-CAMERA_PORT = 8766
+DEFAULT_CAMERA_PORT = 8766
 
 
 class CameraServer(ThreadingHTTPServer):
@@ -246,6 +246,7 @@ class StreamerSettings:
     camera_uri: str
     telemetry_uri: str
     drive_uri: str
+    camera_port: int
     observability: ObservabilitySettings
 
     @classmethod
@@ -255,6 +256,9 @@ class StreamerSettings:
             camera_uri=environ["STREAM_CLIENT_URI"],
             telemetry_uri=environ["TELEMETRY_CLIENT_URI"],
             drive_uri=environ["DRIVE_CLIENT_URI"],
+            camera_port=int(
+                environ.get("STREAMER_CAMERA_PORT", str(DEFAULT_CAMERA_PORT))
+            ),
             observability=ObservabilitySettings.from_env(environ),
         )
 
@@ -282,7 +286,7 @@ def main() -> None:
     try:
         with (
             send_commands_to_car(settings.drive_uri, commands),
-            CameraServer(("0.0.0.0", CAMERA_PORT), camera) as viewers,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
+            CameraServer(("0.0.0.0", settings.camera_port), camera) as viewers,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
             websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
         ):
             viewers_thread = threading.Thread(target=viewers.serve_forever)
