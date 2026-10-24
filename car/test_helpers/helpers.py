@@ -1,13 +1,10 @@
 import contextlib
 import http.client
 import socket
-import threading
 from collections.abc import Iterator
 from typing import NamedTuple
 
 from pytest_embedded import Dut
-from websockets.exceptions import ConnectionClosed
-from websockets.sync.client import ClientConnection
 
 # Mirrored from WEB_SERVER_*_PORT in components/web_server/include/web_server.hpp
 DRIVE_PORT = 80
@@ -43,17 +40,6 @@ def car_endpoints(
         camera=Endpoint(host, camera_port, '/stream', 'http'),
         telemetry=Endpoint(host, telemetry_port, '/telemetry'),
     )
-
-
-def drain(ws: ClientConnection, stop: threading.Event) -> None:
-    """Reads and discards messages until stop is set, so the server never blocks on a full socket."""
-    while not stop.is_set():
-        try:
-            ws.recv(timeout=1)
-        except TimeoutError:
-            continue
-        except ConnectionClosed:
-            return
 
 
 @contextlib.contextmanager

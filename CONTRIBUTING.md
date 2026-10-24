@@ -402,11 +402,7 @@ fictional. The sampler/span-link/exporter mechanics are covered by
 own CI (QEMU), including a regression test for the profile export starving the tasks around it of
 internal RAM, the only memory FreeRTOS objects, lwIP sockets and DMA buffers can use. dust-mite's
 CI builds the car with the debug overlay (`main-debug`), and the smoke test (see
-[Car test types](#car-test-types)) runs it on the car. Also on the car,
-[pytest_web_server_debug.py](car/components/web_server/test_apps/pytest_web_server_debug.py)
-measures how much internal RAM each profile export takes while clients stream; it needs the web
-server test app built with its `sdkconfig.defaults.debug` overlay, which `car/scripts/run_tests.sh`
-builds into `build_debug/`, and is skipped otherwise.
+[Car test types](#car-test-types)) runs it on the car.
 Flame graphs themselves are validated on real hardware only.
 
 #### Span profiles (trace → flame graph)

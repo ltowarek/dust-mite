@@ -4,9 +4,6 @@ if(CONFIG_WEB_SERVER_TEST_QEMU_MODE)
     list(APPEND srcs "qemu_peripherals.cpp")
 else()
     list(APPEND srcs "metrics_collection.cpp" "test_stream_rate.cpp")
-    if(CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED)
-        list(APPEND srcs "profiling_report.cpp")
-    endif()
 endif()
 idf_component_register(SRCS ${srcs}
                     INCLUDE_DIRS "."
