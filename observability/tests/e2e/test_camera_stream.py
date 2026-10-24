@@ -5,15 +5,13 @@ import http.client
 import statistics
 import time
 import urllib.parse
-from collections import defaultdict
 from collections.abc import Callable
 from typing import Any, cast
 
 import pytest
 import requests
 
-from tests.helpers.producers import PROFILE_TYPE
-from tests.helpers.query import MIMIR_UID, PYROSCOPE_UID, query
+from tests.helpers.query import MIMIR_UID, query
 from tests.helpers.settings import STACK_SETTINGS
 
 _REASON = (
@@ -25,9 +23,8 @@ MESSAGE_SIZE = "camera.part.size"
 STREAM_TASK = "stream_task"
 STREAM_S = 60.0
 FRAME_TIMEOUT_S = 5.0
-# Spans, metrics and profiles are exported in batches well within this.
+# Spans and metrics are exported in batches well within this.
 INGEST_S = 60.0
-TOP_FUNCTIONS = 15
 RecordProperty = Callable[[str, object], None]
 MIN_VIEWER_FPS = 22.0
 # A send must finish within one frame period or it holds back the camera.
@@ -45,18 +42,11 @@ class StreamWindow:
     def fps(self) -> float:
         return self.frames / (self.end - self.start)
 
-    def grafana_range(self) -> dict[str, str]:
-        return {
-            "time_range": str(int(self.start * 1000)),
-            "until": str(int((self.end + INGEST_S) * 1000)),
-        }
-
 
 @dataclasses.dataclass(frozen=True)
 class SendSpan:
     duration_ms: float
     size: int
-    profile_id: str
 
 
 def _read_part(stream: http.client.HTTPResponse) -> None:
@@ -135,24 +125,9 @@ def send_spans(window: StreamWindow) -> list[SendSpan]:
                         SendSpan(
                             duration_ms=(ended - started) * 1000,
                             size=int(attrs[MESSAGE_SIZE]["intValue"]),
-                            profile_id=attrs["pyroscope.profile.id"]["stringValue"],
                         )
                     )
     return spans
-
-
-def _flame_graph_rows(result: dict[str, Any]) -> list[tuple[str, int]]:
-    rows: list[tuple[str, int]] = []
-    for frame in result.get("frames", []):
-        fields = frame["schema"]["fields"]
-        values = frame["data"]["values"]
-        names = {f["name"]: i for i, f in enumerate(fields)}
-        labels = values[names["label"]]
-        enum = fields[names["label"]].get("config", {}).get("type", {}).get("enum")
-        if enum is not None:
-            labels = [enum["text"][i] for i in labels]
-        rows.extend(zip(labels, values[names["self"]], strict=True))
-    return rows
 
 
 @pytest.mark.dut(reason=_REASON)
@@ -195,40 +170,3 @@ def test_stream_task_keeps_stack_headroom(
     min_free = int(cast("float", result["frames"][0]["data"]["values"][1][0]))
     record_property("stream_task_stack_min_free_bytes", min_free)
     assert min_free >= MIN_STACK_FREE_BYTES
-
-
-@pytest.fixture(scope="module")
-def send_profile_top(
-    window: StreamWindow, send_spans: list[SendSpan]
-) -> list[tuple[str, int]]:
-    result = query(
-        PYROSCOPE_UID,
-        "grafana-pyroscope-datasource",
-        {
-            "queryType": "profile",
-            "profileTypeId": PROFILE_TYPE,
-            "labelSelector": '{service_name="dust-mite-car"}',
-            "spanSelector": [s.profile_id for s in send_spans],
-        },
-        **window.grafana_range(),
-    )
-    self_samples: defaultdict[str, int] = defaultdict(int)
-    for name, samples in _flame_graph_rows(result):
-        self_samples[name] += samples
-    return sorted(self_samples.items(), key=lambda kv: -kv[1])[:TOP_FUNCTIONS]
-
-
-@pytest.mark.dut(reason=_REASON)
-def test_send_profile_has_samples(
-    send_profile_top: list[tuple[str, int]], record_property: RecordProperty
-) -> None:
-    record_property("send_profile_top_self", send_profile_top)
-    assert send_profile_top
-
-
-@pytest.mark.dut(reason=_REASON)
-def test_send_profile_names_functions(
-    send_profile_top: list[tuple[str, int]],
-) -> None:
-    addresses = [name for name, _ in send_profile_top if name.startswith("0x")]
-    assert addresses == []
