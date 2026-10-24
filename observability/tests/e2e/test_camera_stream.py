@@ -17,8 +17,8 @@ from tests.helpers.query import MIMIR_UID, PYROSCOPE_UID, query
 from tests.helpers.settings import STACK_SETTINGS
 
 _REASON = (
-    "requires the car flashed with sdkconfig.defaults.debug and "
-    "sdkconfig.defaults.profiling, streaming through the headless stack"
+    "requires the car flashed with sdkconfig.defaults.debug, "
+    "streaming through the headless stack"
 )
 SEND_SPAN = "camera.frame.send"
 MESSAGE_SIZE = "camera.part.size"

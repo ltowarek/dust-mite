@@ -49,7 +49,7 @@ services:
       SYMBOLIZER_LISTEN_ADDR: "0.0.0.0:4319"
       SYMBOLIZER_FORWARD_URL: "http://otel-collector:4318/v1development/profiles"
       # Adds the build_<overlay>/ directories that car/scripts/run_tests.sh builds, where the
-      # smoke test leaves the profiling firmware flashed.
+      # smoke test leaves the debug firmware flashed.
       SYMBOLIZER_ELF_GLOBS: "/firmware/build/*.elf:/firmware/build_*/*.elf:/firmware/components/*/test_apps/build/*.elf:/firmware/components/*/test_apps/build_*/*.elf"
     volumes:
       - ../car:/firmware:ro

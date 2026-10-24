@@ -1,4 +1,8 @@
-# Overlay for pytest_web_server_debug.py, on the car: adds the debug metrics of
-# car/sdkconfig.defaults.debug.
+# Overlay for pytest_web_server_debug.py, on the car: adds car/sdkconfig.defaults.debug.
 CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED=y
 CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED=y
+CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED=y
+# TLS pointer index 1 hosts the profiler's per-task active-span slot (index 0 = pthread).
+CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
+# Short windows so the test sees several exports in seconds.
+CONFIG_ESP_OPENTELEMETRY_PROFILING_EXPORT_INTERVAL_MS=1000

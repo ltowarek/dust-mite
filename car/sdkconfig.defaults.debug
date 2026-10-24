@@ -1,4 +1,9 @@
-# Debug overlay: the off-by-default system metrics. CI builds it so their
-# #ifdef branches compile; flash it to debug tasks or the heap (e.g. issue #43).
+# Debug overlay: the off-by-default system metrics and the CPU profiler (see CONTRIBUTING.md
+# "Profiling"). CI builds it so their #ifdef branches compile; flash it to debug the car.
 CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED=y
 CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED=y
+CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED=y
+
+# TLS pointer index 1 hosts the per-task active-span slot that links profile
+# samples to the span running on the interrupted task (index 0 = pthread).
+CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
