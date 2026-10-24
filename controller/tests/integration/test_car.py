@@ -26,7 +26,7 @@ from .waiting import wait_for
 _SPEED = 50
 
 
-def _camera(endpoint: CarEndpointSpy) -> CarFeed[Part]:
+def _camera(endpoint: CarEndpointSpy) -> CarFeed[Part, WebSocketMessage]:
     return CarFeed(functools.partial(MjpegClient, endpoint.uri), lambda p: p.headers)
 
 

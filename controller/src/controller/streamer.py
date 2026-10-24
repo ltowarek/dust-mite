@@ -40,14 +40,14 @@ tracer = trace.get_tracer(__name__)
 _OUTBOX_POLL_S = 0.2
 
 
-class _Feed(Protocol):
+class _Feed[M](Protocol):
     def subscription(
-        self, callback: Callable[[WebSocketMessage], None]
+        self, callback: Callable[[M], None]
     ) -> contextlib.AbstractContextManager[None]: ...
 
 
-class _Outbox:
-    """One client's view of some feeds, keeping the newest message of each type.
+class _Outbox[M]:
+    """One client's view of some feeds, keeping the newest message of each kind.
 
     Use as a context manager: it subscribes to `feeds` on entry and
     unsubscribes on exit. A client that falls behind skips stale camera
@@ -55,11 +55,12 @@ class _Outbox:
     shares.
     """
 
-    def __init__(self, *feeds: _Feed) -> None:
+    def __init__(self, *feeds: _Feed[M], kind: Callable[[M], str]) -> None:
         self._feeds = feeds
+        self._kind = kind
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
-        self._pending: dict[str, WebSocketMessage] = {}
+        self._pending: dict[str, M] = {}
 
     def __enter__(self) -> Self:
         # Unsubscribes from the feeds already entered if a later one fails.
@@ -77,16 +78,16 @@ class _Outbox:
     ) -> None:
         self._subscriptions.close()
 
-    def take(self, timeout: float) -> list[WebSocketMessage]:
+    def take(self, timeout: float) -> list[M]:
         with self._condition:
             self._condition.wait_for(lambda: self._pending, timeout)
             messages = list(self._pending.values())
             self._pending.clear()
             return messages
 
-    def _put(self, message: WebSocketMessage) -> None:
+    def _put(self, message: M) -> None:
         with self._condition:
-            self._pending[message["type"]] = message
+            self._pending[self._kind(message)] = message
             self._condition.notify()
 
 
@@ -97,8 +98,8 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
-    camera: CarFeed[Part],
-    telemetry: CarFeed[str | bytes],
+    camera: CarFeed[Part, WebSocketMessage],
+    telemetry: CarFeed[str | bytes, WebSocketMessage],
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
 ) -> None:
@@ -136,23 +137,25 @@ def _serve_driver(
 
 
 def _serve_camera(
-    websocket: websockets.sync.server.ServerConnection, camera: CarFeed[Part]
+    websocket: websockets.sync.server.ServerConnection,
+    camera: CarFeed[Part, WebSocketMessage],
 ) -> None:
-    with _Outbox(camera) as outbox:
+    with _Outbox(camera, kind=lambda m: m["type"]) as outbox:
         _send_until_closed(websocket, outbox)
 
 
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
-    telemetry: CarFeed[str | bytes],
+    telemetry: CarFeed[str | bytes, WebSocketMessage],
     collision_state: Subject[WebSocketMessage],
 ) -> None:
-    with _Outbox(telemetry, collision_state) as outbox:
+    with _Outbox(telemetry, collision_state, kind=lambda m: m["type"]) as outbox:
         _send_until_closed(websocket, outbox)
 
 
 def _send_until_closed(
-    websocket: websockets.sync.server.ServerConnection, outbox: _Outbox
+    websocket: websockets.sync.server.ServerConnection,
+    outbox: _Outbox[WebSocketMessage],
 ) -> None:
     while websocket.close_code is None:
         for message in outbox.take(timeout=_OUTBOX_POLL_S):

@@ -28,7 +28,7 @@ class Receiver[T](Protocol):
         ...
 
 
-class CarFeed[T]:
+class CarFeed[T, M]:
     """Reads one car endpoint, connected only while it has subscribers.
 
     Every client subscribes to the same feed, so the car serves one
@@ -38,19 +38,17 @@ class CarFeed[T]:
     def __init__(
         self,
         connect: Callable[[], contextlib.AbstractContextManager[Receiver[T]]],
-        to_message: Callable[[T], WebSocketMessage],
+        to_message: Callable[[T], M],
     ) -> None:
         """Initialize the object; `connect` opens a connection to the endpoint."""
         self._connect = connect
         self._to_message = to_message
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._subject: Subject[WebSocketMessage] = Subject(
-            on_active=self._start, on_idle=self._stop
-        )
+        self._subject: Subject[M] = Subject(on_active=self._start, on_idle=self._stop)
 
     def subscription(
-        self, callback: Callable[[WebSocketMessage], None]
+        self, callback: Callable[[M], None]
     ) -> contextlib.AbstractContextManager[None]:
         """Call `callback` with each message from the car while the context is open."""
         return self._subject.subscription(callback)
