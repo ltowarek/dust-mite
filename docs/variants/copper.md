@@ -113,7 +113,7 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | `dust_mite_camera_frame_size_bytes` | By | Peak delivered JPEG frame size since last collection (gauge) |
 | `dust_mite_camera_frame_buffer_bytes` | By | JPEG frame-buffer capacity / drop limit (gauge) |
 
-[car/components/web_server/web_server_metrics.cpp](../../car/components/web_server/web_server_metrics.cpp) — WebSocket delivery:
+[car/components/web_server/web_server_metrics.cpp](../../car/components/web_server/web_server_metrics.cpp) — endpoint delivery:
 
 | Metric | Unit | Description |
 |---|---|---|
@@ -160,7 +160,7 @@ graph LR
                 PC_CTRL_WS["WebSocket Client [/drive]"]
             end
             subgraph Streamer
-                PC_STR_WS_STREAM["WebSocket Client [/stream]"]
+                PC_STR_WS_STREAM["HTTP Client [/stream]"]
                 PC_STR_WS_TEL["WebSocket Client [/telemetry]"]
                 PC_STR_WS_CTRL["WebSocket Client [/]"]
                 PC_STR_MUX["CommandArbiter + CollisionMonitor"]

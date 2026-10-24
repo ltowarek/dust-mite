@@ -175,7 +175,7 @@ flowchart LR
         GRAF["Grafana\nlocalhost:3000"]
     end
 
-    FW -- "WebSocket + traceparent" --> STR
+    FW -- "MJPEG over HTTP, WebSocket + traceparent" --> STR
     STR -- "WebSocket + traceparent" --> WEB
     FW -- "OTLP/HTTP traces" --> OC
     FW -- "OTLP/HTTP metrics" --> MIMIR
