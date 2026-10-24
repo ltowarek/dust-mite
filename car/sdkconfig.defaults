@@ -17,6 +17,16 @@ CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT=y
 # Each of the three endpoint servers reserves 3 sockets and holds 2 sessions; the rest is for the
 # OpenTelemetry exporters, SNTP and DNS.
 CONFIG_LWIP_MAX_SOCKETS=24
+# A whole Camera frame fits, so sending it does not wait for ACKs; lwIP derives
+# TCP_SND_QUEUELEN from it.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=32768
+# Queued TCP segments and Wi-Fi's own allocations go to PSRAM, not scarce internal RAM.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# That makes the Wi-Fi TX buffers static and raises the defaults of these internal DMA buffers;
+# with these counts, idle internal RAM stays where dynamic TX buffers left it.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP_WIFI_RX_BA_WIN=6
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=8
 
 # Camera DMA ISR must run from IRAM so it executes safely during the brief
 # window when wifi_setup() → nvs_flash_init() disables the flash cache.

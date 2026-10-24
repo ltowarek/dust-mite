@@ -5,12 +5,22 @@ menu "System metrics"
         default n
         help
             Collects dust_mite_task_cpu_usage and dust_mite_task_priority via
-            FreeRTOS uxTaskGetSystemState(), which suspends the scheduler while
-            it walks every task. FreeRTOS documents this whole API family as
-            debug-only, not for production use. On this board it can disrupt
-            the camera's real-time JPEG frame capture during streaming
-            (issue #43) - leave disabled unless actively debugging task
-            scheduling/CPU usage, and disable again afterward.
+            FreeRTOS uxTaskGetSystemState(). FreeRTOS documents this whole API
+            family as debug-only, not for production use. On a dual-core
+            ESP-IDF build it holds the kernel lock, with interrupts masked,
+            while it walks every task and scans its stack for the high-water
+            mark, so interrupts on both cores wait for each refresh - leave
+            disabled unless actively debugging task scheduling/CPU usage.
+
+    config SYSTEM_METRICS_TASK_STATS_REFRESH_MS
+        int "Task stats refresh interval (ms)"
+        depends on SYSTEM_METRICS_TASK_STATS_ENABLED
+        range 100 3600000
+        default 10000
+        help
+            How often the task stats are read again. Collections in between
+            report the last read, so a short interval gives finer CPU usage
+            and masks interrupts more often.
 
     config SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED
         bool "Enable largest free heap block metric (debug only)"

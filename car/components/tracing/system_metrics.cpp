@@ -53,7 +53,9 @@ static void observe_task_metric(opentelemetry::metrics::ObserverResult& obs, T v
 
 static void refresh_task_stats() {
   int64_t now = esp_timer_get_time();
-  if (now - s_last_refresh_time < 100000LL) return;
+  bool fresh = s_last_refresh_time != 0 &&
+               now - s_last_refresh_time < CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS * 1000LL;
+  if (fresh) return;
 
   static TaskStatus_t snap[kMaxTasks];
   uint32_t dummy;
