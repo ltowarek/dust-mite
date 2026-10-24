@@ -21,12 +21,12 @@ def _camera_part() -> CameraStreamPart:
     )
 
 
-def test_a_camera_part_becomes_a_stream_message() -> None:
-    assert relay_camera_part(_camera_part())["type"] == "stream"
+def test_a_camera_part_becomes_a_processed_jpeg() -> None:
+    assert relay_camera_part(_camera_part()).jpeg[:2] == b"\xff\xd8"
 
 
-def test_a_stream_message_continues_the_car_trace() -> None:
-    traceparent = relay_camera_part(_camera_part())["traceparent"]
+def test_a_processed_part_continues_the_car_trace() -> None:
+    traceparent = relay_camera_part(_camera_part()).headers["traceparent"]
 
     assert traceparent.split("-")[1] == _CAR_TRACE_ID
 

@@ -1,16 +1,19 @@
 """streamer module: serves the car's feeds and drive endpoint to local clients."""
 
-import base64
 import contextlib
 import dataclasses
 import functools
+import http
 import json
 import logging
 import os
+import select
+import socket
 import threading
 from collections.abc import Callable, Mapping
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
-from typing import Any, Protocol, Self
+from typing import Any, Protocol, Self, cast, override
 
 import websockets.exceptions
 import websockets.sync.server
@@ -20,8 +23,8 @@ from websockets.frames import CloseCode
 from .car import CarFeed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
-from .metrics import record_telemetry_received
-from .mjpeg import MjpegClient, CameraStreamPart
+from .metrics import record_telemetry_received, record_viewer_frame_sent
+from .mjpeg import CONTENT_TYPE, MjpegClient, CameraStreamPart, format_part
 from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
@@ -91,14 +94,12 @@ class _Outbox[M]:
             self._condition.notify()
 
 
-CAMERA_PATH = "/camera"
 TELEMETRY_PATH = "/telemetry"
 DRIVE_PATH = "/drive"
 
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
-    camera: CarFeed[CameraStreamPart, WebSocketMessage],
     telemetry: CarFeed[str | bytes, WebSocketMessage],
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
@@ -112,9 +113,7 @@ def server_handler(
     logger.info("Server connection from: %s to %s", websocket.remote_address[0], path)
 
     try:
-        if path == CAMERA_PATH:
-            _serve_camera(websocket, camera)
-        elif path == TELEMETRY_PATH:
+        if path == TELEMETRY_PATH:
             _serve_telemetry(websocket, telemetry, arbiter.collision_state)
         elif path == DRIVE_PATH:
             _serve_driver(arbiter, websocket)
@@ -136,14 +135,6 @@ def _serve_driver(
         websocket.close(CloseCode.TRY_AGAIN_LATER, str(e))
 
 
-def _serve_camera(
-    websocket: websockets.sync.server.ServerConnection,
-    camera: CarFeed[CameraStreamPart, WebSocketMessage],
-) -> None:
-    with _Outbox(camera, kind=lambda m: m["type"]) as outbox:
-        _send_until_closed(websocket, outbox)
-
-
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
     telemetry: CarFeed[str | bytes, WebSocketMessage],
@@ -162,21 +153,78 @@ def _send_until_closed(
             websocket.send(json.dumps(message))
 
 
-def relay_camera_part(part: CameraStreamPart) -> WebSocketMessage:
-    """Turn one Camera frame part from the car into a stream message for clients."""
+CAMERA_PATH = "/camera"
+CAMERA_PORT = 8766
+
+
+class CameraServer(ThreadingHTTPServer):
+    """Serves the processed Camera stream to viewers as MJPEG on `CAMERA_PATH`."""
+
+    def __init__(self, address: tuple[str, int], camera: CarFeed[CameraStreamPart, CameraStreamPart]) -> None:
+        """Initialize the object; it reads `camera` only while a viewer watches."""
+        super().__init__(address, _CameraViewer)
+        self.camera = camera
+
+
+class _CameraViewer(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path != CAMERA_PATH:
+            self.send_error(http.HTTPStatus.NOT_FOUND)
+            return
+        _serve_viewer(self, cast("CameraServer", self.server).camera)
+
+    @override
+    def log_message(self, *args: object) -> None:
+        """Log through the module logger, not stderr."""
+        logger.debug("Viewer %s: %s", self.client_address[0], args)
+
+
+@tracer.start_as_current_span(f"GET {CAMERA_PATH}", kind=trace.SpanKind.SERVER)
+def _serve_viewer(viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPart, CameraStreamPart]) -> None:
+    span = trace.get_current_span()
+    span.set_attribute("http.request.method", "GET")
+    span.set_attribute("url.path", CAMERA_PATH)
+    span.set_attribute("client.address", viewer.client_address[0])
+    viewer.send_response(http.HTTPStatus.OK)
+    viewer.send_header("Content-Type", CONTENT_TYPE)
+    viewer.send_header("Cache-Control", "no-store")
+    viewer.end_headers()
+    span.set_attribute("http.response.status_code", http.HTTPStatus.OK)
+    with (
+        _Outbox(camera, kind=lambda _: "camera") as outbox,
+        contextlib.suppress(BrokenPipeError, ConnectionResetError),
+    ):
+        while not _viewer_left(viewer.connection):
+            for frame in outbox.take(timeout=_OUTBOX_POLL_S):
+                _send_camera_frame(viewer, frame)
+
+
+def _viewer_left(connection: socket.socket) -> bool:
+    """Whether the viewer closed its connection; it sends nothing after its request."""
+    readable, _, _ = select.select([connection], [], [], 0)
+    return bool(readable) and not connection.recv(1, socket.MSG_PEEK)
+
+
+def _send_camera_frame(viewer: BaseHTTPRequestHandler, frame: CameraStreamPart) -> None:
+    with tracer.start_as_current_span(
+        "streamer.send_camera_frame",
+        context=extract_trace_context(frame.headers),
+        kind=trace.SpanKind.PRODUCER,
+    ) as span:
+        span.set_attribute("client.address", viewer.client_address[0])
+        viewer.wfile.write(format_part(CameraStreamPart(inject_trace_context({}), frame.jpeg)))
+        viewer.wfile.flush()
+    record_viewer_frame_sent()
+
+
+def relay_camera_part(part: CameraStreamPart) -> CameraStreamPart:
+    """Turn one Camera frame part from the car into a processed part for viewers."""
     car_context = extract_trace_context(part.headers)
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame", context=car_context
     ) as span:
         span.set_attribute("network.protocol.name", "http")
-        frame = process_frame(part.jpeg)
-        return prepare_camera_frame_message(frame)
-
-
-def prepare_camera_frame_message(frame: bytes) -> WebSocketMessage:
-    """Build a stream message for a processed camera frame with trace context."""
-    message = {"type": "stream", "data": base64.encodebytes(frame).decode("ascii")}
-    return inject_trace_context(message)
+        return CameraStreamPart(inject_trace_context({}), process_frame(part.jpeg))
 
 
 def relay_telemetry_message(raw: str | bytes) -> WebSocketMessage:
@@ -230,14 +278,21 @@ def main() -> None:
         relay_telemetry_message,
     )
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
-    handler = functools.partial(server_handler, camera, telemetry, arbiter)
+    handler = functools.partial(server_handler, telemetry, arbiter)
     try:
         with (
             send_commands_to_car(settings.drive_uri, commands),
+            CameraServer(("0.0.0.0", CAMERA_PORT), camera) as viewers,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
             websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
         ):
+            viewers_thread = threading.Thread(target=viewers.serve_forever)
+            viewers_thread.start()
             logger.info("Starting server")
-            server.serve_forever()
+            try:
+                server.serve_forever()
+            finally:
+                viewers.shutdown()
+                viewers_thread.join()
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
     logger.info("Shutting down server")

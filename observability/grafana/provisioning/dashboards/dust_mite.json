@@ -828,8 +828,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite_frames_displayed[10s])",
-          "legendFormat": "Browser"
+          "expr": "rate(dust_mite_viewer_frames_sent[10s])",
+          "legendFormat": "Viewers"
         }
       ]
     },
