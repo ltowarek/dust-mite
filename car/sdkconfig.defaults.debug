@@ -1,0 +1,4 @@
+# Debug overlay: the off-by-default system metrics. CI builds it so their
+# #ifdef branches compile; flash it to debug tasks or the heap (e.g. issue #43).
+CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED=y
+CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED=y

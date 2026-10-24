@@ -1,6 +1,6 @@
 """The stream must keep the camera's rate while the car's debug metrics are collected.
 
-Needs the test app built with sdkconfig.defaults.all into build_all/.
+Needs the test app built with sdkconfig.defaults.debug into build_debug/.
 """
 
 import pytest
@@ -8,9 +8,9 @@ from pytest_embedded import Dut
 
 
 @pytest.fixture(autouse=True)
-def _all_build(dut: Dut) -> None:
+def _debug_build(dut: Dut) -> None:
     if dut.app.sdkconfig.get('SYSTEM_METRICS_TASK_STATS_ENABLED') is not True:
-        pytest.skip('needs the all build (sdkconfig.defaults.all)')
+        pytest.skip('needs the debug build (sdkconfig.defaults.debug)')
 
 
 @pytest.mark.dut(reason='measures the frame rate of the real camera')

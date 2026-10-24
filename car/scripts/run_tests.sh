@@ -62,10 +62,10 @@ pytest pytest_web_server_profiling.py --build-dir build_profiling \
     --embedded-services idf,esp --port "$PORT" -v || FAILED=1
 popd > /dev/null
 
-build_overlay "$WEB_SERVER_TEST_APP" all
-echo "=== Testing components/web_server/test_apps with sdkconfig.defaults.all ==="
+build_overlay "$WEB_SERVER_TEST_APP" debug
+echo "=== Testing components/web_server/test_apps with sdkconfig.defaults.debug ==="
 pushd "$WEB_SERVER_TEST_APP" > /dev/null
-pytest pytest_web_server_all.py --build-dir build_all \
+pytest pytest_web_server_debug.py --build-dir build_debug \
     --embedded-services idf,esp --port "$PORT" -v || FAILED=1
 popd > /dev/null
 

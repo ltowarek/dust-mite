@@ -557,7 +557,7 @@ Run from the Observability devcontainer with `--dut`:
 ./scripts/run_tests.sh -- tests/e2e --dut
 ```
 
-`tests/e2e/test_camera_stream.py` watches the Camera stream through the streamer (`STREAMER_CAMERA_URI`) for a minute, then checks the viewer's frame rate, the car's send latency, the stream task's stack headroom and the send profile. It needs the car built with both `sdkconfig.defaults.all` and `sdkconfig.defaults.profiling`. Each test records its figures as JUnit properties in `results.xml`.
+`tests/e2e/test_camera_stream.py` watches the Camera stream through the streamer (`STREAMER_CAMERA_URI`) for a minute, then checks the viewer's frame rate, the car's send latency, the stream task's stack headroom and the send profile. It needs the car built with both `sdkconfig.defaults.debug` and `sdkconfig.defaults.profiling`. Each test records its figures as JUnit properties in `results.xml`.
 
 Dependencies use [pip-compile-multi](https://pypi.org/project/pip-compile-multi/), same as [controller/](controller/): edit `requirements/base.in`/`requirements/dev.in`, then run `./scripts/update_requirements.sh` (or `upgrade_requirements.sh`/`upgrade_package.sh <name>`).
 
@@ -1005,14 +1005,15 @@ Two Unity cases measure the Camera's frame rate on the car. The camera test app'
 reads frames alone; the web server test app's `stream_keeps_the_camera_rate` reads the Camera stream
 over loopback: the camera in the car's capture mode, the stream task and the car's metrics, without
 Wi-Fi. The script also runs the latter through
-[pytest_web_server_all.py](car/components/web_server/test_apps/pytest_web_server_all.py), on the
-test app built with its `sdkconfig.defaults.all` overlay, which adds the debug metrics, into
-`build_all/`, so a debug metric that costs frames fails there before the observability e2e test.
+[pytest_web_server_debug.py](car/components/web_server/test_apps/pytest_web_server_debug.py),
+on the test app built with its `sdkconfig.defaults.debug` overlay into
+`build_debug/`, so a debug metric that costs frames fails there before the observability e2e
+test.
 
 The script ends with a smoke test,
 [car/test_apps/e2e/pytest_smoke.py](car/test_apps/e2e/pytest_smoke.py). CI builds the debug
-overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.all`) but never runs them, so the script
-builds the production firmware once without an overlay (`build/`) and once per
+overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.debug`) but never runs them,
+so the script builds the production firmware once without an overlay (`build/`) and once per
 `car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
 Camera endpoint for a minute, and fails when the frames stop for more than a few seconds. Run it
 before merging a firmware change that touches an overlay or the observability setup. The profiling
@@ -1026,13 +1027,14 @@ relevant component's `Kconfig.projbuild`, with help text explaining what the
 flag does and why it defaults off.
 
 Every feature flag must be built and tested in CI, regardless of its default.
-[car/sdkconfig.defaults.all](car/sdkconfig.defaults.all) is an overlay that
-enables every off-by-default feature flag; CI builds `car/` with this overlay
-applied on top of `sdkconfig.defaults` so every flag-guarded code path
-compiles even though it's never built by the default config. When adding a
-new off-by-default feature flag, also set it in this overlay. It also doubles
-as a ready-made profile for flashing real hardware while debugging (see the
-file's header comment).
+Each off-by-default flag is set in a `car/sdkconfig.defaults.<overlay>` that
+CI builds on top of `sdkconfig.defaults`, one overlay per concern, so every
+flag-guarded code path compiles even though the default config never builds
+it: [car/sdkconfig.defaults.debug](car/sdkconfig.defaults.debug)
+for the debug metrics, [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)
+for the profiler. Set a new flag in the overlay for its concern, or add an
+overlay and its CI matrix entry. Each overlay doubles as a ready-made profile
+for flashing real hardware while debugging (see its header comment).
 
 ## Documentation
 
