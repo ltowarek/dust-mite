@@ -28,14 +28,14 @@ class _Readable(Protocol):
 
 
 @dataclasses.dataclass(frozen=True)
-class Part:
+class CameraStreamPart:
     """One JPEG of an MJPEG stream and its part headers, keyed by lowercase name."""
 
     headers: dict[str, str]
     jpeg: bytes
 
 
-def read_part(stream: _Readable) -> Part:
+def read_part(stream: _Readable) -> CameraStreamPart:
     """Read the next part of `stream`, raising `EOFError` if the stream ends first."""
     line = stream.readline()
     while not line.startswith(b"--"):
@@ -50,7 +50,7 @@ def read_part(stream: _Readable) -> Part:
     jpeg = stream.read(length)
     if len(jpeg) < length:
         raise EOFError
-    return Part(headers, jpeg)
+    return CameraStreamPart(headers, jpeg)
 
 
 class StreamRefusedError(Exception):
@@ -67,7 +67,7 @@ class MjpegClient:
         """Initialize the object."""
         self._uri = uri
         self._stop_event = threading.Event()
-        self._parts: queue.Queue[Part] = queue.Queue(1)
+        self._parts: queue.Queue[CameraStreamPart] = queue.Queue(1)
         self._worker = threading.Thread(target=self._worker_main)
 
     def __enter__(self) -> Self:
@@ -85,7 +85,7 @@ class MjpegClient:
         self._stop_event.set()
         self._worker.join()
 
-    def recv(self, timeout: float) -> Part:
+    def recv(self, timeout: float) -> CameraStreamPart:
         """Return the newest part; raise `TimeoutError` if none arrives in `timeout`."""
         try:
             return self._parts.get(timeout=timeout)
@@ -115,7 +115,7 @@ class MjpegClient:
             while not self._stop_event.is_set():
                 self._keep_newest(read_part(response.raw))
 
-    def _keep_newest(self, part: Part) -> None:
+    def _keep_newest(self, part: CameraStreamPart) -> None:
         with contextlib.suppress(queue.Empty):
             self._parts.get_nowait()
         self._parts.put_nowait(part)

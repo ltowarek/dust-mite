@@ -21,7 +21,7 @@ from .car import CarFeed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received
-from .mjpeg import MjpegClient, Part
+from .mjpeg import CameraStreamPart, MjpegClient
 from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
@@ -97,7 +97,7 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
-    camera: CarFeed[Part],
+    camera: CarFeed[CameraStreamPart],
     telemetry: CarFeed[str | bytes],
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
@@ -136,7 +136,8 @@ def _serve_driver(
 
 
 def _serve_camera(
-    websocket: websockets.sync.server.ServerConnection, camera: CarFeed[Part]
+    websocket: websockets.sync.server.ServerConnection,
+    camera: CarFeed[CameraStreamPart],
 ) -> None:
     with _Outbox(camera) as outbox:
         _send_until_closed(websocket, outbox)
@@ -159,7 +160,7 @@ def _send_until_closed(
             websocket.send(json.dumps(message))
 
 
-def relay_camera_part(part: Part) -> WebSocketMessage:
+def relay_camera_part(part: CameraStreamPart) -> WebSocketMessage:
     """Turn one Camera frame part from the car into a stream message for clients."""
     car_context = extract_trace_context(part.headers)
     with tracer.start_as_current_span(

@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from controller.mjpeg import Part
+from controller.mjpeg import CameraStreamPart
 from controller.streamer import (
     StreamerSettings,
     relay_camera_part,
@@ -14,9 +14,11 @@ from controller.streamer import (
 _CAR_TRACE_ID = "0af7651916cd43dd8448eb211c80319c"
 
 
-def _camera_part() -> Part:
+def _camera_part() -> CameraStreamPart:
     jpeg = cv2.imencode(".jpg", np.zeros((8, 8, 3), dtype=np.uint8))[1].tobytes()
-    return Part({"traceparent": f"00-{_CAR_TRACE_ID}-b7ad6b7169203331-01"}, jpeg)
+    return CameraStreamPart(
+        {"traceparent": f"00-{_CAR_TRACE_ID}-b7ad6b7169203331-01"}, jpeg
+    )
 
 
 def test_a_camera_part_becomes_a_stream_message() -> None:
