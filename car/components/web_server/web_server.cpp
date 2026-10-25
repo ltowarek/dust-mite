@@ -427,21 +427,36 @@ static void stream_set_request_attributes(opentelemetry::trace::Span& span, int 
   span.SetAttribute("network.protocol.version", "1.1");
 }
 
+// Returns the head's length, or 0 when it does not fit, as the esp32-camera stream example checks.
 static size_t stream_format_part_head(char* head, size_t frame_len,
                                       const trace_headers_t& trace_headers) {
-  int len = snprintf(head, STREAM_PART_HEAD_SIZE,
-                     "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n",
-                     static_cast<unsigned>(frame_len));
-  if (!trace_headers.traceparent.empty()) {
-    len += snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "traceparent: %s\r\n",
-                    trace_headers.traceparent.c_str());
+  size_t len = 0;
+  auto fits = [&](int written) {
+    if (written < 0 || static_cast<size_t>(written) >= STREAM_PART_HEAD_SIZE - len) {
+      return false;
+    }
+    len += written;
+    return true;
+  };
+  if (!fits(snprintf(head, STREAM_PART_HEAD_SIZE,
+                     "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %zu\r\n",
+                     frame_len))) {
+    return 0;
+  }
+  if (!trace_headers.traceparent.empty() &&
+      !fits(snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "traceparent: %s\r\n",
+                     trace_headers.traceparent.c_str()))) {
+    return 0;
   }
   if (!trace_headers.tracestate.empty() &&
-      trace_headers.tracestate.size() <= STREAM_TRACESTATE_MAX) {
-    len += snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "tracestate: %s\r\n",
-                    trace_headers.tracestate.c_str());
+      trace_headers.tracestate.size() <= STREAM_TRACESTATE_MAX &&
+      !fits(snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "tracestate: %s\r\n",
+                     trace_headers.tracestate.c_str()))) {
+    return 0;
   }
-  len += snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "\r\n");
+  if (!fits(snprintf(head + len, STREAM_PART_HEAD_SIZE - len, "\r\n"))) {
+    return 0;
+  }
   return len;
 }
 
@@ -458,7 +473,7 @@ static bool stream_send_part(httpd_req_t* req, const camera_fb_t& frame,
   char head[STREAM_PART_HEAD_SIZE];
   size_t head_len = stream_format_part_head(head, frame.len, tracing_headers());
   span->SetAttribute("camera.part.size", static_cast<int64_t>(head_len + frame.len));
-  esp_err_t err = httpd_resp_send_chunk(req, head, head_len);
+  esp_err_t err = head_len == 0 ? ESP_FAIL : httpd_resp_send_chunk(req, head, head_len);
   if (err == ESP_OK) {
     err = httpd_resp_send_chunk(req, reinterpret_cast<const char*>(frame.buf), frame.len);
   }
