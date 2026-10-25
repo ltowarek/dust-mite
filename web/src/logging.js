@@ -3,11 +3,15 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
 import {
+  ATTR_CODE_COLUMN_NUMBER,
+  ATTR_CODE_FILE_PATH,
+  ATTR_CODE_LINE_NUMBER,
   ATTR_EXCEPTION_MESSAGE,
   ATTR_EXCEPTION_STACKTRACE,
   ATTR_EXCEPTION_TYPE,
   ATTR_NETWORK_PROTOCOL_NAME,
   ATTR_SERVICE_NAME,
+  ATTR_URL_FULL,
 } from "@opentelemetry/semantic-conventions";
 
 function dropUndefined(attributes) {
@@ -46,9 +50,9 @@ export function buildUncaughtErrorLogRecord({ message, filename, lineno, colno, 
       [ATTR_EXCEPTION_TYPE]: error?.name,
       [ATTR_EXCEPTION_MESSAGE]: error?.message,
       [ATTR_EXCEPTION_STACKTRACE]: error?.stack,
-      "code.filepath": filename,
-      "code.lineno": lineno,
-      "code.colno": colno,
+      [ATTR_CODE_FILE_PATH]: filename,
+      [ATTR_CODE_LINE_NUMBER]: lineno,
+      [ATTR_CODE_COLUMN_NUMBER]: colno,
     }),
   };
 }
@@ -59,7 +63,7 @@ export function buildWsAbnormalCloseLogRecord({ url, code, reason, wasClean }) {
     severityText: "ERROR",
     body: `WebSocket closed abnormally: code=${code}${reason ? `, reason=${reason}` : ""}`,
     attributes: dropUndefined({
-      "ws.url": url,
+      [ATTR_URL_FULL]: url,
       [ATTR_NETWORK_PROTOCOL_NAME]: "websocket",
       "ws.close.code": code,
       "ws.close.reason": reason || undefined,

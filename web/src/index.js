@@ -4,7 +4,11 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import {
+  ATTR_NETWORK_PROTOCOL_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_URL_FULL,
+} from "@opentelemetry/semantic-conventions";
 import { DriveController, driveStatusText } from "./drive.js";
 import {
   buildUncaughtErrorLogRecord,
@@ -50,8 +54,8 @@ function openStreamerSocket(url, elements) {
     connectionSpan = tracer.startSpan("ws.connection", {
       kind: SpanKind.CLIENT,
       attributes: {
-        "ws.url": socket.url,
-        "network.protocol.name": "websocket",
+        [ATTR_URL_FULL]: socket.url,
+        [ATTR_NETWORK_PROTOCOL_NAME]: "websocket",
       },
     });
     connectionContext = trace.setSpan(context.active(), connectionSpan);
