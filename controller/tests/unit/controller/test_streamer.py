@@ -1,24 +1,34 @@
-import base64
 import json
 
 import cv2
 import numpy as np
 import pytest
 
+from controller.mjpeg import CameraStreamPart
 from controller.streamer import (
     StreamerSettings,
-    relay_camera_message,
+    relay_camera_part,
     relay_telemetry_message,
 )
 
+_CAR_TRACE_ID = "0af7651916cd43dd8448eb211c80319c"
 
-def _camera_message() -> str:
+
+def _camera_part() -> CameraStreamPart:
     jpeg = cv2.imencode(".jpg", np.zeros((8, 8, 3), dtype=np.uint8))[1].tobytes()
-    return json.dumps({"data": base64.b64encode(jpeg).decode("ascii")})
+    return CameraStreamPart(
+        {"traceparent": f"00-{_CAR_TRACE_ID}-b7ad6b7169203331-01"}, jpeg
+    )
 
 
-def test_a_camera_message_becomes_a_stream_message() -> None:
-    assert relay_camera_message(_camera_message())["type"] == "stream"
+def test_a_camera_part_becomes_a_stream_message() -> None:
+    assert relay_camera_part(_camera_part())["type"] == "stream"
+
+
+def test_a_stream_message_continues_the_car_trace() -> None:
+    traceparent = relay_camera_part(_camera_part())["traceparent"]
+
+    assert traceparent.split("-")[1] == _CAR_TRACE_ID
 
 
 def test_a_telemetry_message_from_the_car_becomes_a_client_telemetry_message() -> None:
@@ -28,7 +38,7 @@ def test_a_telemetry_message_from_the_car_becomes_a_client_telemetry_message() -
 
 
 _STREAMER_ENV = {
-    "STREAM_CLIENT_URI": "ws://car.invalid/camera",
+    "STREAM_CLIENT_URI": "http://car.invalid/stream",
     "TELEMETRY_CLIENT_URI": "ws://car.invalid/telemetry",
     "DRIVE_CLIENT_URI": "ws://car.invalid/drive",
     "PROFILING_ENABLED": "1",
@@ -38,7 +48,7 @@ _STREAMER_ENV = {
 @pytest.mark.parametrize(
     ("field", "expected"),
     [
-        pytest.param("camera_uri", "ws://car.invalid/camera", id="camera"),
+        pytest.param("camera_uri", "http://car.invalid/stream", id="camera"),
         pytest.param("telemetry_uri", "ws://car.invalid/telemetry", id="telemetry"),
         pytest.param("drive_uri", "ws://car.invalid/drive", id="drive"),
     ],

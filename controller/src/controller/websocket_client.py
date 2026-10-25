@@ -20,7 +20,7 @@ logger.setLevel(logging.DEBUG)
 _SEND_WAIT_S = 0.2
 
 
-class ClientConnection:
+class WebSocketClient:
     """Wrapper around Websocket client connection.
 
     Mostly needed to handle/receive all messages from the client.

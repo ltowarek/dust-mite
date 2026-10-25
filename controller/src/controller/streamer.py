@@ -8,23 +8,25 @@ import json
 import logging
 import os
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Protocol, Self
 
 import websockets.exceptions
 import websockets.sync.server
 from opentelemetry import trace
 from websockets.frames import CloseCode
 
-from .car import CarFeed, camera_frame_jpeg, send_commands_to_car
+from .car import CarFeed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received
+from .mjpeg import CameraStreamPart, MjpegClient
 from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_frame
+from .websocket_client import WebSocketClient
 from .websocket_message import WebSocketMessage
 
 logging.basicConfig()
@@ -38,6 +40,12 @@ tracer = trace.get_tracer(__name__)
 _OUTBOX_POLL_S = 0.2
 
 
+class _Feed(Protocol):
+    def subscription(
+        self, callback: Callable[[WebSocketMessage], None]
+    ) -> contextlib.AbstractContextManager[None]: ...
+
+
 class _Outbox:
     """One client's view of some feeds, keeping the newest message of each type.
 
@@ -47,7 +55,7 @@ class _Outbox:
     shares.
     """
 
-    def __init__(self, *feeds: CarFeed | Subject[WebSocketMessage]) -> None:
+    def __init__(self, *feeds: _Feed) -> None:
         self._feeds = feeds
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
@@ -89,8 +97,8 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
-    camera: CarFeed,
-    telemetry: CarFeed,
+    camera: CarFeed[CameraStreamPart],
+    telemetry: CarFeed[str | bytes],
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
 ) -> None:
@@ -128,7 +136,8 @@ def _serve_driver(
 
 
 def _serve_camera(
-    websocket: websockets.sync.server.ServerConnection, camera: CarFeed
+    websocket: websockets.sync.server.ServerConnection,
+    camera: CarFeed[CameraStreamPart],
 ) -> None:
     with _Outbox(camera) as outbox:
         _send_until_closed(websocket, outbox)
@@ -136,7 +145,7 @@ def _serve_camera(
 
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
-    telemetry: CarFeed,
+    telemetry: CarFeed[str | bytes],
     collision_state: Subject[WebSocketMessage],
 ) -> None:
     with _Outbox(telemetry, collision_state) as outbox:
@@ -151,15 +160,14 @@ def _send_until_closed(
             websocket.send(json.dumps(message))
 
 
-def relay_camera_message(raw: str | bytes) -> WebSocketMessage:
-    """Turn one camera message from the car into a stream message for clients."""
-    message: WebSocketMessage = json.loads(raw)
-    car_context = extract_trace_context(message)
+def relay_camera_part(part: CameraStreamPart) -> WebSocketMessage:
+    """Turn one Camera frame part from the car into a stream message for clients."""
+    car_context = extract_trace_context(part.headers)
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame", context=car_context
     ) as span:
-        span.set_attribute("network.protocol.name", "websocket")
-        frame = process_frame(camera_frame_jpeg(message))
+        span.set_attribute("network.protocol.name", "http")
+        frame = process_frame(part.jpeg)
         return prepare_camera_frame_message(frame)
 
 
@@ -212,8 +220,13 @@ def main() -> None:
     settings = StreamerSettings.from_env(os.environ)
     configure_observability("dust-mite-streamer", settings.observability)
     commands: Subject[WebSocketMessage] = Subject()
-    camera = CarFeed(settings.camera_uri, relay_camera_message)
-    telemetry = CarFeed(settings.telemetry_uri, relay_telemetry_message)
+    camera = CarFeed(
+        functools.partial(MjpegClient, settings.camera_uri), relay_camera_part
+    )
+    telemetry = CarFeed(
+        functools.partial(WebSocketClient, settings.telemetry_uri, "r"),
+        relay_telemetry_message,
+    )
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
     handler = functools.partial(server_handler, camera, telemetry, arbiter)
     try:

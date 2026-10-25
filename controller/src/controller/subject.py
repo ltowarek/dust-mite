@@ -9,8 +9,8 @@ class Subject[T]:
     """Delivers every published message to each current subscriber.
 
     `on_active` runs when the first subscriber arrives and `on_idle` after the
-    last one leaves, so an upstream feed only needs to run while someone is
-    listening. Both run on the subscribing/unsubscribing thread, serialized
+    last one leaves: the hooks a RefCount connects and disconnects its upstream
+    feed on. Both run on the subscribing/unsubscribing thread, serialized
     against each other.
     """
 

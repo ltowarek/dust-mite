@@ -24,6 +24,10 @@ The WebSocket endpoint (`/telemetry`) on which the car sends Telemetry messages.
 **Push endpoint**:
 The Camera or Telemetry endpoint: the car sends and the client only reads.
 
+**Car feed**:
+The streamer's one shared connection to a Push endpoint, open only while a client is subscribed; every client reads the same Car feed.
+_Avoid_: Subscription, channel
+
 ### WebSocket messages
 
 **WebSocket message**:
@@ -61,3 +65,11 @@ The WebSocket message that tells a client whether the collision monitor is block
 **Camera frame**:
 One picture captured by the camera, whether or not the streamer has drawn on it.
 _Avoid_: Frame (on its own), image, picture, snapshot, video frame
+
+**Camera stream**:
+The never-ending response that carries Camera frames, one Camera stream part each. The car serves it on the Camera endpoint, and the streamer serves a processed copy.
+_Avoid_: Video stream, feed
+
+**Camera stream part**:
+One Camera frame in the Camera stream, together with its headers, including the Camera frame's trace context.
+_Avoid_: Chunk, frame (on its own)

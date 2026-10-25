@@ -15,8 +15,8 @@
 #include "sdkconfig.h"
 #ifdef CONFIG_WEB_SERVER_TEST_QEMU_MODE
 #include "qemu_peripherals.hpp"
-#elif defined(CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED)
-#include "profiling_report.hpp"
+#else
+#include "metrics_collection.hpp"
 #endif
 #ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
 extern "C" {
@@ -51,14 +51,11 @@ extern "C" void app_main(void) {
   i2c_master_bus_handle_t i2c_bus = i2c_bus_init();
 
   esp_opentelemetry_tracing_setup({{"service.name", CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME}});
-#ifdef CONFIG_ESP_OPENTELEMETRY_PROFILING_ENABLED
-  // Before web_server_setup: the profiler swaps the context storage spans are activated in.
-  profiling_report_setup();
-#endif
   wifi_setup();
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
+  metrics_collection_setup();
   wifi_wait_for_ip();
   web_server_wait_for_serving();
 #else

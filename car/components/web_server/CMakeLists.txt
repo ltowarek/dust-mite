@@ -7,7 +7,6 @@ idf_component_register(SRCS "web_server_metrics.cpp" "web_server.cpp" "command_p
                     esp_http_server
                     lwip
                     cjson
-                    mbedtls
                     camera
                     motor
                     telemetry

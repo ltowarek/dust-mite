@@ -31,6 +31,7 @@ def query(
     fields: dict[str, Any],
     *,
     time_range: str = "now-5m",
+    until: str = "now",
 ) -> dict[str, Any]:
     """POST one query to `/api/ds/query` exactly as a real panel would.
 
@@ -48,7 +49,7 @@ def query(
                 }
             ],
             "from": time_range,
-            "to": "now",
+            "to": until,
         },
         timeout=10,
     )

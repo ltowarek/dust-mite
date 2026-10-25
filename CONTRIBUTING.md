@@ -175,7 +175,7 @@ flowchart LR
         GRAF["Grafana\nlocalhost:3000"]
     end
 
-    FW -- "WebSocket + traceparent" --> STR
+    FW -- "MJPEG over HTTP, WebSocket + traceparent" --> STR
     STR -- "WebSocket + traceparent" --> WEB
     FW -- "OTLP/HTTP traces" --> OC
     FW -- "OTLP/HTTP metrics" --> MIMIR
@@ -384,10 +384,10 @@ To profile a build:
 
 1. Bring up the stack (`./scripts/start_headless.sh`) — it includes `pyroscope` and
    `profiling-symbolizer`.
-2. Build the firmware with the profiling overlay (enables the sampler, the
+2. Build the firmware with the debug overlay (enables the sampler, the
    span→profile task slot, and the symbolizer endpoint; see
-   [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)), then flash it:
-   `./scripts/run_build.sh --profiling . && idf.py flash`
+   [car/sdkconfig.defaults.debug](car/sdkconfig.defaults.debug)), then flash it:
+   `./scripts/run_build.sh --debug . && idf.py flash`
    Symbols need no publishing step: the symbolizer mounts `car/` and finds the
    matching ELF by hash (the profile `build_id` equals the ELF's sha256) in `build/` or any
    `build_<overlay>/`, for the firmware and the component test apps.
@@ -401,12 +401,8 @@ fictional. The sampler/span-link/exporter mechanics are covered by
 [esp-opentelemetry-cpp](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations)'s
 own CI (QEMU), including a regression test for the profile export starving the tasks around it of
 internal RAM, the only memory FreeRTOS objects, lwIP sockets and DMA buffers can use. dust-mite's
-CI builds the car with the profiling overlay (`main-profiling`), and the smoke test (see
-[Car test types](#car-test-types)) runs it on the car. Also on the car,
-[pytest_web_server_profiling.py](car/components/web_server/test_apps/pytest_web_server_profiling.py)
-measures how much internal RAM each profile export takes while clients stream; it needs the web
-server test app built with its `sdkconfig.defaults.profiling` overlay, which `car/scripts/run_tests.sh`
-builds into `build_profiling/`, and is skipped otherwise.
+CI builds the car with the debug overlay (`main-debug`), and the smoke test (see
+[Car test types](#car-test-types)) runs it on the car.
 Flame graphs themselves are validated on real hardware only.
 
 #### Span profiles (trace → flame graph)
@@ -547,7 +543,7 @@ Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
 - **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI.
-Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
+Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the debug firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 
 ```bash
 source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh
@@ -558,6 +554,8 @@ Run from the Observability devcontainer with `--dut`:
 ```bash
 ./scripts/run_tests.sh -- tests/e2e --dut
 ```
+
+`tests/e2e/test_camera_stream.py` watches the Camera stream through the streamer (`STREAMER_CAMERA_URI`) for a minute, then checks the viewer's frame rate, the car's send latency, and the stream task's stack headroom. It needs the car built with `sdkconfig.defaults.debug`. Each test records its figures as JUnit properties in `results.xml`.
 
 Dependencies use [pip-compile-multi](https://pypi.org/project/pip-compile-multi/), same as [controller/](controller/): edit `requirements/base.in`/`requirements/dev.in`, then run `./scripts/update_requirements.sh` (or `upgrade_requirements.sh`/`upgrade_package.sh <name>`).
 
@@ -1001,14 +999,22 @@ Build, flash, and run all component test apps in sequence:
 ./scripts/run_tests.sh
 ```
 
+Two Unity cases measure the Camera's frame rate on the car. The camera test app's `performance`
+reads frames alone; the web server test app's `stream_keeps_the_camera_rate` reads the Camera stream
+over loopback: the camera in the car's capture mode, the stream task and the car's metrics, without
+Wi-Fi. The script also runs the latter through
+[pytest_web_server_debug.py](car/components/web_server/test_apps/pytest_web_server_debug.py),
+on the test app built with its `sdkconfig.defaults.debug` overlay into
+`build_debug/`, so a debug metric that costs frames fails there before the observability e2e
+test.
+
 The script ends with a smoke test,
 [car/test_apps/e2e/pytest_smoke.py](car/test_apps/e2e/pytest_smoke.py). CI builds the debug
-overlays (`sdkconfig.defaults.profiling`, `sdkconfig.defaults.all`) but never runs them, so the script
-builds the production firmware once without an overlay (`build/`) and once per
+overlay (`sdkconfig.defaults.debug`) but never runs it, so the script builds the production firmware once without an overlay (`build/`) and once per
 `car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
 Camera endpoint for a minute, and fails when the frames stop for more than a few seconds. Run it
-before merging a firmware change that touches an overlay or the observability setup. The profiling
-build sorts last, so it is still flashed when the script ends; then run `test_car_has_profile_samples` from [observability/tests/e2e/](observability/tests/e2e/) (see
+before merging a firmware change that touches an overlay or the observability setup. The debug
+build is still flashed when the script ends; then run `test_car_has_profile_samples` from [observability/tests/e2e/](observability/tests/e2e/) (see
 [Observability tests](#observability-tests)) to check that its profiles reached Pyroscope.
 
 ### Feature flags
@@ -1018,13 +1024,14 @@ relevant component's `Kconfig.projbuild`, with help text explaining what the
 flag does and why it defaults off.
 
 Every feature flag must be built and tested in CI, regardless of its default.
-[car/sdkconfig.defaults.all](car/sdkconfig.defaults.all) is an overlay that
-enables every off-by-default feature flag; CI builds `car/` with this overlay
-applied on top of `sdkconfig.defaults` so every flag-guarded code path
-compiles even though it's never built by the default config. When adding a
-new off-by-default feature flag, also set it in this overlay. It also doubles
-as a ready-made profile for flashing real hardware while debugging (see the
-file's header comment).
+Each off-by-default flag is set in a `car/sdkconfig.defaults.<overlay>` that
+CI builds on top of `sdkconfig.defaults`, so every
+flag-guarded code path compiles even though the default config never builds
+it. [car/sdkconfig.defaults.debug](car/sdkconfig.defaults.debug) holds the
+debugging tools, the debug metrics and the profiler; set a new debugging flag
+there, or add an overlay and its CI matrix entry for another concern. The debug
+overlay doubles as a ready-made profile for flashing real hardware while
+debugging (see its header comment).
 
 ## Documentation
 

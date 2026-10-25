@@ -13,7 +13,7 @@ from controller.streamer import StreamerSettings
 from .test_doubles import (
     CLEAR_DISTANCE_CM,
     CarEndpointSpy,
-    camera_frame,
+    car_camera_stub,
     car_control_spy,
     car_feed_stub,
     telemetry,
@@ -58,7 +58,7 @@ def local_server_spy() -> Generator[LocalServerSpy, None, None]:
 
 @pytest.fixture
 def camera_feed() -> Iterator[CarEndpointSpy]:
-    with car_feed_stub(camera_frame) as feed:
+    with car_camera_stub() as feed:
         yield feed
 
 

@@ -55,10 +55,10 @@ for project in "${COMPONENT_TEST_PROJECTS[@]}"; do
 done
 
 WEB_SERVER_TEST_APP="$CAR_ROOT/components/web_server/test_apps"
-build_overlay "$WEB_SERVER_TEST_APP" profiling
-echo "=== Testing components/web_server/test_apps with sdkconfig.defaults.profiling ==="
+build_overlay "$WEB_SERVER_TEST_APP" debug
+echo "=== Testing components/web_server/test_apps with sdkconfig.defaults.debug ==="
 pushd "$WEB_SERVER_TEST_APP" > /dev/null
-pytest pytest_web_server_profiling.py --build-dir build_profiling \
+pytest pytest_web_server_debug.py --build-dir build_debug \
     --embedded-services idf,esp --port "$PORT" -v || FAILED=1
 popd > /dev/null
 
