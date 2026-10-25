@@ -28,16 +28,6 @@ class Receiver[T](Protocol):
         ...
 
 
-class Feed[M](Protocol):
-    """Messages from the car that any number of callbacks can subscribe to."""
-
-    def subscription(
-        self, callback: Callable[[M], None]
-    ) -> contextlib.AbstractContextManager[None]:
-        """Call `callback` with each message while the context is open."""
-        ...
-
-
 # A provider: each call returns a new connection, not yet open.
 type ConnectionProvider[T] = Callable[
     [], contextlib.AbstractContextManager[Receiver[T]]

@@ -28,13 +28,13 @@ from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL
 from opentelemetry.semconv.attributes.url_attributes import URL_PATH
 from websockets.frames import CloseCode
 
-from .car import CarFeed, Feed, send_commands_to_car
+from .car import CarFeed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
 from .observability import ObservabilitySettings, configure_observability
-from .subject import Subject
+from .subject import Observable, Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
 from .websocket_client import WebSocketClient
@@ -52,26 +52,26 @@ _OUTBOX_POLL_S = 0.2
 
 
 class _Outbox[M]:
-    """One client's view of some feeds, keeping the newest message of each.
+    """One client's view of some sources, keeping the newest message of each.
 
-    Use as a context manager: it subscribes to `feeds` on entry and
+    Use as a context manager: it subscribes to `sources` on entry and
     unsubscribes on exit. A client that falls behind skips stale camera
     frames and telemetry instead of stalling the feed that every other client
     shares.
     """
 
-    def __init__(self, *feeds: Feed[M]) -> None:
-        self._feeds = feeds
+    def __init__(self, *sources: Observable[M]) -> None:
+        self._sources = sources
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
         self._pending: dict[int, M] = {}
 
     def __enter__(self) -> Self:
-        # Unsubscribes from the feeds already entered if a later one fails.
+        # Unsubscribes from the sources already entered if a later one fails.
         with contextlib.ExitStack() as subscriptions:
-            for slot, feed in enumerate(self._feeds):
+            for slot, source in enumerate(self._sources):
                 subscriptions.enter_context(
-                    feed.subscription(functools.partial(self._put, slot))
+                    source.subscription(functools.partial(self._put, slot))
                 )
             self._subscriptions = subscriptions.pop_all()
         return self

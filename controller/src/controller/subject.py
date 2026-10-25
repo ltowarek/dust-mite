@@ -1,12 +1,23 @@
-"""Publish/subscribe fan-out of one feed to any number of subscribers."""
+"""Observables, and the Subject that fans one out to any number of subscribers."""
 
 import contextlib
 import threading
 from collections.abc import Callable, Iterator
+from typing import Protocol
+
+
+class Observable[T](Protocol):
+    """Messages that any number of callbacks can subscribe to."""
+
+    def subscription(
+        self, callback: Callable[[T], None]
+    ) -> contextlib.AbstractContextManager[None]:
+        """Call `callback` with each message while the context is open."""
+        ...
 
 
 class Subject[T]:
-    """Delivers every published message to each current subscriber.
+    """An Observable that can also be published to, delivering to every subscriber.
 
     `on_active` runs when the first subscriber arrives and `on_idle` after the
     last one leaves: the hooks a RefCount connects and disconnects its upstream
