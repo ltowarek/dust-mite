@@ -32,7 +32,7 @@ from .car import CarFeed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_frame_sent
-from .mjpeg import CONTENT_TYPE, MjpegClient, CameraStreamPart, format_part
+from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
 from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
@@ -168,13 +168,17 @@ DEFAULT_CAMERA_PORT = 8766
 class CameraServer(ThreadingHTTPServer):
     """Serves the processed Camera stream to viewers as MJPEG on `CAMERA_PATH`."""
 
-    def __init__(self, address: tuple[str, int], camera: CarFeed[CameraStreamPart, CameraStreamPart]) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        camera: CarFeed[CameraStreamPart, CameraStreamPart],
+    ) -> None:
         """Initialize the object; it reads `camera` only while a viewer watches."""
-        super().__init__(address, _CameraViewer)
+        super().__init__(address, _ViewerHandler)
         self.camera = camera
 
 
-class _CameraViewer(BaseHTTPRequestHandler):
+class _ViewerHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path != CAMERA_PATH:
             self.send_error(http.HTTPStatus.NOT_FOUND)
@@ -188,7 +192,9 @@ class _CameraViewer(BaseHTTPRequestHandler):
 
 
 @tracer.start_as_current_span(f"GET {CAMERA_PATH}", kind=trace.SpanKind.SERVER)
-def _serve_viewer(viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPart, CameraStreamPart]) -> None:
+def _serve_viewer(
+    viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPart, CameraStreamPart]
+) -> None:
     span = trace.get_current_span()
     span.set_attribute(HTTP_REQUEST_METHOD, HttpRequestMethodValues.GET.value)
     span.set_attribute(URL_PATH, CAMERA_PATH)
@@ -203,8 +209,8 @@ def _serve_viewer(viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPa
         contextlib.suppress(BrokenPipeError, ConnectionResetError),
     ):
         while not _viewer_left(viewer.connection):
-            for frame in outbox.take(timeout=_OUTBOX_POLL_S):
-                _send_camera_frame(viewer, frame)
+            for part in outbox.take(timeout=_OUTBOX_POLL_S):
+                _send_part(viewer, part)
 
 
 def _viewer_left(connection: socket.socket) -> bool:
@@ -213,20 +219,22 @@ def _viewer_left(connection: socket.socket) -> bool:
     return bool(readable) and not connection.recv(1, socket.MSG_PEEK)
 
 
-def _send_camera_frame(viewer: BaseHTTPRequestHandler, frame: CameraStreamPart) -> None:
+def _send_part(viewer: BaseHTTPRequestHandler, part: CameraStreamPart) -> None:
     with tracer.start_as_current_span(
         "streamer.send_camera_frame",
-        context=extract_trace_context(frame.headers),
+        context=extract_trace_context(part.headers),
         kind=trace.SpanKind.PRODUCER,
     ) as span:
         span.set_attribute(CLIENT_ADDRESS, viewer.client_address[0])
-        viewer.wfile.write(format_part(CameraStreamPart(inject_trace_context({}), frame.jpeg)))
+        viewer.wfile.write(
+            format_part(CameraStreamPart(inject_trace_context({}), part.jpeg))
+        )
         viewer.wfile.flush()
     record_viewer_frame_sent()
 
 
 def relay_camera_part(part: CameraStreamPart) -> CameraStreamPart:
-    """Turn one Camera frame part from the car into a processed part for viewers."""
+    """Turn one Camera stream part from the car into a processed one for viewers."""
     car_context = extract_trace_context(part.headers)
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame", context=car_context

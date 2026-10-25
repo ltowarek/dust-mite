@@ -7,7 +7,7 @@ import websockets.sync.server
 
 from controller.car import CarFeed, send_commands_to_car
 from controller.command import Command
-from controller.mjpeg import MjpegClient, CameraStreamPart
+from controller.mjpeg import CameraStreamPart, MjpegClient
 from controller.subject import Subject
 from controller.websocket_client import WebSocketClient
 from controller.websocket_message import WebSocketMessage

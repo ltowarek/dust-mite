@@ -23,7 +23,7 @@ from controller.car import CarFeed, send_commands_to_car
 from controller.collision_monitor import CollisionMonitor
 from controller.command import Command
 from controller.command_arbiter import DRIVER_ALREADY_CONNECTED, CommandArbiter
-from controller.mjpeg import MjpegClient, CameraStreamPart, read_part
+from controller.mjpeg import CameraStreamPart, MjpegClient, read_part
 from controller.senders import WebSocketCommandSender
 from controller.streamer import (
     CAMERA_PATH,
