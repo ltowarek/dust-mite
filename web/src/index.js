@@ -5,6 +5,7 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { ATTR_MESSAGING_MESSAGE_BODY_SIZE } from "@opentelemetry/semantic-conventions/incubating";
 import { DriveController, driveStatusText } from "./drive.js";
 import {
   buildUncaughtErrorLogRecord,
@@ -76,7 +77,7 @@ function openStreamerSocket(url, elements) {
         attributes: {
           "network.protocol.name": "websocket",
           "ws.message.type": message.type,
-          "messaging.message.body.size": event.data.length,
+          [ATTR_MESSAGING_MESSAGE_BODY_SIZE]: event.data.length,
         },
       },
       extractedContext,
