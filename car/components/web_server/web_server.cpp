@@ -60,7 +60,7 @@ static bool ws_connection_is_live(const ws_connection_t& connection) {
 
 // Each endpoint has its own server, which does all of its work on its own task, so a send that is
 // blocked on one endpoint's client cannot delay another endpoint.
-struct server_t {
+struct http_endpoint_t {
   const char* path;
   uint16_t port;
   uint16_t ctrl_port;
@@ -72,7 +72,7 @@ struct server_t {
 };
 
 struct ws_endpoint_t {
-  server_t server;
+  http_endpoint_t http;
   // Read and written only on this endpoint's httpd task.
   ws_connection_t owner = {};
   // The rest is used by the push endpoints only and stays NULL on the Drive endpoint.
@@ -153,7 +153,7 @@ static void ws_set_connection_attributes(opentelemetry::trace::Span& span,
   span.SetAttribute("client.address", connection.client.host);
   span.SetAttribute("client.port", static_cast<int64_t>(connection.client.port));
   span.SetAttribute("url.scheme", "ws");
-  span.SetAttribute("url.path", endpoint.server.path);
+  span.SetAttribute("url.path", endpoint.http.path);
   span.SetAttribute("network.transport", "tcp");
   span.SetAttribute("network.protocol.name", "websocket");
 }
@@ -347,35 +347,20 @@ static constexpr httpd_uri_t ws_uri(esp_err_t (*handler)(httpd_req_t* req),
           .ws_post_handshake_cb = ws_hand_over};
 }
 
-static ws_endpoint_t g_drive{.server = {.path = "/",
-                                        .port = WEB_SERVER_DRIVE_PORT,
-                                        .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT,
-                                        // 8 KB is insufficient for drive_handler with
-                                        // tracing_extract + StartSpan.
-                                        .stack_size = 16384,
-                                        .uri = ws_uri(drive_handler, &g_drive),
-                                        .close_fn = ws_close_session}};
-static esp_err_t stream_handler(httpd_req_t* req);
-static server_t g_camera{.path = "/stream",
-                         .port = WEB_SERVER_CAMERA_PORT,
-                         .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 1,
-                         .stack_size = 0,
-                         .uri = {.uri = nullptr,
-                                 .method = HTTP_GET,
-                                 .handler = stream_handler,
-                                 .user_ctx = nullptr,
-                                 .is_websocket = false,
-                                 .handle_ws_control_frames = false,
-                                 .supported_subprotocol = nullptr,
-                                 .ws_pre_handshake_cb = nullptr,
-                                 .ws_post_handshake_cb = nullptr}};
-static ws_endpoint_t g_telemetry{.server = {.path = "/telemetry",
-                                            .port = WEB_SERVER_TELEMETRY_PORT,
-                                            .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 2,
-                                            .stack_size = 0,
-                                            .uri = ws_uri(push_handler, &g_telemetry),
-                                            .close_fn = ws_close_session}};
-static server_t* const g_servers[] = {&g_drive.server, &g_camera, &g_telemetry.server};
+static ws_endpoint_t g_drive{.http = {.path = "/",
+                                      .port = WEB_SERVER_DRIVE_PORT,
+                                      .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT,
+                                      // 8 KB is insufficient for drive_handler with
+                                      // tracing_extract + StartSpan.
+                                      .stack_size = 16384,
+                                      .uri = ws_uri(drive_handler, &g_drive),
+                                      .close_fn = ws_close_session}};
+static ws_endpoint_t g_telemetry{.http = {.path = "/telemetry",
+                                          .port = WEB_SERVER_TELEMETRY_PORT,
+                                          .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 2,
+                                          .stack_size = 0,
+                                          .uri = ws_uri(push_handler, &g_telemetry),
+                                          .close_fn = ws_close_session}};
 
 // The Camera endpoint is plain HTTP: one multipart/x-mixed-replace response per client and one
 // part per Camera frame (docs/adr/0002-mjpeg-over-http-for-camera-frames.md).
@@ -413,6 +398,20 @@ static esp_err_t stream_handler(httpd_req_t* req) {
   xQueueOverwrite(g_stream_requests, &stream_req);
   return ESP_OK;
 }
+
+static http_endpoint_t g_camera{.path = "/stream",
+                                .port = WEB_SERVER_CAMERA_PORT,
+                                .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 1,
+                                .stack_size = 0,
+                                .uri = {.uri = nullptr,
+                                        .method = HTTP_GET,
+                                        .handler = stream_handler,
+                                        .user_ctx = nullptr,
+                                        .is_websocket = false,
+                                        .handle_ws_control_frames = false,
+                                        .supported_subprotocol = nullptr,
+                                        .ws_pre_handshake_cb = nullptr,
+                                        .ws_post_handshake_cb = nullptr}};
 
 static void stream_set_request_attributes(opentelemetry::trace::Span& span, int fd) {
   socket_address_t server = {};
@@ -615,48 +614,50 @@ void ws_telemetry_task(void* p) {
   vTaskDelete(NULL);
 }
 
+static http_endpoint_t* const g_endpoints[] = {&g_drive.http, &g_camera, &g_telemetry.http};
+
 // No-op: global_user_ctx points at a static endpoint, which httpd_stop() must not free.
 static void keep_user_ctx(void* ctx) { (void)ctx; }
 
-static esp_err_t start_server(server_t& server) {
+static esp_err_t start_endpoint(http_endpoint_t& endpoint) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = server.port;
-  config.ctrl_port = server.ctrl_port;
+  config.server_port = endpoint.port;
+  config.ctrl_port = endpoint.ctrl_port;
   // The owner and one connection being refused. With LRU purge on, that connection would evict the
   // owner before the refusal runs.
   config.max_open_sockets = 2;
   config.lru_purge_enable = false;
-  if (server.stack_size != 0) {
-    config.stack_size = server.stack_size;
+  if (endpoint.stack_size != 0) {
+    config.stack_size = endpoint.stack_size;
   }
-  config.global_user_ctx = server.uri.user_ctx;
+  config.global_user_ctx = endpoint.uri.user_ctx;
   config.global_user_ctx_free_fn = keep_user_ctx;
-  config.close_fn = server.close_fn;
+  config.close_fn = endpoint.close_fn;
 
-  ESP_LOGI(TAG, "Starting the %s server on port %d", server.path, server.port);
-  esp_err_t err = httpd_start(&server.handle, &config);
+  ESP_LOGI(TAG, "Starting the %s server on port %d", endpoint.path, endpoint.port);
+  esp_err_t err = httpd_start(&endpoint.handle, &config);
   if (err != ESP_OK) {
-    server.handle = nullptr;
+    endpoint.handle = nullptr;
     return err;
   }
-  httpd_uri_t uri = server.uri;
-  uri.uri = server.path;
-  return httpd_register_uri_handler(server.handle, &uri);
+  httpd_uri_t uri = endpoint.uri;
+  uri.uri = endpoint.path;
+  return httpd_register_uri_handler(endpoint.handle, &uri);
 }
 
 static void stop_web_servers() {
   xEventGroupClearBits(s_web_server_events, WEB_SERVER_SERVING_BIT);
   stream_release();
-  for (server_t* server : g_servers) {
-    if (server->handle == nullptr) {
+  for (http_endpoint_t* endpoint : g_endpoints) {
+    if (endpoint->handle == nullptr) {
       continue;
     }
-    ESP_LOGI(TAG, "Stopping the %s server", server->path);
-    if (httpd_stop(server->handle) != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to stop the %s server", server->path);
+    ESP_LOGI(TAG, "Stopping the %s server", endpoint->path);
+    if (httpd_stop(endpoint->handle) != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to stop the %s server", endpoint->path);
       continue;
     }
-    server->handle = nullptr;
+    endpoint->handle = nullptr;
   }
   g_stream_stopping = false;
 }
@@ -665,13 +666,13 @@ static void stop_web_servers() {
 // server that fails to start stops the others.
 static void start_web_servers() {
   bool started = false;
-  for (server_t* server : g_servers) {
-    if (server->handle != nullptr) {
+  for (http_endpoint_t* endpoint : g_endpoints) {
+    if (endpoint->handle != nullptr) {
       continue;
     }
-    esp_err_t err = start_server(*server);
+    esp_err_t err = start_endpoint(*endpoint);
     if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Error starting the %s server: %s", server->path, esp_err_to_name(err));
+      ESP_LOGE(TAG, "Error starting the %s server: %s", endpoint->path, esp_err_to_name(err));
       stop_web_servers();
       return;
     }
