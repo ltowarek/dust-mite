@@ -36,20 +36,15 @@ class Part:
 
 def read_part(stream: _Readable) -> Part:
     """Read the next part of `stream`, raising `EOFError` if the stream ends first."""
-    headers: dict[str, str] = {}
-    while True:
-        raw = stream.readline()
-        if not raw:
-            raise EOFError
-        line = raw.strip()
+    line = stream.readline()
+    while not line.startswith(b"--"):
         if not line:
-            if "content-length" in headers:
-                break
-            continue
-        if line.startswith(b"--"):
-            continue
-        name, _, value = line.decode("latin-1").partition(":")
-        headers[name.strip().lower()] = value.strip()
+            raise EOFError
+        line = stream.readline()
+    message = http.client.parse_headers(stream)
+    headers = {name.lower(): value for name, value in message.items()}
+    if "content-length" not in headers:
+        raise EOFError
     length = int(headers["content-length"])
     jpeg = stream.read(length)
     if len(jpeg) < length:

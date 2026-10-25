@@ -54,18 +54,12 @@ def open_stream(endpoint: Endpoint, sock: socket.socket | None = None) -> Iterat
 
 
 def read_part(response: http.client.HTTPResponse) -> tuple[dict[str, str], bytes]:
-    headers: dict[str, str] = {}
-    while True:
-        line = response.readline()
+    line = response.readline()
+    while not line.startswith(b'--'):
         if not line:
             raise ConnectionError('the Camera stream ended')
-        line = line.strip()
-        if not line and headers:
-            break
-        if not line or line.startswith(b'--'):
-            continue
-        name, _, value = line.decode().partition(':')
-        headers[name.strip().lower()] = value.strip()
+        line = response.readline()
+    headers = {name.lower(): value for name, value in http.client.parse_headers(response).items()}
     length = int(headers['content-length'])
     jpeg = response.read(length)
     if len(jpeg) != length:

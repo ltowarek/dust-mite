@@ -50,18 +50,12 @@ class SendSpan:
 
 
 def _read_part(stream: http.client.HTTPResponse) -> None:
-    length = None
-    while True:
-        line = stream.readline()
+    line = stream.readline()
+    while not line.startswith(b"--"):
         if not line:
             raise EOFError
-        line = line.strip()
-        if not line and length is not None:
-            break
-        name, _, value = line.decode().partition(":")
-        if name.strip().lower() == "content-length":
-            length = int(value)
-    stream.read(length)
+        line = stream.readline()
+    stream.read(int(http.client.parse_headers(stream)["Content-Length"]))
 
 
 @pytest.fixture(scope="module")
