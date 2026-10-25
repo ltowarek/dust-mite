@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 from opentelemetry import trace
 from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL_NAME
 
-from .car import CarFeed, prepare_drive_command
+from .car import Feed, prepare_drive_command
 from .collision_monitor import CollisionMonitor
 from .command import Command
 from .metrics import record_command_blocked, record_command_sent
@@ -38,7 +38,7 @@ class CommandArbiter:
     def __init__(
         self,
         commands: Subject[WebSocketMessage],
-        telemetry: CarFeed[str | bytes, WebSocketMessage] | Subject[WebSocketMessage],
+        telemetry: Feed[WebSocketMessage],
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""

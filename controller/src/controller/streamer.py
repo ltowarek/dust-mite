@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
-from typing import Any, Protocol, Self, cast, override
+from typing import Any, Self, cast, override
 
 import websockets.exceptions
 import websockets.sync.server
@@ -28,7 +28,7 @@ from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL
 from opentelemetry.semconv.attributes.url_attributes import URL_PATH
 from websockets.frames import CloseCode
 
-from .car import CarFeed, send_commands_to_car
+from .car import CarFeed, Feed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
@@ -51,12 +51,6 @@ tracer = trace.get_tracer(__name__)
 _OUTBOX_POLL_S = 0.2
 
 
-class _Feed[M](Protocol):
-    def subscription(
-        self, callback: Callable[[M], None]
-    ) -> contextlib.AbstractContextManager[None]: ...
-
-
 class _Outbox[M]:
     """One client's view of some feeds, keeping the newest message of each kind.
 
@@ -66,7 +60,7 @@ class _Outbox[M]:
     shares.
     """
 
-    def __init__(self, *feeds: _Feed[M], kind: Callable[[M], str]) -> None:
+    def __init__(self, *feeds: Feed[M], kind: Callable[[M], str]) -> None:
         self._feeds = feeds
         self._kind = kind
         self._subscriptions = contextlib.ExitStack()
@@ -108,7 +102,7 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 def server_handler(
-    telemetry: CarFeed[str | bytes, WebSocketMessage],
+    telemetry: CarFeed[WebSocketMessage],
     arbiter: CommandArbiter,
     websocket: websockets.sync.server.ServerConnection,
 ) -> None:
@@ -145,7 +139,7 @@ def _serve_driver(
 
 def _serve_telemetry(
     websocket: websockets.sync.server.ServerConnection,
-    telemetry: CarFeed[str | bytes, WebSocketMessage],
+    telemetry: CarFeed[WebSocketMessage],
     collision_state: Subject[WebSocketMessage],
 ) -> None:
     with _Outbox(telemetry, collision_state, kind=lambda m: m["type"]) as outbox:
@@ -171,7 +165,7 @@ class CameraServer(ThreadingHTTPServer):
     def __init__(
         self,
         address: tuple[str, int],
-        camera: CarFeed[CameraStreamPart, CameraStreamPart],
+        camera: CarFeed[CameraStreamPart],
     ) -> None:
         """Initialize the object; it reads `camera` only while a viewer watches."""
         super().__init__(address, _ViewerHandler)
@@ -193,7 +187,7 @@ class _ViewerHandler(BaseHTTPRequestHandler):
 
 @tracer.start_as_current_span(f"GET {CAMERA_PATH}", kind=trace.SpanKind.SERVER)
 def _serve_viewer(
-    viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPart, CameraStreamPart]
+    viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPart]
 ) -> None:
     span = trace.get_current_span()
     span.set_attribute(HTTP_REQUEST_METHOD, HttpRequestMethodValues.GET.value)
