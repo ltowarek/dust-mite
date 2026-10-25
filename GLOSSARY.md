@@ -28,6 +28,12 @@ The Camera or Telemetry endpoint: the car sends and the client only reads.
 The streamer's one shared connection to a Push endpoint, open only while a client is subscribed; every client reads the same Car feed.
 _Avoid_: Subscription, channel
 
+### Streamer endpoints
+
+**Streamer endpoint**:
+One path on which the streamer serves its clients: `/drive`, `/telemetry` or `/camera`.
+_Avoid_: Endpoint (on its own), route, channel
+
 ### WebSocket messages
 
 **WebSocket message**:
