@@ -6,11 +6,12 @@ import http
 import http.client
 import logging
 import queue
-import socket
 import threading
-import urllib.parse
 from types import TracebackType
 from typing import Protocol, Self
+
+import requests
+import urllib3.exceptions
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -64,10 +65,9 @@ class MjpegClient:
 
     def __init__(self, uri: str) -> None:
         """Initialize the object."""
-        self._uri = urllib.parse.urlsplit(uri)
+        self._uri = uri
         self._stop_event = threading.Event()
         self._parts: queue.Queue[Part] = queue.Queue(1)
-        self._sock: socket.socket | None = None
         self._worker = threading.Thread(target=self._worker_main)
 
     def __enter__(self) -> Self:
@@ -81,13 +81,8 @@ class MjpegClient:
         exc_value: BaseException | None,
         exc_traceback: TracebackType | None,
     ) -> None:
-        """Stop reading the stream and disconnect."""
+        """Stop reading and disconnect; a stalled stream takes its read timeout."""
         self._stop_event.set()
-        sock = self._sock
-        if sock is not None:
-            # Wakes a read blocked on the socket instead of waiting out its timeout.
-            with contextlib.suppress(OSError):
-                sock.shutdown(socket.SHUT_RDWR)
         self._worker.join()
 
     def recv(self, timeout: float) -> Part:
@@ -104,30 +99,21 @@ class MjpegClient:
             except (
                 OSError,
                 EOFError,
-                http.client.HTTPException,
+                requests.RequestException,
+                urllib3.exceptions.HTTPError,
                 StreamRefusedError,
             ) as e:
                 if not self._stop_event.is_set():
-                    logger.warning("Lost the stream from %s: %r", self._uri.geturl(), e)
+                    logger.warning("Lost the stream from %s: %r", self._uri, e)
                 self._stop_event.wait(_RECONNECT_DELAY_S)
 
     def _read_stream(self) -> None:
-        connection = http.client.HTTPConnection(
-            self._uri.hostname or "", self._uri.port, timeout=_READ_TIMEOUT_S
-        )
-        try:
-            connection.connect()
-            # http.client forgets the socket once a response has no length.
-            self._sock = connection.sock
-            connection.request("GET", self._uri.path or "/")
-            response = connection.getresponse()
-            if response.status != http.HTTPStatus.OK:
-                raise StreamRefusedError(response.status)
-            logger.info("Stream connected: %s", self._uri.geturl())
+        with requests.get(self._uri, stream=True, timeout=_READ_TIMEOUT_S) as response:
+            if response.status_code != http.HTTPStatus.OK:
+                raise StreamRefusedError(response.status_code)
+            logger.info("Stream connected: %s", self._uri)
             while not self._stop_event.is_set():
-                self._keep_newest(read_part(response))
-        finally:
-            connection.close()
+                self._keep_newest(read_part(response.raw))
 
     def _keep_newest(self, part: Part) -> None:
         with contextlib.suppress(queue.Empty):
