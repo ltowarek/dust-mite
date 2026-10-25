@@ -2,12 +2,14 @@ name: C++ car
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
 
 jobs:
   build-docker:
+    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -298,7 +300,7 @@ jobs:
 
   ci-status-cpp-car:
     needs: [build-docker, build, clang-format, clang-tidy, ubsan, coverage]
-    if: always()
+    if: always() && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed
