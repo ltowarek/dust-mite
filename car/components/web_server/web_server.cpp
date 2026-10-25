@@ -364,7 +364,6 @@ static ws_endpoint_t g_telemetry{.http = {.path = "/telemetry",
 
 // The Camera endpoint is plain HTTP: one multipart/x-mixed-replace response per client and one
 // part per Camera frame (docs/adr/0002-mjpeg-over-http-for-camera-frames.md).
-static const char STREAM_CONTENT_TYPE[] = "multipart/x-mixed-replace;boundary=frame";
 // W3C Trace Context caps tracestate at 512 characters.
 constexpr size_t STREAM_TRACESTATE_MAX = 512;
 constexpr size_t STREAM_PART_HEAD_SIZE = 768;
@@ -479,7 +478,7 @@ static void stream_serve(httpd_req_t* req) {
   auto request_span = esp_opentelemetry_tracer()->StartSpan("GET /stream", request_opts);
   stream_set_request_attributes(*request_span, httpd_req_to_sockfd(req));
   request_span->SetAttribute("http.response.status_code", static_cast<int64_t>(200));
-  httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
+  httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
 
   camera_start();
   ESP_LOGI(TAG, "Stream started");
