@@ -66,6 +66,8 @@ static bool ws_connection_is_live(const ws_connection_t& connection) {
          httpd_sess_get_ctx(connection.hd, connection.fd) == connection.token;
 }
 
+typedef esp_err_t (*httpd_stop_func_t)(httpd_handle_t handle);
+
 // Each endpoint has its own server, which does all of its work on its own task, so a send that is
 // blocked on one endpoint's client cannot delay another endpoint.
 struct http_endpoint_t {
@@ -76,6 +78,7 @@ struct http_endpoint_t {
   size_t stack_size;
   httpd_uri_t uri;
   httpd_close_func_t close_fn = nullptr;
+  httpd_stop_func_t stop_fn = httpd_stop;
   httpd_handle_t handle = nullptr;
 };
 
@@ -405,6 +408,30 @@ static esp_err_t stream_handler(httpd_req_t* req) {
   return ESP_OK;
 }
 
+// httpd_stop() frees the server a handed-over request points into, so the stream gives its request
+// back first.
+static void stream_release() {
+  g_stream_stopping = true;
+  const int poll_interval_ms = 10;
+  // httpd's default send timeout, plus a margin for the stream to finish a part.
+  const int release_timeout_ms = 7000;
+  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(release_timeout_ms);
+  while (g_streaming) {
+    if (xTaskGetTickCount() > deadline) {
+      ESP_LOGE(TAG, "The stream did not stop in time");
+      return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
+  }
+}
+
+static esp_err_t stream_stop(httpd_handle_t handle) {
+  stream_release();
+  esp_err_t err = httpd_stop(handle);
+  g_stream_stopping = false;
+  return err;
+}
+
 static http_endpoint_t g_camera{.path = "/stream",
                                 .port = WEB_SERVER_CAMERA_PORT,
                                 .ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 1,
@@ -417,7 +444,8 @@ static http_endpoint_t g_camera{.path = "/stream",
                                         .handle_ws_control_frames = false,
                                         .supported_subprotocol = nullptr,
                                         .ws_pre_handshake_cb = nullptr,
-                                        .ws_post_handshake_cb = nullptr}};
+                                        .ws_post_handshake_cb = nullptr},
+                                .stop_fn = stream_stop};
 
 static void stream_set_request_attributes(opentelemetry::trace::Span& span, int fd) {
   socket_address_t server = {};
@@ -546,23 +574,6 @@ void stream_task(void* p) {
   }
 }
 
-// httpd_stop() frees the server a handed-over request points into, so the stream gives its request
-// back first.
-static void stream_release() {
-  g_stream_stopping = true;
-  const int poll_interval_ms = 10;
-  // httpd's default send timeout, plus a margin for the stream to finish a part.
-  const int release_timeout_ms = 7000;
-  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(release_timeout_ms);
-  while (g_streaming) {
-    if (xTaskGetTickCount() > deadline) {
-      ESP_LOGE(TAG, "The stream did not stop in time");
-      return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
-  }
-}
-
 void ws_telemetry_task(void* p) {
   ESP_LOGI(TAG, "Starting telemetry WS task");
   ws_connection_t connection = {NULL, -1};
@@ -677,19 +688,17 @@ static esp_err_t start_endpoint(http_endpoint_t& endpoint) {
 
 static void stop_web_servers() {
   xEventGroupClearBits(s_web_server_events, WEB_SERVER_SERVING_BIT);
-  stream_release();
   for (http_endpoint_t* endpoint : g_endpoints) {
     if (endpoint->handle == nullptr) {
       continue;
     }
     ESP_LOGI(TAG, "Stopping the %s server", endpoint->path);
-    if (httpd_stop(endpoint->handle) != ESP_OK) {
+    if (endpoint->stop_fn(endpoint->handle) != ESP_OK) {
       ESP_LOGE(TAG, "Failed to stop the %s server", endpoint->path);
       continue;
     }
     endpoint->handle = nullptr;
   }
-  g_stream_stopping = false;
 }
 
 // Starts every server that is not running. The servers run all together or not at all, so a
