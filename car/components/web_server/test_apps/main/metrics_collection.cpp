@@ -10,6 +10,7 @@
 #include "sdkconfig.h"
 #include "system_metrics.hpp"
 #include "telemetry_metrics.hpp"
+#include "web_server_metrics.hpp"
 
 namespace {
 
@@ -40,4 +41,5 @@ void metrics_collection_setup() {
   system_metrics_setup();
   telemetry_metrics_setup();
   camera_metrics_setup();
+  web_server_metrics_setup();
 }
