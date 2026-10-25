@@ -6,8 +6,8 @@
 #include "stream_client.hpp"
 #include "unity.h"
 
-// The camera delivers about 25 frames per second; the stream may lose at most one of them.
-static const int MIN_STREAM_FPS = 24;
+// The camera's rate follows the scene's light; its own performance case allows down to 20.
+static const int MIN_STREAM_FPS = 20;
 static const int STREAM_RATE_WINDOW_MS = 20000;
 
 TEST_CASE("stream_keeps_the_camera_rate", "[web_server]") {
