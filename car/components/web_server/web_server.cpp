@@ -461,11 +461,9 @@ static size_t stream_format_part_head(char* head, size_t frame_len,
 }
 
 // Sends the frame straight from its frame buffer; false once the client has gone.
-static bool stream_send_part(httpd_req_t* req, const camera_fb_t& frame,
-                             const opentelemetry::trace::Span& request_span) {
+static bool stream_send_part(httpd_req_t* req, const camera_fb_t& frame) {
   opentelemetry::trace::StartSpanOptions send_opts;
   send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
-  send_opts.parent = request_span.GetContext();
   auto span = esp_opentelemetry_tracer()->StartSpan(
       "camera.frame.send", {{"camera.frame.size", static_cast<int64_t>(frame.len)}}, send_opts);
   auto scope = opentelemetry::trace::Scope(span);
@@ -488,6 +486,7 @@ static void stream_serve(httpd_req_t* req) {
   opentelemetry::trace::StartSpanOptions request_opts;
   request_opts.kind = opentelemetry::trace::SpanKind::kServer;
   auto request_span = esp_opentelemetry_tracer()->StartSpan("GET /stream", request_opts);
+  auto request_scope = opentelemetry::trace::Scope(request_span);
   stream_set_request_attributes(*request_span, httpd_req_to_sockfd(req));
   request_span->SetAttribute("http.response.status_code", static_cast<int64_t>(200));
   httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
@@ -501,7 +500,7 @@ static void stream_serve(httpd_req_t* req) {
     if (xQueueReceive(g_frame_queue, &frame, pdMS_TO_TICKS(frame_wait_ms)) != pdPASS) {
       continue;
     }
-    bool sent = stream_send_part(req, *frame, *request_span);
+    bool sent = stream_send_part(req, *frame);
     esp_camera_fb_return(frame);
     if (!sent) {
       break;
