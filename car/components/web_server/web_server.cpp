@@ -366,11 +366,8 @@ static ws_endpoint_t g_telemetry{.http = {.path = "/telemetry",
 // part per Camera frame (docs/adr/0002-mjpeg-over-http-for-camera-frames.md).
 // W3C Trace Context caps tracestate at 512 characters.
 constexpr size_t STREAM_TRACESTATE_MAX = 512;
-constexpr size_t STREAM_PART_HEAD_SIZE = 768;
-// How often a stream waiting for a frame checks whether the server is stopping.
-constexpr int STREAM_FRAME_WAIT_MS = 100;
-// httpd's default send timeout, plus a margin for the stream to finish a part.
-constexpr int STREAM_RELEASE_TIMEOUT_MS = 7000;
+// The longest tracestate plus the part's other headers.
+constexpr size_t STREAM_PART_HEAD_SIZE = STREAM_TRACESTATE_MAX + 256;
 
 static QueueHandle_t g_frame_queue = NULL;
 static QueueHandle_t g_stream_requests = NULL;
@@ -482,9 +479,11 @@ static void stream_serve(httpd_req_t* req) {
 
   camera_start();
   ESP_LOGI(TAG, "Stream started");
+  // How often a stream waiting for a frame checks whether the server is stopping.
+  const int frame_wait_ms = 100;
   while (!g_stream_stopping) {
     camera_fb_t* frame = nullptr;
-    if (xQueueReceive(g_frame_queue, &frame, pdMS_TO_TICKS(STREAM_FRAME_WAIT_MS)) != pdPASS) {
+    if (xQueueReceive(g_frame_queue, &frame, pdMS_TO_TICKS(frame_wait_ms)) != pdPASS) {
       continue;
     }
     bool sent = stream_send_part(req, *frame, *request_span);
@@ -523,7 +522,9 @@ void stream_task(void* p) {
 static void stream_release() {
   g_stream_stopping = true;
   const int poll_interval_ms = 10;
-  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(STREAM_RELEASE_TIMEOUT_MS);
+  // httpd's default send timeout, plus a margin for the stream to finish a part.
+  const int release_timeout_ms = 7000;
+  TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(release_timeout_ms);
   while (g_streaming) {
     if (xTaskGetTickCount() > deadline) {
       ESP_LOGE(TAG, "The stream did not stop in time");
