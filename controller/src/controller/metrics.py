@@ -14,7 +14,8 @@ from controller.command import Command
 logger = logging.getLogger(__name__)
 
 _metrics: SimpleNamespace = SimpleNamespace(
-    frames_processed=None,
+    camera_frames_processed=None,
+    viewer_camera_frames_sent=None,
     telemetry_messages_received=None,
     commands_sent=None,
     commands_blocked=None,
@@ -42,10 +43,15 @@ def install_instruments(provider: MeterProvider) -> None:
     """Create the pipeline-health instruments the `record_*` functions use."""
     meter = provider.get_meter(__name__)
 
-    _metrics.frames_processed = meter.create_counter(
-        "dust_mite_frames_processed",
+    _metrics.camera_frames_processed = meter.create_counter(
+        "dust_mite_camera_frames_processed",
         unit="{frame}",
         description="Number of camera frames processed",
+    )
+    _metrics.viewer_camera_frames_sent = meter.create_counter(
+        "dust_mite_viewer_camera_frames_sent",
+        unit="{frame}",
+        description="Number of camera frames sent to viewers",
     )
     _metrics.telemetry_messages_received = meter.create_counter(
         "dust_mite_telemetry_messages_received",
@@ -64,10 +70,16 @@ def install_instruments(provider: MeterProvider) -> None:
     )
 
 
-def record_frame() -> None:
+def record_camera_frame_processed() -> None:
     """Record one processed camera frame."""
-    if _metrics.frames_processed is not None:
-        _metrics.frames_processed.add(1)
+    if _metrics.camera_frames_processed is not None:
+        _metrics.camera_frames_processed.add(1)
+
+
+def record_viewer_camera_frame_sent() -> None:
+    """Record one camera frame sent to one viewer."""
+    if _metrics.viewer_camera_frames_sent is not None:
+        _metrics.viewer_camera_frames_sent.add(1)
 
 
 def record_telemetry_received() -> None:

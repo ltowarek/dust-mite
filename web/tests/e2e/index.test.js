@@ -1,15 +1,38 @@
+import http from "node:http";
 import { expect, test } from "@playwright/test";
 import { WebSocketServer } from "ws";
 import { Command } from "../../src/command.js";
 
+// An 8x8 grey JPEG.
+const JPEG = Buffer.from(
+  "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwAooooA/9k=",
+  "base64",
+);
+
 let streamerSpy;
+let cameraStub;
+
+function sendPart(response) {
+  const head = `\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${JPEG.length}\r\n\r\n`;
+  response.write(Buffer.concat([Buffer.from(head), JPEG]));
+}
 
 test.beforeAll(() => {
   streamerSpy = new WebSocketServer({ port: 8765 });
+  cameraStub = http
+    .createServer((request, response) => {
+      response.writeHead(200, { "Content-Type": "multipart/x-mixed-replace;boundary=frame" });
+      sendPart(response);
+      const timer = setInterval(() => sendPart(response), 50);
+      request.on("close", () => clearInterval(timer));
+    })
+    .listen(8766);
 });
 
 test.afterAll(() => {
   streamerSpy.close();
+  cameraStub.closeAllConnections();
+  cameraStub.close();
 });
 
 function connectionTo(path) {
@@ -22,18 +45,16 @@ function connectionTo(path) {
   });
 }
 
-test("renders the camera and telemetry feeds from their own sockets", async ({ page }) => {
-  const camera = connectionTo("/camera");
+test("renders the camera stream from the streamer", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+
+  await expect.poll(() => page.locator("#image").evaluate((img) => img.naturalWidth)).toBe(8);
+});
+
+test("renders the telemetry feed from its own socket", async ({ page }) => {
   const telemetry = connectionTo("/telemetry");
 
   await page.goto("http://localhost:5173");
-
-  (await camera).send(
-    JSON.stringify({
-      type: "stream",
-      data: "dGVzdA==",
-    }),
-  );
 
   (await telemetry).send(
     JSON.stringify({
@@ -53,7 +74,6 @@ test("renders the camera and telemetry feeds from their own sockets", async ({ p
   await expect(page.locator("#speed")).toHaveText("5.25 km/h");
   await expect(page.locator("#distance_ahead")).toHaveText("150 cm");
   await expect(page.locator("#rssi")).toHaveText("-50 dBm");
-  await expect(page.locator("#image")).toHaveAttribute("src", "data:image/jpeg;base64,dGVzdA==");
 });
 
 async function openDriveSocket(page) {

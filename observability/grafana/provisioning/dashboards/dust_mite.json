@@ -677,7 +677,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite_frames_processed[10s])",
+          "expr": "rate(dust_mite_camera_frames_processed[10s])",
           "legendFormat": "Frames/s"
         }
       ]
@@ -812,7 +812,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite_frames_sent[10s])",
+          "expr": "rate(dust_mite_camera_frames_sent[10s])",
           "legendFormat": "Firmware"
         },
         {
@@ -820,7 +820,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite_frames_processed[10s])",
+          "expr": "rate(dust_mite_camera_frames_processed[10s])",
           "legendFormat": "Streamer"
         },
         {
@@ -828,8 +828,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(dust_mite_frames_displayed[10s])",
-          "legendFormat": "Browser"
+          "expr": "rate(dust_mite_viewer_camera_frames_sent[10s])",
+          "legendFormat": "Viewers"
         }
       ]
     },

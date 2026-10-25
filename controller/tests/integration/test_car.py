@@ -7,7 +7,7 @@ import websockets.sync.server
 
 from controller.car import CarFeed, send_commands_to_car
 from controller.command import Command
-from controller.mjpeg import CameraStreamPart, MjpegClient
+from controller.mjpeg import MjpegClient
 from controller.subject import Subject
 from controller.websocket_client import WebSocketClient
 from controller.websocket_message import WebSocketMessage
@@ -26,7 +26,7 @@ from .waiting import wait_for
 _SPEED = 50
 
 
-def _camera(endpoint: CarEndpointSpy) -> CarFeed[CameraStreamPart]:
+def _camera(endpoint: CarEndpointSpy) -> CarFeed[WebSocketMessage]:
     return CarFeed(functools.partial(MjpegClient, endpoint.uri), lambda p: p.headers)
 
 

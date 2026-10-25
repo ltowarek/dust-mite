@@ -17,7 +17,7 @@ namespace {
 // JPEG buffer mode sizes this as width*height/5; 640*480/5 = 61440 at VGA.
 static constexpr int64_t kFrameBufferBytes = 61440;
 
-static opentelemetry::nostd::shared_ptr<metrics_api::Counter<uint64_t>> s_frames_captured;
+static opentelemetry::nostd::shared_ptr<metrics_api::Counter<uint64_t>> s_camera_frames_captured;
 static opentelemetry::nostd::shared_ptr<metrics_api::ObservableInstrument> s_frame_size;
 static opentelemetry::nostd::shared_ptr<metrics_api::ObservableInstrument> s_frame_buffer;
 
@@ -44,8 +44,8 @@ void camera_metrics_setup() {
   auto meter = metrics_api::Provider::GetMeterProvider()->GetMeter(
       CONFIG_ESP_OPENTELEMETRY_SERVICE_NAME, "1.0.0");
 
-  s_frames_captured =
-      meter->CreateUInt64Counter("dust_mite_frames_captured", "Camera frames captured", "{frame}");
+  s_camera_frames_captured = meter->CreateUInt64Counter("dust_mite_camera_frames_captured",
+                                                        "Camera frames captured", "{frame}");
 
   s_frame_size = meter->CreateInt64ObservableGauge(
       "dust_mite_camera_frame_size_bytes", "Peak delivered JPEG frame size since last collection",
@@ -60,7 +60,7 @@ void camera_metrics_setup() {
 
 void camera_metrics_update(size_t frame_size) {
 #ifdef CONFIG_ESP_OPENTELEMETRY_METRICS_ENABLED
-  if (s_frames_captured) s_frames_captured->Add(1);
+  if (s_camera_frames_captured) s_camera_frames_captured->Add(1);
   if (frame_size > s_peak_frame_size) s_peak_frame_size = frame_size;
 #else
   (void)frame_size;

@@ -1,11 +1,14 @@
-import { SpanKind, SpanStatusCode, context, propagation, trace } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
-import { ATTR_MESSAGING_MESSAGE_BODY_SIZE } from "@opentelemetry/semantic-conventions/incubating";
+import {
+  ATTR_NETWORK_PROTOCOL_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_URL_FULL,
+} from "@opentelemetry/semantic-conventions";
 import { DriveController, driveStatusText } from "./drive.js";
 import {
   buildUncaughtErrorLogRecord,
@@ -13,7 +16,6 @@ import {
   setupLogging,
 } from "./logging.js";
 import { handleMessage } from "./messages.js";
-import { setupMetrics } from "./metrics.js";
 
 const provider = new WebTracerProvider({
   resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: "dust-mite-web" }),
@@ -27,8 +29,6 @@ const provider = new WebTracerProvider({
 });
 provider.register({ propagator: new W3CTraceContextPropagator() });
 const tracer = provider.getTracer("dust-mite-web");
-
-setupMetrics();
 
 const logger = setupLogging();
 
@@ -54,40 +54,15 @@ function openStreamerSocket(url, elements) {
     connectionSpan = tracer.startSpan("ws.connection", {
       kind: SpanKind.CLIENT,
       attributes: {
-        "ws.url": socket.url,
-        "network.protocol.name": "websocket",
+        [ATTR_URL_FULL]: socket.url,
+        [ATTR_NETWORK_PROTOCOL_NAME]: "websocket",
       },
     });
     connectionContext = trace.setSpan(context.active(), connectionSpan);
   });
 
   socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data);
-
-    const carrier = {
-      traceparent: message.traceparent,
-      tracestate: message.tracestate,
-    };
-    const extractedContext = propagation.extract(connectionContext ?? context.active(), carrier);
-
-    const messageSpan = tracer.startSpan(
-      `ws.message.receive.${message.type}`,
-      {
-        kind: SpanKind.CLIENT,
-        attributes: {
-          "network.protocol.name": "websocket",
-          "ws.message.type": message.type,
-          [ATTR_MESSAGING_MESSAGE_BODY_SIZE]: event.data.length,
-        },
-      },
-      extractedContext,
-    );
-
-    try {
-      handleMessage(message, elements);
-    } finally {
-      messageSpan.end();
-    }
+    handleMessage(JSON.parse(event.data), elements);
   });
 
   socket.addEventListener("close", (event) => {
@@ -124,9 +99,11 @@ function openStreamerSocket(url, elements) {
 
 window.addEventListener("DOMContentLoaded", () => {
   const streamerUrl = import.meta.env.VITE_WS_URL ?? "ws://localhost:8765";
+  const cameraUrl = import.meta.env.VITE_CAMERA_URL ?? "http://localhost:8766/camera";
+
+  document.getElementById("image").src = cameraUrl;
 
   const elements = {
-    image: document.getElementById("image"),
     timestamp: document.getElementById("timestamp"),
     rssi: document.getElementById("rssi"),
     speed: document.getElementById("speed"),
@@ -137,7 +114,6 @@ window.addEventListener("DOMContentLoaded", () => {
     collision_monitor: document.getElementById("collision_monitor"),
   };
 
-  openStreamerSocket(`${streamerUrl}/camera`, elements);
   openStreamerSocket(`${streamerUrl}/telemetry`, elements);
 
   const driveSocket = openStreamerSocket(`${streamerUrl}/drive`, elements);

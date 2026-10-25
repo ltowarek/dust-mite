@@ -21,9 +21,9 @@ describe("buildUncaughtErrorLogRecord", () => {
       "exception.type": "TypeError",
       "exception.message": "boom",
       "exception.stacktrace": error.stack,
-      "code.filepath": "https://example.test/app.js",
-      "code.lineno": 42,
-      "code.colno": 7,
+      "code.file.path": "https://example.test/app.js",
+      "code.line.number": 42,
+      "code.column.number": 7,
     });
   });
 
@@ -60,7 +60,7 @@ describe("buildWsAbnormalCloseLogRecord", () => {
     expect(record.severityNumber).toBe(SeverityNumber.ERROR);
     expect(record.body).toBe("WebSocket closed abnormally: code=1006, reason=connection lost");
     expect(record.attributes).toEqual({
-      "ws.url": "ws://localhost:8765",
+      "url.full": "ws://localhost:8765",
       "network.protocol.name": "websocket",
       "ws.close.code": 1006,
       "ws.close.reason": "connection lost",

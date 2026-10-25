@@ -16,6 +16,9 @@ import urllib3.exceptions
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+BOUNDARY = "frame"
+CONTENT_TYPE = f"multipart/x-mixed-replace;boundary={BOUNDARY}"
+
 # A stream that sends nothing for this long is treated as dropped.
 _READ_TIMEOUT_S = 5.0
 _RECONNECT_DELAY_S = 1.0
@@ -51,6 +54,17 @@ def read_part(stream: _Readable) -> CameraStreamPart:
     if len(jpeg) < length:
         raise EOFError
     return CameraStreamPart(headers, jpeg)
+
+
+def format_part(part: CameraStreamPart) -> bytes:
+    """Return `part` as it goes on the wire, its boundary first."""
+    headers = {
+        "Content-Type": "image/jpeg",
+        "Content-Length": str(len(part.jpeg)),
+        **part.headers,
+    }
+    head = "".join(f"{name}: {value}\r\n" for name, value in headers.items())
+    return f"\r\n--{BOUNDARY}\r\n{head}\r\n".encode("latin-1") + part.jpeg
 
 
 class StreamRefusedError(Exception):

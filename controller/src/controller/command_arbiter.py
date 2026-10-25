@@ -5,12 +5,13 @@ import threading
 from collections.abc import Callable, Iterator
 
 from opentelemetry import trace
+from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL_NAME
 
-from .car import CarFeed, prepare_drive_command
+from .car import prepare_drive_command
 from .collision_monitor import CollisionMonitor
 from .command import Command
 from .metrics import record_command_blocked, record_command_sent
-from .subject import Subject
+from .subject import Observable, Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .websocket_message import WebSocketMessage
 
@@ -37,7 +38,7 @@ class CommandArbiter:
     def __init__(
         self,
         commands: Subject[WebSocketMessage],
-        telemetry: CarFeed[str | bytes] | Subject[WebSocketMessage],
+        telemetry: Observable[WebSocketMessage],
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""
@@ -78,7 +79,7 @@ class CommandArbiter:
             requested = Command(drive_command["command"])
             drive_command = self._collision_monitor.filter(drive_command)
             command = Command(drive_command["command"])
-            span.set_attribute("network.protocol.name", "websocket")
+            span.set_attribute(NETWORK_PROTOCOL_NAME, "websocket")
             span.set_attribute("requested_command_name", requested.name)
             span.set_attribute("command_name", command.name)
             span.set_attribute(

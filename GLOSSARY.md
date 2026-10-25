@@ -73,3 +73,7 @@ _Avoid_: Video stream, feed
 **Camera stream part**:
 One Camera frame in the Camera stream, together with its headers, including the Camera frame's trace context.
 _Avoid_: Chunk, frame (on its own)
+
+**Viewer**:
+A client watching the streamer's Camera stream. Any number can watch at once.
+_Avoid_: Watcher, subscriber

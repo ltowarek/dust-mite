@@ -34,56 +34,54 @@ type ConnectionProvider[T] = Callable[
 ]
 
 
-class CarFeed[T]:
+class CarFeed[M]:
     """A RefCount over one car endpoint: connected only while it has subscribers.
 
     Every client subscribes to the same feed, so the car serves one
     connection per endpoint no matter how many clients are connected.
     """
 
-    def __init__(
+    def __init__[T](
         self,
         connection_provider: ConnectionProvider[T],
-        to_message: Callable[[T], WebSocketMessage],
+        to_message: Callable[[T], M],
     ) -> None:
         """Initialize the object; each first subscriber calls `connection_provider`."""
-        self._connection_provider = connection_provider
-        self._to_message = to_message
+
+        def read_until_stopped() -> None:
+            with connection_provider() as client:
+                while not self._stop_event.is_set():
+                    try:
+                        raw = client.recv(timeout=_FEED_STOP_CHECK_S)
+                    except TimeoutError:
+                        continue
+                    try:
+                        message = to_message(raw)
+                    except Exception:
+                        logger.exception("Dropping an unreadable message from the car")
+                        continue
+                    self._subject.publish(message)
+
+        self._read_until_stopped = read_until_stopped
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._subject: Subject[WebSocketMessage] = Subject(
-            on_active=self._start, on_idle=self._stop
-        )
+        self._subject: Subject[M] = Subject(on_active=self._start, on_idle=self._stop)
 
     def subscription(
-        self, callback: Callable[[WebSocketMessage], None]
+        self, callback: Callable[[M], None]
     ) -> contextlib.AbstractContextManager[None]:
         """Call `callback` with each message from the car while the context is open."""
         return self._subject.subscription(callback)
 
     def _start(self) -> None:
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run)
+        self._thread = threading.Thread(target=self._read_until_stopped)
         self._thread.start()
 
     def _stop(self) -> None:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join()
-
-    def _run(self) -> None:
-        with self._connection_provider() as client:
-            while not self._stop_event.is_set():
-                try:
-                    raw = client.recv(timeout=_FEED_STOP_CHECK_S)
-                except TimeoutError:
-                    continue
-                try:
-                    message = self._to_message(raw)
-                except Exception:
-                    logger.exception("Dropping an unreadable message from the car")
-                    continue
-                self._subject.publish(message)
 
 
 @contextlib.contextmanager

@@ -13,4 +13,5 @@ services:
       /home/dustmite/workspace/web/scripts/run_dev_server.sh --port 5173 --host
     environment:
       VITE_WS_URL: ws://python:8765
+      VITE_CAMERA_URL: http://python:8766/camera
       VITE_OTLP_ENDPOINT: http://otel-collector:4318

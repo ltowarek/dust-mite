@@ -1,7 +1,10 @@
 import pytest
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.semconv._incubating.attributes.vcs_attributes import (
+    VCS_REF_HEAD_REVISION,
+    VCS_REPOSITORY_URL_FULL,
+)
 
-from controller.otel import VCS_REF_HEAD_REVISION, VCS_REPOSITORY_URL_FULL
 from controller.profiling import source_link_attributes
 
 _REPOSITORY = "https://github.com/o/r"
