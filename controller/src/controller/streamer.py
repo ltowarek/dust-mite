@@ -10,7 +10,7 @@ import os
 import select
 import socket
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
 from typing import Any, Self, cast, override
@@ -52,7 +52,7 @@ _OUTBOX_POLL_S = 0.2
 
 
 class _Outbox[M]:
-    """One client's view of some feeds, keeping the newest message of each kind.
+    """One client's view of some feeds, keeping the newest message of each.
 
     Use as a context manager: it subscribes to `feeds` on entry and
     unsubscribes on exit. A client that falls behind skips stale camera
@@ -60,18 +60,19 @@ class _Outbox[M]:
     shares.
     """
 
-    def __init__(self, *feeds: Feed[M], kind: Callable[[M], str]) -> None:
+    def __init__(self, *feeds: Feed[M]) -> None:
         self._feeds = feeds
-        self._kind = kind
         self._subscriptions = contextlib.ExitStack()
         self._condition = threading.Condition()
-        self._pending: dict[str, M] = {}
+        self._pending: dict[int, M] = {}
 
     def __enter__(self) -> Self:
         # Unsubscribes from the feeds already entered if a later one fails.
         with contextlib.ExitStack() as subscriptions:
-            for feed in self._feeds:
-                subscriptions.enter_context(feed.subscription(self._put))
+            for slot, feed in enumerate(self._feeds):
+                subscriptions.enter_context(
+                    feed.subscription(functools.partial(self._put, slot))
+                )
             self._subscriptions = subscriptions.pop_all()
         return self
 
@@ -90,9 +91,9 @@ class _Outbox[M]:
             self._pending.clear()
             return messages
 
-    def _put(self, message: M) -> None:
+    def _put(self, slot: int, message: M) -> None:
         with self._condition:
-            self._pending[self._kind(message)] = message
+            self._pending[slot] = message
             self._condition.notify()
 
 
@@ -142,7 +143,7 @@ def _serve_telemetry(
     telemetry: CarFeed[WebSocketMessage],
     collision_state: Subject[WebSocketMessage],
 ) -> None:
-    with _Outbox(telemetry, collision_state, kind=lambda m: m["type"]) as outbox:
+    with _Outbox(telemetry, collision_state) as outbox:
         _send_until_closed(websocket, outbox)
 
 
@@ -199,7 +200,7 @@ def _serve_viewer(
     viewer.end_headers()
     span.set_attribute(HTTP_RESPONSE_STATUS_CODE, http.HTTPStatus.OK)
     with (
-        _Outbox(camera, kind=lambda _: "camera") as outbox,
+        _Outbox(camera) as outbox,
         contextlib.suppress(BrokenPipeError, ConnectionResetError),
     ):
         while not _viewer_left(viewer.connection):
