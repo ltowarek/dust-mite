@@ -4,11 +4,12 @@ import re
 from importlib.metadata import PackageNotFoundError, version
 
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.semconv._incubating.attributes.vcs_attributes import (
+    VCS_REF_HEAD_REVISION,
+    VCS_REPOSITORY_URL_FULL,
+)
 
 _COMMIT_ID_RE = re.compile(r"\+g([0-9a-f]+)")
-
-VCS_REPOSITORY_URL_FULL = "vcs.repository.url.full"
-VCS_REF_HEAD_REVISION = "vcs.ref.head.revision"
 
 
 def resolve_git_ref(package_version: str) -> str:

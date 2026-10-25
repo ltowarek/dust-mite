@@ -18,6 +18,14 @@ from typing import Any, Protocol, Self, cast, override
 import websockets.exceptions
 import websockets.sync.server
 from opentelemetry import trace
+from opentelemetry.semconv.attributes.client_attributes import CLIENT_ADDRESS
+from opentelemetry.semconv.attributes.http_attributes import (
+    HTTP_REQUEST_METHOD,
+    HTTP_RESPONSE_STATUS_CODE,
+    HttpRequestMethodValues,
+)
+from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL_NAME
+from opentelemetry.semconv.attributes.url_attributes import URL_PATH
 from websockets.frames import CloseCode
 
 from .car import CarFeed, send_commands_to_car
@@ -106,10 +114,10 @@ def server_handler(
 ) -> None:
     """WebSocket handler for incoming requests, routed by path."""
     span = trace.get_current_span()
-    span.set_attribute("network.protocol.name", "websocket")
+    span.set_attribute(NETWORK_PROTOCOL_NAME, "websocket")
 
     path = websocket.request.path if websocket.request is not None else ""
-    span.set_attribute("url.path", path)
+    span.set_attribute(URL_PATH, path)
     logger.info("Server connection from: %s to %s", websocket.remote_address[0], path)
 
     try:
@@ -182,14 +190,14 @@ class _CameraViewer(BaseHTTPRequestHandler):
 @tracer.start_as_current_span(f"GET {CAMERA_PATH}", kind=trace.SpanKind.SERVER)
 def _serve_viewer(viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPart, CameraStreamPart]) -> None:
     span = trace.get_current_span()
-    span.set_attribute("http.request.method", "GET")
-    span.set_attribute("url.path", CAMERA_PATH)
-    span.set_attribute("client.address", viewer.client_address[0])
+    span.set_attribute(HTTP_REQUEST_METHOD, HttpRequestMethodValues.GET.value)
+    span.set_attribute(URL_PATH, CAMERA_PATH)
+    span.set_attribute(CLIENT_ADDRESS, viewer.client_address[0])
     viewer.send_response(http.HTTPStatus.OK)
     viewer.send_header("Content-Type", CONTENT_TYPE)
     viewer.send_header("Cache-Control", "no-store")
     viewer.end_headers()
-    span.set_attribute("http.response.status_code", http.HTTPStatus.OK)
+    span.set_attribute(HTTP_RESPONSE_STATUS_CODE, http.HTTPStatus.OK)
     with (
         _Outbox(camera, kind=lambda _: "camera") as outbox,
         contextlib.suppress(BrokenPipeError, ConnectionResetError),
@@ -211,7 +219,7 @@ def _send_camera_frame(viewer: BaseHTTPRequestHandler, frame: CameraStreamPart) 
         context=extract_trace_context(frame.headers),
         kind=trace.SpanKind.PRODUCER,
     ) as span:
-        span.set_attribute("client.address", viewer.client_address[0])
+        span.set_attribute(CLIENT_ADDRESS, viewer.client_address[0])
         viewer.wfile.write(format_part(CameraStreamPart(inject_trace_context({}), frame.jpeg)))
         viewer.wfile.flush()
     record_viewer_frame_sent()
@@ -223,7 +231,7 @@ def relay_camera_part(part: CameraStreamPart) -> CameraStreamPart:
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame", context=car_context
     ) as span:
-        span.set_attribute("network.protocol.name", "http")
+        span.set_attribute(NETWORK_PROTOCOL_NAME, "http")
         return CameraStreamPart(inject_trace_context({}), process_frame(part.jpeg))
 
 
@@ -235,7 +243,7 @@ def relay_telemetry_message(raw: str | bytes) -> WebSocketMessage:
     with tracer.start_as_current_span(
         "streamer.handle_telemetry", context=car_context
     ) as span:
-        span.set_attribute("network.protocol.name", "websocket")
+        span.set_attribute(NETWORK_PROTOCOL_NAME, "websocket")
         return prepare_telemetry_message(telemetry)
 
 

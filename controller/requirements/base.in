@@ -7,5 +7,6 @@ opentelemetry-sdk
 opentelemetry-exporter-otlp-proto-http
 opentelemetry-proto
 opentelemetry-instrumentation-logging
+opentelemetry-semantic-conventions
 requests
 urllib3

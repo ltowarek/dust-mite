@@ -3,9 +3,12 @@
 import logging
 
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.semconv._incubating.attributes.vcs_attributes import (
+    VCS_REF_HEAD_REVISION,
+    VCS_REPOSITORY_URL_FULL,
+)
 
 import otlp_profiler
-from controller.otel import VCS_REF_HEAD_REVISION, VCS_REPOSITORY_URL_FULL
 
 logger = logging.getLogger(__name__)
 

@@ -8,6 +8,7 @@ from typing import Protocol, Self
 import websockets.exceptions
 import websockets.sync.client
 from opentelemetry import trace
+from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL_NAME
 
 from .command import Command
 from .metrics import record_command_sent
@@ -89,7 +90,7 @@ class WebSocketCommandSender:
         connection = self._require_connection()
 
         span = trace.get_current_span()
-        span.set_attribute("network.protocol.name", "websocket")
+        span.set_attribute(NETWORK_PROTOCOL_NAME, "websocket")
         span.set_attribute("command_name", command.name)
         if value is not None:
             span.set_attribute("command_value", value)

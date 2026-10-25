@@ -5,6 +5,7 @@ import threading
 from collections.abc import Callable, Iterator
 
 from opentelemetry import trace
+from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL_NAME
 
 from .car import CarFeed, prepare_drive_command
 from .collision_monitor import CollisionMonitor
@@ -78,7 +79,7 @@ class CommandArbiter:
             requested = Command(drive_command["command"])
             drive_command = self._collision_monitor.filter(drive_command)
             command = Command(drive_command["command"])
-            span.set_attribute("network.protocol.name", "websocket")
+            span.set_attribute(NETWORK_PROTOCOL_NAME, "websocket")
             span.set_attribute("requested_command_name", requested.name)
             span.set_attribute("command_name", command.name)
             span.set_attribute(
