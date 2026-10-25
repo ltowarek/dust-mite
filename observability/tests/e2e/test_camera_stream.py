@@ -19,7 +19,7 @@ _REASON = (
     "streaming through the headless stack"
 )
 SEND_SPAN = "camera.frame.send"
-MESSAGE_SIZE = "camera.part.size"
+MESSAGE_SIZE = "messaging.message.envelope.size"
 STREAM_TASK = "stream_task"
 STREAM_S = 60.0
 FRAME_TIMEOUT_S = 5.0

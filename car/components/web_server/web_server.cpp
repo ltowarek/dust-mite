@@ -465,12 +465,13 @@ static bool stream_send_part(httpd_req_t* req, const camera_fb_t& frame) {
   opentelemetry::trace::StartSpanOptions send_opts;
   send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
   auto span = esp_opentelemetry_tracer()->StartSpan(
-      "camera.frame.send", {{"camera.frame.size", static_cast<int64_t>(frame.len)}}, send_opts);
+      "camera.frame.send", {{"messaging.message.body.size", static_cast<int64_t>(frame.len)}},
+      send_opts);
   auto scope = opentelemetry::trace::Scope(span);
 
   char head[STREAM_PART_HEAD_SIZE];
   size_t head_len = stream_format_part_head(head, frame.len, tracing_headers());
-  span->SetAttribute("camera.part.size", static_cast<int64_t>(head_len + frame.len));
+  span->SetAttribute("messaging.message.envelope.size", static_cast<int64_t>(head_len + frame.len));
   esp_err_t err = head_len == 0 ? ESP_FAIL : httpd_resp_send_chunk(req, head, head_len);
   if (err == ESP_OK) {
     err = httpd_resp_send_chunk(req, reinterpret_cast<const char*>(frame.buf), frame.len);
