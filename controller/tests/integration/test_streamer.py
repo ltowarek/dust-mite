@@ -28,7 +28,7 @@ from controller.streamer import (
     server_handler,
 )
 from controller.subject import Subject
-from controller.websocket_client import ClientConnection
+from controller.websocket_client import WebSocketClient
 from controller.websocket_message import WebSocketMessage
 
 from .test_doubles import (
@@ -50,7 +50,7 @@ def _streamer(
     commands = Subject[WebSocketMessage]()
     car_camera = CarFeed(functools.partial(MjpegClient, camera.uri), relay_camera_part)
     car_telemetry = CarFeed(
-        functools.partial(ClientConnection, telemetry.uri, "r"),
+        functools.partial(WebSocketClient, telemetry.uri, "r"),
         relay_telemetry_message,
     )
     arbiter = CommandArbiter(commands, car_telemetry, CollisionMonitor())

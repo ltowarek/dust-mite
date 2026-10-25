@@ -9,7 +9,7 @@ from typing import Protocol
 
 from .subject import Subject
 from .tracing import inject_trace_context
-from .websocket_client import ClientConnection
+from .websocket_client import WebSocketClient
 from .websocket_message import WebSocketMessage
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ def send_commands_to_car(
     every driver's commands share it.
     """
     with (
-        ClientConnection(uri, "w") as connection,
+        WebSocketClient(uri, "w") as connection,
         commands.subscription(lambda command: connection.send(json.dumps(command))),
     ):
         yield

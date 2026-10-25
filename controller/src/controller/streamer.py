@@ -26,7 +26,7 @@ from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_frame
-from .websocket_client import ClientConnection
+from .websocket_client import WebSocketClient
 from .websocket_message import WebSocketMessage
 
 logging.basicConfig()
@@ -223,7 +223,7 @@ def main() -> None:
         functools.partial(MjpegClient, settings.camera_uri), relay_camera_part
     )
     telemetry = CarFeed(
-        functools.partial(ClientConnection, settings.telemetry_uri, "r"),
+        functools.partial(WebSocketClient, settings.telemetry_uri, "r"),
         relay_telemetry_message,
     )
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())

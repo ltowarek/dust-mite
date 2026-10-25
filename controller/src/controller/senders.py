@@ -19,7 +19,7 @@ tracer = trace.get_tracer(__name__)
 class _Connection(Protocol):
     """The subset of a `websockets` client connection the sender writes through.
 
-    A structural type rather than `ClientConnection` itself, so tests can
+    A structural type rather than `WebSocketClient` itself, so tests can
     pass a test double through `WebSocketCommandSender`'s `connect` argument
     instead of opening a live socket.
     """

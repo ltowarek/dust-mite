@@ -9,7 +9,7 @@ from controller.car import CarFeed, send_commands_to_car
 from controller.command import Command
 from controller.mjpeg import MjpegClient, Part
 from controller.subject import Subject
-from controller.websocket_client import ClientConnection
+from controller.websocket_client import WebSocketClient
 from controller.websocket_message import WebSocketMessage
 from tests.test_doubles import SubscriberSpy
 
@@ -87,7 +87,7 @@ def test_telemetry_feed_retries_while_the_car_refuses_as_busy() -> None:
     recorder = SubscriberSpy[WebSocketMessage]()
     stub = car_feed_stub(telemetry(CLEAR_DISTANCE_CM), process_request=refuse_first)
     with stub as car:
-        feed = CarFeed(functools.partial(ClientConnection, car.uri, "r"), json.loads)
+        feed = CarFeed(functools.partial(WebSocketClient, car.uri, "r"), json.loads)
         with feed.subscription(recorder):
             assert wait_for(lambda: bool(recorder.messages))
 
