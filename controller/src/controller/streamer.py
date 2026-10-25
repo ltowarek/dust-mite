@@ -31,12 +31,12 @@ from websockets.frames import CloseCode
 from .car import CarFeed, send_commands_to_car
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
-from .metrics import record_telemetry_received, record_viewer_frame_sent
+from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
 from .observability import ObservabilitySettings, configure_observability
 from .subject import Subject
 from .tracing import extract_trace_context, inject_trace_context
-from .vision import process_frame
+from .vision import process_camera_frame
 from .websocket_client import WebSocketClient
 from .websocket_message import WebSocketMessage
 
@@ -230,7 +230,7 @@ def _send_part(viewer: BaseHTTPRequestHandler, part: CameraStreamPart) -> None:
             format_part(CameraStreamPart(inject_trace_context({}), part.jpeg))
         )
         viewer.wfile.flush()
-    record_viewer_frame_sent()
+    record_viewer_camera_frame_sent()
 
 
 def relay_camera_part(part: CameraStreamPart) -> CameraStreamPart:
@@ -240,7 +240,9 @@ def relay_camera_part(part: CameraStreamPart) -> CameraStreamPart:
         "streamer.handle_camera_frame", context=car_context
     ) as span:
         span.set_attribute(NETWORK_PROTOCOL_NAME, "http")
-        return CameraStreamPart(inject_trace_context({}), process_frame(part.jpeg))
+        return CameraStreamPart(
+            inject_trace_context({}), process_camera_frame(part.jpeg)
+        )
 
 
 def relay_telemetry_message(raw: str | bytes) -> WebSocketMessage:

@@ -25,16 +25,16 @@ CAR_METRICS = [
     "dust_mite_gyroscope_x",
     "dust_mite_gyroscope_y",
     "dust_mite_gyroscope_z",
-    "dust_mite_frames_captured",
+    "dust_mite_camera_frames_captured",
     "dust_mite_camera_frame_size_bytes",
     "dust_mite_camera_frame_buffer_bytes",
-    "dust_mite_frames_sent",
+    "dust_mite_camera_frames_sent",
 ]
 STREAMER_METRICS = [
-    "dust_mite_frames_processed",
+    "dust_mite_camera_frames_processed",
     "dust_mite_telemetry_messages_received",
     "dust_mite_commands_sent",
-    "dust_mite_viewer_frames_sent",
+    "dust_mite_viewer_camera_frames_sent",
 ]
 
 

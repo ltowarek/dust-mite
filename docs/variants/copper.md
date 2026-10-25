@@ -111,7 +111,7 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 
 | Metric | Unit | Description |
 |---|---|---|
-| `dust_mite_frames_captured` | {frame} | Camera frames captured (counter) |
+| `dust_mite_camera_frames_captured` | {frame} | Camera frames captured (counter) |
 | `dust_mite_camera_frame_size_bytes` | By | Peak delivered JPEG frame size since last collection (gauge) |
 | `dust_mite_camera_frame_buffer_bytes` | By | JPEG frame-buffer capacity / drop limit (gauge) |
 
@@ -119,14 +119,14 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 
 | Metric | Unit | Description |
 |---|---|---|
-| `dust_mite_frames_sent` | {frame} | Camera frames sent on the Camera endpoint (counter) |
+| `dust_mite_camera_frames_sent` | {frame} | Camera frames sent on the Camera endpoint (counter) |
 
 **Controller package metrics** (emitted by [controller/src/controller/metrics.py](../../controller/src/controller/metrics.py)):
 
 | Metric | Unit | Description | Emitted by |
 |---|---|---|---|
-| `dust_mite_frames_processed` | {frame} | Camera frames processed (counter) | `dust-mite-streamer` |
-| `dust_mite_viewer_frames_sent` | {frame} | Camera frames sent to viewers, summed over viewers (counter); each `streamer.send_camera_frame` span carries the viewer's `client.address` | `dust-mite-streamer` |
+| `dust_mite_camera_frames_processed` | {frame} | Camera frames processed (counter) | `dust-mite-streamer` |
+| `dust_mite_viewer_camera_frames_sent` | {frame} | Camera frames sent to viewers, summed over viewers (counter); each `streamer.send_camera_frame` span carries the viewer's `client.address` | `dust-mite-streamer` |
 | `dust_mite_telemetry_messages_received` | {message} | Telemetry messages from the car (counter) | `dust-mite-streamer` |
 | `dust_mite_commands_sent` | {command} | Drive commands sent, attributed by `command.name` (counter) | `dust-mite-streamer`, `dust-mite-controller` |
 | `dust_mite_commands_blocked` | {command} | Drive commands the collision monitor replaced with `BRAKE`, attributed by the requested `command.name` (counter) | `dust-mite-streamer` |

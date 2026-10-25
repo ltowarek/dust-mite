@@ -11,7 +11,7 @@ CASES = [
     ("dust-mite-car", "ws.telemetry.send"),
     ("dust-mite-car", "ws.command.receive"),
     ("dust-mite-streamer", "streamer.handle_camera_frame"),
-    ("dust-mite-streamer", "streamer.process_frame"),
+    ("dust-mite-streamer", "streamer.process_camera_frame"),
     ("dust-mite-streamer", "streamer.handle_telemetry"),
     ("dust-mite-streamer", "streamer.handle_drive_command"),
     ("dust-mite-streamer", "streamer.send_camera_frame"),

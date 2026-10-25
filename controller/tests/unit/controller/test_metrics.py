@@ -5,11 +5,11 @@ from opentelemetry.sdk.resources import Resource
 from controller.command import Command
 from controller.metrics import (
     configure_metrics,
+    record_camera_frame_processed,
     record_command_blocked,
     record_command_sent,
-    record_frame,
     record_telemetry_received,
-    record_viewer_frame_sent,
+    record_viewer_camera_frame_sent,
 )
 
 from .conftest import counter_values_by_command
@@ -33,16 +33,16 @@ def _counter_value(reader: InMemoryMetricReader, name: str) -> int:
     return 0
 
 
-def test_record_frame(reader: InMemoryMetricReader) -> None:
+def test_record_camera_frame_processed(reader: InMemoryMetricReader) -> None:
     calls = 2
     for _ in range(calls):
-        record_frame()
-    assert _counter_value(reader, "dust_mite_frames_processed") == calls
+        record_camera_frame_processed()
+    assert _counter_value(reader, "dust_mite_camera_frames_processed") == calls
 
 
-def test_record_viewer_frame_sent(reader: InMemoryMetricReader) -> None:
-    record_viewer_frame_sent()
-    assert _counter_value(reader, "dust_mite_viewer_frames_sent") == 1
+def test_record_viewer_camera_frame_sent(reader: InMemoryMetricReader) -> None:
+    record_viewer_camera_frame_sent()
+    assert _counter_value(reader, "dust_mite_viewer_camera_frames_sent") == 1
 
 
 def test_record_telemetry_received(reader: InMemoryMetricReader) -> None:
