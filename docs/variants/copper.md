@@ -94,6 +94,8 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | `dust_mite_task_priority` | 1 | Current FreeRTOS priority per task; `task` and `core` attributes identify each series |
 | `dust_mite_task_stack_min_free_bytes` | By | Minimum free stack per task since the task started; `task` and `core` attributes identify each series |
 
+`dust_mite_largest_free_block_bytes` and the three `dust_mite_task_*` metrics are off by default. [car/sdkconfig.defaults.debug](../../car/sdkconfig.defaults.debug) enables them through `CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED` and `CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED`.
+
 [car/components/telemetry/telemetry_metrics.cpp](../../car/components/telemetry/telemetry_metrics.cpp) — sensor readings:
 
 | Metric | Unit | Description |
