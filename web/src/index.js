@@ -76,7 +76,7 @@ function openStreamerSocket(url, elements) {
         attributes: {
           "network.protocol.name": "websocket",
           "ws.message.type": message.type,
-          "ws.message.size": event.data.length,
+          "messaging.message.body.size": event.data.length,
         },
       },
       extractedContext,

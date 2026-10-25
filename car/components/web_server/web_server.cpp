@@ -286,7 +286,7 @@ static esp_err_t drive_handler(httpd_req_t* req) {
     auto span = esp_opentelemetry_tracer()->StartSpan(
         "ws.command.receive",
         {{"ws.message.type", "command"},
-         {"ws.message.size", static_cast<int64_t>(ws_pkt.len)},
+         {"messaging.message.body.size", static_cast<int64_t>(ws_pkt.len)},
          {"command.name", static_cast<int64_t>(drive_command.command)},
          {"command.value", static_cast<int64_t>(drive_command.value)}},
         start_opts);
@@ -307,7 +307,7 @@ static esp_err_t drive_handler(httpd_req_t* req) {
     ESP_LOGW(TAG, "Failed to parse JSON: %s", ws_pkt.payload);
     auto span = esp_opentelemetry_tracer()->StartSpan("ws.command.receive");
     span->SetStatus(opentelemetry::trace::StatusCode::kError, "json parse failed");
-    span->SetAttribute("ws.message.size", static_cast<int64_t>(ws_pkt.len));
+    span->SetAttribute("messaging.message.body.size", static_cast<int64_t>(ws_pkt.len));
     ws_set_connection_attributes(*span, *endpoint, connection);
     span->End();
   }
@@ -611,7 +611,7 @@ void ws_telemetry_task(void* p) {
     char* message_json_str = cJSON_PrintUnformatted(message_json);
     cJSON_Delete(message_json);
     size_t payload_len = strlen(message_json_str);
-    send_span->SetAttribute("ws.message.size", static_cast<int64_t>(payload_len));
+    send_span->SetAttribute("messaging.message.body.size", static_cast<int64_t>(payload_len));
 
     uint32_t seq = 0;
     esp_err_t ret = ws_queue_send(g_telemetry, connection, message_json_str, payload_len, &seq);
