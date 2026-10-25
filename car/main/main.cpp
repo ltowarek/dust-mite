@@ -15,6 +15,7 @@
 #include "system_metrics.hpp"
 #include "wifi.hpp"
 #include "esp_git_ref.hpp"
+#include "opentelemetry/semconv/incubating/vcs_attributes.h"
 #include <memory>
 
 #include "esp_opentelemetry.hpp"
@@ -27,8 +28,8 @@ static opentelemetry::sdk::resource::ResourceAttributes otel_resource_attributes
   const char* repository = CONFIG_ESP_OPENTELEMETRY_SERVICE_REPOSITORY;
   const char* git_ref = esp_opentelemetry::current_git_ref();
   if (repository[0] != '\0' && git_ref[0] != '\0') {
-    attrs.SetAttribute("vcs.repository.url.full", repository);
-    attrs.SetAttribute("vcs.ref.head.revision", git_ref);
+    attrs.SetAttribute(opentelemetry::semconv::vcs::kVcsRepositoryUrlFull, repository);
+    attrs.SetAttribute(opentelemetry::semconv::vcs::kVcsRefHeadRevision, git_ref);
   }
   return attrs;
 }

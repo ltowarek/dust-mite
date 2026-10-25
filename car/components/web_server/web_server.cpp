@@ -26,10 +26,18 @@
 #include "opentelemetry/trace/span_startoptions.h"
 #include "web_server_metrics.hpp"
 #include "socket_address.hpp"
+#include "opentelemetry/semconv/client_attributes.h"
+#include "opentelemetry/semconv/http_attributes.h"
+#include "opentelemetry/semconv/incubating/messaging_attributes.h"
+#include "opentelemetry/semconv/network_attributes.h"
+#include "opentelemetry/semconv/server_attributes.h"
+#include "opentelemetry/semconv/url_attributes.h"
 #include <cJSON.h>
 #include "opentelemetry/trace/context.h"
 
 static const char* TAG = "web_server";
+
+namespace semconv = opentelemetry::semconv;
 
 static EventGroupHandle_t s_web_server_events;
 #define WEB_SERVER_SERVING_BIT BIT0
@@ -148,14 +156,15 @@ static void ws_close_session(httpd_handle_t hd, int sockfd) {
 static void ws_set_connection_attributes(opentelemetry::trace::Span& span,
                                          const ws_endpoint_t& endpoint,
                                          const ws_connection_t& connection) {
-  span.SetAttribute("server.address", connection.server.host);
-  span.SetAttribute("server.port", static_cast<int64_t>(connection.server.port));
-  span.SetAttribute("client.address", connection.client.host);
-  span.SetAttribute("client.port", static_cast<int64_t>(connection.client.port));
-  span.SetAttribute("url.scheme", "ws");
-  span.SetAttribute("url.path", endpoint.http.path);
-  span.SetAttribute("network.transport", "tcp");
-  span.SetAttribute("network.protocol.name", "websocket");
+  span.SetAttribute(semconv::server::kServerAddress, connection.server.host);
+  span.SetAttribute(semconv::server::kServerPort, static_cast<int64_t>(connection.server.port));
+  span.SetAttribute(semconv::client::kClientAddress, connection.client.host);
+  span.SetAttribute(semconv::client::kClientPort, static_cast<int64_t>(connection.client.port));
+  span.SetAttribute(semconv::url::kUrlScheme, "ws");
+  span.SetAttribute(semconv::url::kUrlPath, endpoint.http.path);
+  span.SetAttribute(semconv::network::kNetworkTransport,
+                    semconv::network::NetworkTransportValues::kTcp);
+  span.SetAttribute(semconv::network::kNetworkProtocolName, "websocket");
 }
 
 static bool ws_wait_for_item(const ws_endpoint_t& endpoint, const ws_connection_t& connection,
@@ -286,7 +295,7 @@ static esp_err_t drive_handler(httpd_req_t* req) {
     auto span = esp_opentelemetry_tracer()->StartSpan(
         "ws.command.receive",
         {{"ws.message.type", "command"},
-         {"messaging.message.body.size", static_cast<int64_t>(ws_pkt.len)},
+         {semconv::messaging::kMessagingMessageBodySize, static_cast<int64_t>(ws_pkt.len)},
          {"command.name", static_cast<int64_t>(drive_command.command)},
          {"command.value", static_cast<int64_t>(drive_command.value)}},
         start_opts);
@@ -307,7 +316,8 @@ static esp_err_t drive_handler(httpd_req_t* req) {
     ESP_LOGW(TAG, "Failed to parse JSON: %s", ws_pkt.payload);
     auto span = esp_opentelemetry_tracer()->StartSpan("ws.command.receive");
     span->SetStatus(opentelemetry::trace::StatusCode::kError, "json parse failed");
-    span->SetAttribute("messaging.message.body.size", static_cast<int64_t>(ws_pkt.len));
+    span->SetAttribute(semconv::messaging::kMessagingMessageBodySize,
+                       static_cast<int64_t>(ws_pkt.len));
     ws_set_connection_attributes(*span, *endpoint, connection);
     span->End();
   }
@@ -414,17 +424,19 @@ static void stream_set_request_attributes(opentelemetry::trace::Span& span, int 
   socket_address_t client = {};
   ws_read_address(getsockname, fd, &server);
   ws_read_address(getpeername, fd, &client);
-  span.SetAttribute("http.request.method", "GET");
-  span.SetAttribute("http.route", g_camera.path);
-  span.SetAttribute("url.path", g_camera.path);
-  span.SetAttribute("url.scheme", "http");
-  span.SetAttribute("server.address", server.host);
-  span.SetAttribute("server.port", static_cast<int64_t>(server.port));
-  span.SetAttribute("client.address", client.host);
-  span.SetAttribute("client.port", static_cast<int64_t>(client.port));
-  span.SetAttribute("network.transport", "tcp");
-  span.SetAttribute("network.protocol.name", "http");
-  span.SetAttribute("network.protocol.version", "1.1");
+  span.SetAttribute(semconv::http::kHttpRequestMethod,
+                    semconv::http::HttpRequestMethodValues::kGet);
+  span.SetAttribute(semconv::http::kHttpRoute, g_camera.path);
+  span.SetAttribute(semconv::url::kUrlPath, g_camera.path);
+  span.SetAttribute(semconv::url::kUrlScheme, "http");
+  span.SetAttribute(semconv::server::kServerAddress, server.host);
+  span.SetAttribute(semconv::server::kServerPort, static_cast<int64_t>(server.port));
+  span.SetAttribute(semconv::client::kClientAddress, client.host);
+  span.SetAttribute(semconv::client::kClientPort, static_cast<int64_t>(client.port));
+  span.SetAttribute(semconv::network::kNetworkTransport,
+                    semconv::network::NetworkTransportValues::kTcp);
+  span.SetAttribute(semconv::network::kNetworkProtocolName, "http");
+  span.SetAttribute(semconv::network::kNetworkProtocolVersion, "1.1");
 }
 
 // Returns the head's length, or 0 when it does not fit, as the esp32-camera stream example checks.
@@ -465,13 +477,15 @@ static bool stream_send_part(httpd_req_t* req, const camera_fb_t& frame) {
   opentelemetry::trace::StartSpanOptions send_opts;
   send_opts.kind = opentelemetry::trace::SpanKind::kProducer;
   auto span = esp_opentelemetry_tracer()->StartSpan(
-      "camera.frame.send", {{"messaging.message.body.size", static_cast<int64_t>(frame.len)}},
+      "camera.frame.send",
+      {{semconv::messaging::kMessagingMessageBodySize, static_cast<int64_t>(frame.len)}},
       send_opts);
   auto scope = opentelemetry::trace::Scope(span);
 
   char head[STREAM_PART_HEAD_SIZE];
   size_t head_len = stream_format_part_head(head, frame.len, tracing_headers());
-  span->SetAttribute("messaging.message.envelope.size", static_cast<int64_t>(head_len + frame.len));
+  span->SetAttribute(semconv::messaging::kMessagingMessageEnvelopeSize,
+                     static_cast<int64_t>(head_len + frame.len));
   esp_err_t err = head_len == 0 ? ESP_FAIL : httpd_resp_send_chunk(req, head, head_len);
   if (err == ESP_OK) {
     err = httpd_resp_send_chunk(req, reinterpret_cast<const char*>(frame.buf), frame.len);
@@ -489,7 +503,7 @@ static void stream_serve(httpd_req_t* req) {
   auto request_span = esp_opentelemetry_tracer()->StartSpan("GET /stream", request_opts);
   auto request_scope = opentelemetry::trace::Scope(request_span);
   stream_set_request_attributes(*request_span, httpd_req_to_sockfd(req));
-  request_span->SetAttribute("http.response.status_code", static_cast<int64_t>(200));
+  request_span->SetAttribute(semconv::http::kHttpResponseStatusCode, static_cast<int64_t>(200));
   httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
 
   camera_start();
@@ -611,7 +625,8 @@ void ws_telemetry_task(void* p) {
     char* message_json_str = cJSON_PrintUnformatted(message_json);
     cJSON_Delete(message_json);
     size_t payload_len = strlen(message_json_str);
-    send_span->SetAttribute("messaging.message.body.size", static_cast<int64_t>(payload_len));
+    send_span->SetAttribute(semconv::messaging::kMessagingMessageBodySize,
+                            static_cast<int64_t>(payload_len));
 
     uint32_t seq = 0;
     esp_err_t ret = ws_queue_send(g_telemetry, connection, message_json_str, payload_len, &seq);
