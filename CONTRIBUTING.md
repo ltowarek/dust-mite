@@ -466,7 +466,9 @@ To profile a run:
 
 Every span (not just the root span of a trace) is stamped with a `pyroscope.profile.id`
 attribute, so any streamer span in Tempo's trace view can show a **Profiles for this span**
-flame graph scoped to exactly that span's duration — including nested spans.
+flame graph scoped to exactly that span's duration — including nested spans. On an asyncio event
+loop, a sample is linked to the span of the task the loop was running; a sample taken during a plain
+loop callback, outside any task, is not linked to a span.
 
 Same sample-rate physics as the firmware: at 100 Hz a span of only a few milliseconds will catch
 zero or one sample. Per-span flame graphs are meaningful for spans of tens of milliseconds or
