@@ -10,7 +10,7 @@ import os
 import select
 import socket
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
 from typing import Any, Self, cast, override
@@ -158,6 +158,7 @@ def _send_until_closed(
 
 CAMERA_PATH = "/camera"
 DEFAULT_CAMERA_PORT = 8766
+DEFAULT_WEBSOCKET_PORT = 8765
 
 
 class CameraServer(ThreadingHTTPServer):
@@ -228,16 +229,20 @@ def _send_part(viewer: BaseHTTPRequestHandler, part: CameraStreamPart) -> None:
     record_viewer_camera_frame_sent()
 
 
-def relay_camera_part(part: CameraStreamPart) -> CameraStreamPart:
+# Turns one Camera frame, a JPEG, into the one viewers see.
+type CameraFrameProcessor = Callable[[bytes], bytes]
+
+
+def relay_camera_part(
+    part: CameraStreamPart, process: CameraFrameProcessor = process_camera_frame
+) -> CameraStreamPart:
     """Turn one Camera stream part from the car into a processed one for viewers."""
     car_context = extract_trace_context(part.headers)
     with tracer.start_as_current_span(
         "streamer.handle_camera_frame", context=car_context
     ) as span:
         span.set_attribute(NETWORK_PROTOCOL_NAME, "http")
-        return CameraStreamPart(
-            inject_trace_context({}), process_camera_frame(part.jpeg)
-        )
+        return CameraStreamPart(inject_trace_context({}), process(part.jpeg))
 
 
 def relay_telemetry_message(raw: str | bytes) -> WebSocketMessage:
@@ -261,6 +266,8 @@ class StreamerSettings:
     drive_uri: str
     camera_port: int
     observability: ObservabilitySettings
+    listen_host: str = "0.0.0.0"  # noqa: S104 - intentional, streamer must accept connections from all interfaces
+    websocket_port: int = DEFAULT_WEBSOCKET_PORT
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> Self:
@@ -282,13 +289,24 @@ def prepare_telemetry_message(telemetry: dict[str, Any]) -> WebSocketMessage:
     return inject_trace_context(message)
 
 
-def main() -> None:
-    """Run the main entry point."""
-    settings = StreamerSettings.from_env(os.environ)
-    configure_observability("dust-mite-streamer", settings.observability)
+@dataclasses.dataclass(frozen=True)
+class StreamerEndpoints:
+    """The URL of each Streamer endpoint, at the address its server is bound to."""
+
+    drive: str
+    telemetry: str
+    camera: str
+
+
+@contextlib.contextmanager
+def serve_streamer(
+    settings: StreamerSettings, process: CameraFrameProcessor = process_camera_frame
+) -> Iterator[StreamerEndpoints]:
+    """Serve the Streamer endpoints while the context is open; port 0 binds any."""
     commands: Subject[WebSocketMessage] = Subject()
     camera = CarFeed(
-        functools.partial(MjpegClient, settings.camera_uri), relay_camera_part
+        functools.partial(MjpegClient, settings.camera_uri),
+        functools.partial(relay_camera_part, process=process),
     )
     telemetry = CarFeed(
         functools.partial(WebSocketClient, settings.telemetry_uri, "r"),
@@ -296,24 +314,47 @@ def main() -> None:
     )
     arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
     handler = functools.partial(server_handler, telemetry, arbiter)
+    with (
+        send_commands_to_car(settings.drive_uri, commands),
+        CameraServer(
+            (settings.listen_host, settings.camera_port), camera
+        ) as camera_server,
+        websockets.sync.server.serve(
+            handler, settings.listen_host, settings.websocket_port
+        ) as websocket_server,
+    ):
+        threads = [
+            threading.Thread(target=camera_server.serve_forever),
+            threading.Thread(target=websocket_server.serve_forever),
+        ]
+        for thread in threads:
+            thread.start()
+        websocket_host, websocket_port = websocket_server.socket.getsockname()[:2]
+        camera_host, camera_port = camera_server.server_address[:2]
+        try:
+            yield StreamerEndpoints(
+                drive=f"ws://{websocket_host}:{websocket_port}{DRIVE_PATH}",
+                telemetry=f"ws://{websocket_host}:{websocket_port}{TELEMETRY_PATH}",
+                camera=f"http://{camera_host!s}:{camera_port}{CAMERA_PATH}",
+            )
+        finally:
+            camera_server.shutdown()
+            websocket_server.shutdown()
+            for thread in threads:
+                thread.join()
+
+
+def main() -> None:
+    """Run the main entry point."""
+    settings = StreamerSettings.from_env(os.environ)
+    configure_observability("dust-mite-streamer", settings.observability)
     try:
-        with (
-            send_commands_to_car(settings.drive_uri, commands),
-            CameraServer(("0.0.0.0", settings.camera_port), camera) as viewers,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
-            websockets.sync.server.serve(handler, "0.0.0.0", 8765) as server,  # noqa: S104 - intentional, streamer must accept connections from all interfaces
-        ):
-            viewers_thread = threading.Thread(target=viewers.serve_forever)
-            viewers_thread.start()
+        with serve_streamer(settings):
             logger.info("Starting server")
-            try:
-                server.serve_forever()
-            finally:
-                viewers.shutdown()
-                viewers_thread.join()
+            threading.Event().wait()
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
     logger.info("Shutting down server")
-    server.shutdown()
 
 
 if __name__ == "__main__":
