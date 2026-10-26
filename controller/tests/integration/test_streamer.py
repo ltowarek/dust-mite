@@ -37,18 +37,7 @@ from .waiting import WAIT_TIMEOUT_S, wait_for
 _SPEED = 50
 # Drive commands on the wire, as the web page sends them.
 _ADVANCE = 1
-_TURN_LEFT = 4
-_TRY_AGAIN_LATER = 1013
-_DRIVER_ALREADY_CONNECTED = "another driver is connected"
 _CLIENTS_THAT_COME_AND_GO = 3
-# Every hop waits 1 s before reconnecting to the car.
-_LONGER_THAN_A_RECONNECT_S = 2.0
-# Large enough that a Viewer that stops reading fills its socket buffers.
-_LARGE_FRAME_PADDING = bytes(1_000_000)
-_SMALL_RECEIVE_BUFFER = 4096
-_WARM_UP_PARTS = 10
-_READING_WINDOW_S = 2.0
-_MIN_PARTS_IN_WINDOW = 10
 
 
 @contextlib.contextmanager
@@ -110,9 +99,10 @@ def _viewer(url: str) -> Iterator[_Viewer]:
 @contextlib.contextmanager
 def _viewer_that_stops_reading(url: str) -> Iterator[None]:
     parts = urllib.parse.urlsplit(url)
+    small_receive_buffer = 4096
     with socket.socket() as viewer:
         # Set before connecting, so the advertised window stays small.
-        viewer.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _SMALL_RECEIVE_BUFFER)
+        viewer.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, small_receive_buffer)
         viewer.connect((parts.hostname or "", parts.port or 0))
         viewer.sendall(
             f"GET {parts.path} HTTP/1.1\r\nHost: {parts.netloc}\r\n\r\n".encode()
@@ -199,6 +189,7 @@ def test_forwards_drive_commands_to_the_car(
 def test_refuses_a_second_driver(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
+    try_again_later = 1013
     with websockets.sync.client.connect(streamer.drive) as first:
         _send_command(first, _ADVANCE)
         wait_for(lambda: bool(car_control.received))
@@ -209,7 +200,7 @@ def test_refuses_a_second_driver(
         ):
             second.recv(timeout=WAIT_TIMEOUT_S)
 
-    assert closed.value.rcvd == Close(_TRY_AGAIN_LATER, _DRIVER_ALREADY_CONNECTED)
+    assert closed.value.rcvd == Close(try_again_later, "another driver is connected")
 
 
 def test_closes_a_connection_to_an_unknown_path(streamer: StreamerEndpoints) -> None:
@@ -224,11 +215,12 @@ def test_closes_a_connection_to_an_unknown_path(streamer: StreamerEndpoints) -> 
 def test_the_controller_cli_drives_through_the_streamer(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
+    turn_left = 4
     with WebSocketCommandSender(streamer.drive) as sender:
         sender.send(Command.TURN_LEFT, _SPEED)
         wait_for(lambda: bool(car_control.received))
 
-    assert car_control.received[0]["command"] == _TURN_LEFT
+    assert car_control.received[0]["command"] == turn_left
 
 
 def test_streams_telemetry(streamer: StreamerEndpoints) -> None:
@@ -301,6 +293,8 @@ def test_releases_the_cars_camera_endpoint_after_the_last_viewer_leaves(
 def test_the_last_viewer_leaving_a_stalled_camera_stream_releases_the_car(
     telemetry_feed: CarEndpointSpy, car_control: CarEndpointSpy
 ) -> None:
+    # Every hop waits 1 s before reconnecting to the car.
+    longer_than_a_reconnect_s = 2.0
     with (
         car_camera_stub(stalled=True) as camera,
         _streamer(camera, telemetry_feed, car_control) as streamer,
@@ -308,7 +302,7 @@ def test_the_last_viewer_leaving_a_stalled_camera_stream_releases_the_car(
         with _viewer(streamer.camera):
             wait_for(lambda: camera.open_connections == 1)
         wait_for(lambda: camera.open_connections == 0)
-        time.sleep(_LONGER_THAN_A_RECONNECT_S)
+        time.sleep(longer_than_a_reconnect_s)
 
         assert camera.open_connections == 0
 
@@ -353,17 +347,22 @@ def test_a_viewer_that_stops_reading_does_not_stall_another(
     telemetry_feed: CarEndpointSpy,
     car_control: CarEndpointSpy,
 ) -> None:
+    # Large enough that a Viewer that stops reading fills its socket buffers.
+    padding = bytes(1_000_000)
+    warm_up_parts = 10
+    reading_window_s = 2.0
+    min_parts_in_window = 10
     with (
         _streamer(
             camera_feed,
             telemetry_feed,
             car_control,
-            process_camera_frame=lambda jpeg: jpeg + _LARGE_FRAME_PADDING,
+            process_camera_frame=lambda jpeg: jpeg + padding,
         ) as streamer,
         _viewer_that_stops_reading(streamer.camera),
         _viewer(streamer.camera) as viewer,
     ):
-        for _ in range(_WARM_UP_PARTS):
+        for _ in range(warm_up_parts):
             read_mjpeg_part(viewer.response)
 
-        assert _parts_within(viewer, _READING_WINDOW_S) >= _MIN_PARTS_IN_WINDOW
+        assert _parts_within(viewer, reading_window_s) >= min_parts_in_window
