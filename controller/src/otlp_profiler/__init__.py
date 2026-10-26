@@ -33,10 +33,10 @@ def configure(
     `resource` to `endpoint`, the full OTLP/HTTP profiles URL, and -- if a real
     `TracerProvider` is the current global tracer provider -- attaches a
     `SpanProcessor` that stamps every span with a `pyroscope.profile.id`
-    attribute and tags samples with whichever span is active on their
-    thread. Call it once per process, after the global tracer provider is
-    set, as with the other signals' configure functions. Returns the running
-    sampler, which samples until its `stop()` is called.
+    attribute and tags samples with whichever span is active in the asyncio
+    task or thread they ran. Call it once per process, after the global tracer
+    provider is set, as with the other signals' configure functions. Returns
+    the running sampler, which samples until its `stop()` is called.
     """
     aggregator = Aggregator()
     span_registry = ActiveSpanRegistry()

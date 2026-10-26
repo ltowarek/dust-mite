@@ -93,6 +93,23 @@ def traceql_query(service_name: str, span_name: str) -> dict[str, Any]:
     }
 
 
+def traceql_spans_query(service_name: str, span_name: str) -> dict[str, Any]:
+    """Build a TraceQL lookup like `traceql_query`, returning one row per span."""
+    return {**traceql_query(service_name, span_name), "tableType": "spans"}
+
+
+def span_ids(result: dict[str, Any]) -> list[str]:
+    """Return the hex span IDs in a `traceql_spans_query` result."""
+    ids: list[str] = []
+    for frame in result.get("frames", []):
+        fields = frame.get("schema", {}).get("fields", [])
+        values = frame.get("data", {}).get("values", [])
+        column = next((i for i, f in enumerate(fields) if f["name"] == "spanID"), None)
+        if column is not None and values:
+            ids.extend(cast("list[str]", values[column]))
+    return ids
+
+
 def logql_query(service_name: str, log_body: str) -> dict[str, Any]:
     """Build the `/api/ds/query` payload fields for a LogQL lookup."""
     return {

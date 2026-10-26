@@ -2,7 +2,8 @@
 
 Periodically snapshots every live thread's Python call stack via
 `sys._current_frames()` and hands each sample to an `Aggregator`, tagged with
-the sampled thread's name and (if any) currently active span id.
+the sampled thread's name and (if any) the span active in the task or thread
+it was running.
 
 Samples are filtered to threads Linux reports as `R` (running) when their
 `/proc/<tid>/stat` is read via `linux_thread_state.is_running` -- a few
@@ -109,6 +110,11 @@ class Sampler:
 
     def _sample_once(self) -> None:
         frames = sys._current_frames()  # noqa: SLF001 - the only stdlib API that returns other threads' frames
+        # Spans first: the /proc reads below release the GIL, so tasks can switch.
+        span_contexts = {
+            thread_id: self._span_registry.current_span_context(thread_id)
+            for thread_id in frames
+        }
         if not frames.keys() <= self._thread_info.keys():
             self._rebuild_thread_info()
 
@@ -126,5 +132,4 @@ class Sampler:
             if not linux_thread_state.is_running(native_id):
                 continue
             stack = walk_stack(frame)
-            span_context = self._span_registry.current_span_context(thread_id)
-            self._aggregator.add_sample(stack, thread_name, span_context)
+            self._aggregator.add_sample(stack, thread_name, span_contexts[thread_id])
