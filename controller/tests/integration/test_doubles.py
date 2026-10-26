@@ -7,6 +7,7 @@ that records its connections and the commands it receives.
 import contextlib
 import dataclasses
 import http
+import http.client
 import json
 import threading
 import time
@@ -95,6 +96,25 @@ def car_endpoint_spy(
         host, port = server.socket.getsockname()[:2]
         endpoint = CarEndpointSpy(f"ws://{host}:{port}")
         yield endpoint
+
+
+def busy_refusals(refusals: int) -> ProcessRequest:
+    """Answer the first `refusals` handshakes as busy, as a car Endpoint in use does."""
+    lock = threading.Lock()
+    left = refusals
+
+    def refuse(
+        connection: websockets.sync.server.ServerConnection,
+        _: websockets.http11.Request,
+    ) -> websockets.http11.Response | None:
+        nonlocal left
+        with lock:
+            left -= 1
+            if left >= 0:
+                return connection.respond(http.HTTPStatus.SERVICE_UNAVAILABLE, "")
+        return None
+
+    return refuse
 
 
 def car_feed_stub(
@@ -187,6 +207,32 @@ def car_camera_stub(
         finally:
             server.shutdown()
             thread.join()
+
+
+@dataclasses.dataclass(frozen=True)
+class MjpegPart:
+    """One MJPEG stream part: its headers, keyed by lowercase name, and its JPEG."""
+
+    headers: dict[str, str]
+    jpeg: bytes
+
+
+def read_mjpeg_part(stream: http.client.HTTPResponse) -> MjpegPart:
+    """Read the next part of `stream`, raising `EOFError` if it ends before one."""
+    line = stream.readline()
+    while line.strip() != b"--frame":
+        if not line:
+            raise EOFError
+        line = stream.readline()
+    headers: dict[str, str] = {}
+    while line := stream.readline().strip():
+        name, _, value = line.decode("latin-1").partition(":")
+        headers[name.strip().lower()] = value.strip()
+    length = int(headers["content-length"])
+    jpeg = stream.read(length)
+    if len(jpeg) < length:
+        raise EOFError
+    return MjpegPart(headers, jpeg)
 
 
 def telemetry(distance_ahead: int) -> Callable[[], dict[str, Any]]:
