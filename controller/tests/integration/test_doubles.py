@@ -98,23 +98,33 @@ def car_endpoint_spy(
         yield endpoint
 
 
-def busy_refusals(refusals: int) -> ProcessRequest:
-    """Answer the first `refusals` handshakes as busy, as a car Endpoint in use does."""
+def _refusal_counter(refusals: int) -> Callable[[], bool]:
+    """Return whether to refuse the next request: true for the first `refusals`."""
     lock = threading.Lock()
     left = refusals
 
-    def refuse(
-        connection: websockets.sync.server.ServerConnection,
-        _: websockets.http11.Request,
-    ) -> websockets.http11.Response | None:
+    def refuse() -> bool:
         nonlocal left
         with lock:
             left -= 1
-            if left >= 0:
-                return connection.respond(http.HTTPStatus.SERVICE_UNAVAILABLE, "")
-        return None
+            return left >= 0
 
     return refuse
+
+
+def busy_refusals(refusals: int) -> ProcessRequest:
+    """Answer the first `refusals` handshakes as busy, as a car Endpoint in use does."""
+    refuse = _refusal_counter(refusals)
+
+    def respond(
+        connection: websockets.sync.server.ServerConnection,
+        _: websockets.http11.Request,
+    ) -> websockets.http11.Response | None:
+        if refuse():
+            return connection.respond(http.HTTPStatus.SERVICE_UNAVAILABLE, "")
+        return None
+
+    return respond
 
 
 def car_feed_stub(
@@ -164,14 +174,7 @@ def car_camera_stub(
     A `stalled` endpoint sends no parts until the client hangs up.
     """
     endpoint: CarEndpointSpy
-    lock = threading.Lock()
-    left = refusals
-
-    def refuse() -> bool:
-        nonlocal left
-        with lock:
-            left -= 1
-            return left >= 0
+    refuse = _refusal_counter(refusals)
 
     class CameraHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -224,10 +227,8 @@ def read_mjpeg_part(stream: http.client.HTTPResponse) -> MjpegPart:
         if not line:
             raise EOFError
         line = stream.readline()
-    headers: dict[str, str] = {}
-    while line := stream.readline().strip():
-        name, _, value = line.decode("latin-1").partition(":")
-        headers[name.strip().lower()] = value.strip()
+    message = http.client.parse_headers(stream)
+    headers = {name.lower(): value for name, value in message.items()}
     length = int(headers["content-length"])
     jpeg = stream.read(length)
     if len(jpeg) < length:

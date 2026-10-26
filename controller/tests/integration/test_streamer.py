@@ -18,7 +18,7 @@ from websockets.frames import Close
 
 from controller.command import Command
 from controller.senders import WebSocketCommandSender
-from controller.streamer import StreamerSettings, serve_streamer
+from controller.streamer import StreamerEndpoints, StreamerSettings, serve_streamer
 
 from .test_doubles import (
     CAR_TRACEPARENT,
@@ -51,20 +51,13 @@ _READING_WINDOW_S = 2.0
 _MIN_PARTS_IN_WINDOW = 10
 
 
-@dataclasses.dataclass(frozen=True)
-class _StreamerUrls:
-    drive: str
-    telemetry: str
-    camera: str
-
-
 @contextlib.contextmanager
 def _streamer(
     camera: CarEndpointSpy,
     telemetry: CarEndpointSpy,
     control: CarEndpointSpy,
     process_camera_frame: Callable[[bytes], bytes] | None = None,
-) -> Iterator[_StreamerUrls]:
+) -> Iterator[StreamerEndpoints]:
     settings = dataclasses.replace(
         StreamerSettings.from_env(
             {
@@ -80,14 +73,8 @@ def _streamer(
     processor = (
         {} if process_camera_frame is None else {"process": process_camera_frame}
     )
-    with serve_streamer(settings, **processor) as addresses:
-        ws_host, ws_port = addresses.websocket
-        camera_host, camera_port = addresses.camera
-        yield _StreamerUrls(
-            drive=f"ws://{ws_host}:{ws_port}/drive",
-            telemetry=f"ws://{ws_host}:{ws_port}/telemetry",
-            camera=f"http://{camera_host}:{camera_port}/camera",
-        )
+    with serve_streamer(settings, **processor) as endpoints:
+        yield endpoints
 
 
 @pytest.fixture
@@ -95,9 +82,9 @@ def streamer(
     camera_feed: CarEndpointSpy,
     telemetry_feed: CarEndpointSpy,
     car_control: CarEndpointSpy,
-) -> Iterator[_StreamerUrls]:
-    with _streamer(camera_feed, telemetry_feed, car_control) as urls:
-        yield urls
+) -> Iterator[StreamerEndpoints]:
+    with _streamer(camera_feed, telemetry_feed, car_control) as endpoints:
+        yield endpoints
 
 
 @dataclasses.dataclass(frozen=True)
@@ -177,13 +164,27 @@ def _send_command(
     websocket.send(json.dumps({"command": command, "value": _SPEED}))
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "path"),
+    [
+        pytest.param("drive", "/drive", id="drive"),
+        pytest.param("telemetry", "/telemetry", id="telemetry"),
+        pytest.param("camera", "/camera", id="camera"),
+    ],
+)
+def test_serves_each_streamer_endpoint_on_its_path(
+    streamer: StreamerEndpoints, endpoint: str, path: str
+) -> None:
+    assert urllib.parse.urlsplit(getattr(streamer, endpoint)).path == path
+
+
 @pytest.mark.usefixtures("streamer")
 def test_opens_the_cars_drive_endpoint_at_once(car_control: CarEndpointSpy) -> None:
     assert wait_for(lambda: car_control.open_connections == 1)
 
 
 def test_forwards_drive_commands_to_the_car(
-    streamer: _StreamerUrls, car_control: CarEndpointSpy
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     with websockets.sync.client.connect(streamer.drive) as driver:
         _send_command(driver, _ADVANCE)
@@ -196,7 +197,7 @@ def test_forwards_drive_commands_to_the_car(
 
 
 def test_refuses_a_second_driver(
-    streamer: _StreamerUrls, car_control: CarEndpointSpy
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     with websockets.sync.client.connect(streamer.drive) as first:
         _send_command(first, _ADVANCE)
@@ -211,7 +212,7 @@ def test_refuses_a_second_driver(
     assert closed.value.rcvd == Close(_TRY_AGAIN_LATER, _DRIVER_ALREADY_CONNECTED)
 
 
-def test_closes_a_connection_to_an_unknown_path(streamer: _StreamerUrls) -> None:
+def test_closes_a_connection_to_an_unknown_path(streamer: StreamerEndpoints) -> None:
     unknown = urllib.parse.urljoin(streamer.drive, "/")
     with (
         websockets.sync.client.connect(unknown) as client,
@@ -221,7 +222,7 @@ def test_closes_a_connection_to_an_unknown_path(streamer: _StreamerUrls) -> None
 
 
 def test_the_controller_cli_drives_through_the_streamer(
-    streamer: _StreamerUrls, car_control: CarEndpointSpy
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     with WebSocketCommandSender(streamer.drive) as sender:
         sender.send(Command.TURN_LEFT, _SPEED)
@@ -230,7 +231,7 @@ def test_the_controller_cli_drives_through_the_streamer(
     assert car_control.received[0]["command"] == _TURN_LEFT
 
 
-def test_streams_telemetry(streamer: _StreamerUrls) -> None:
+def test_streams_telemetry(streamer: StreamerEndpoints) -> None:
     with websockets.sync.client.connect(streamer.telemetry) as client:
         assert "telemetry" in _receive_types(client, {"telemetry"})
 
@@ -262,17 +263,19 @@ def test_keeps_retrying_while_the_cars_telemetry_endpoint_is_busy(
         assert "telemetry" in _receive_types(client, {"telemetry"})
 
 
-def test_camera_stream_parts_carry_a_jpeg(streamer: _StreamerUrls) -> None:
+def test_camera_stream_parts_carry_a_jpeg(streamer: StreamerEndpoints) -> None:
     assert _first_part(streamer.camera).jpeg[:2] == b"\xff\xd8"
 
 
-def test_camera_stream_parts_continue_the_car_trace(streamer: _StreamerUrls) -> None:
+def test_camera_stream_parts_continue_the_car_trace(
+    streamer: StreamerEndpoints,
+) -> None:
     traceparent = _first_part(streamer.camera).headers["traceparent"]
 
     assert traceparent.split("-")[1] == CAR_TRACEPARENT.split("-")[1]
 
 
-def test_refuses_an_unknown_camera_path(streamer: _StreamerUrls) -> None:
+def test_refuses_an_unknown_camera_path(streamer: StreamerEndpoints) -> None:
     with _viewer(urllib.parse.urljoin(streamer.camera, "/")) as viewer:
         assert viewer.response.status == http.HTTPStatus.NOT_FOUND
 
@@ -288,7 +291,7 @@ def test_keeps_retrying_while_the_cars_camera_endpoint_is_busy(
 
 
 def test_releases_the_cars_camera_endpoint_after_the_last_viewer_leaves(
-    streamer: _StreamerUrls, camera_feed: CarEndpointSpy
+    streamer: StreamerEndpoints, camera_feed: CarEndpointSpy
 ) -> None:
     _first_part(streamer.camera)
 
@@ -311,10 +314,10 @@ def test_the_last_viewer_leaving_a_stalled_camera_stream_releases_the_car(
 
 
 def test_viewers_that_come_and_go_share_one_car_connection(
-    streamer: _StreamerUrls, camera_feed: CarEndpointSpy
+    streamer: StreamerEndpoints, camera_feed: CarEndpointSpy
 ) -> None:
-    with _viewer(streamer.camera) as holder:
-        read_mjpeg_part(holder.response)
+    with _viewer(streamer.camera) as long_lived_viewer:
+        read_mjpeg_part(long_lived_viewer.response)
         for _ in range(_CLIENTS_THAT_COME_AND_GO):
             _first_part(streamer.camera)
 
@@ -322,10 +325,10 @@ def test_viewers_that_come_and_go_share_one_car_connection(
 
 
 def test_telemetry_clients_and_drivers_that_come_and_go_share_one_car_connection(
-    streamer: _StreamerUrls, telemetry_feed: CarEndpointSpy
+    streamer: StreamerEndpoints, telemetry_feed: CarEndpointSpy
 ) -> None:
-    with websockets.sync.client.connect(streamer.telemetry) as holder:
-        _receive_types(holder, {"telemetry"})
+    with websockets.sync.client.connect(streamer.telemetry) as long_lived_client:
+        _receive_types(long_lived_client, {"telemetry"})
         for _ in range(_CLIENTS_THAT_COME_AND_GO):
             with websockets.sync.client.connect(streamer.telemetry) as client:
                 _receive_types(client, {"telemetry"})
@@ -336,7 +339,7 @@ def test_telemetry_clients_and_drivers_that_come_and_go_share_one_car_connection
 
 
 def test_drivers_that_come_and_go_share_one_car_connection(
-    streamer: _StreamerUrls, car_control: CarEndpointSpy
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     for _ in range(_CLIENTS_THAT_COME_AND_GO):
         with websockets.sync.client.connect(streamer.drive):

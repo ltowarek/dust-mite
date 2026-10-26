@@ -290,17 +290,18 @@ def prepare_telemetry_message(telemetry: dict[str, Any]) -> WebSocketMessage:
 
 
 @dataclasses.dataclass(frozen=True)
-class StreamerAddresses:
-    """The (host, port) each of the streamer's servers is bound to."""
+class StreamerEndpoints:
+    """The URL of each Streamer endpoint, at the address its server is bound to."""
 
-    websocket: tuple[str, int]
-    camera: tuple[str, int]
+    drive: str
+    telemetry: str
+    camera: str
 
 
 @contextlib.contextmanager
 def serve_streamer(
     settings: StreamerSettings, process: CameraFrameProcessor = process_camera_frame
-) -> Iterator[StreamerAddresses]:
+) -> Iterator[StreamerEndpoints]:
     """Serve the Streamer endpoints while the context is open; port 0 binds any."""
     commands: Subject[WebSocketMessage] = Subject()
     camera = CarFeed(
@@ -315,26 +316,30 @@ def serve_streamer(
     handler = functools.partial(server_handler, telemetry, arbiter)
     with (
         send_commands_to_car(settings.drive_uri, commands),
-        CameraServer((settings.listen_host, settings.camera_port), camera) as viewers,
+        CameraServer(
+            (settings.listen_host, settings.camera_port), camera
+        ) as camera_server,
         websockets.sync.server.serve(
             handler, settings.listen_host, settings.websocket_port
-        ) as server,
+        ) as websocket_server,
     ):
         threads = [
-            threading.Thread(target=viewers.serve_forever),
-            threading.Thread(target=server.serve_forever),
+            threading.Thread(target=camera_server.serve_forever),
+            threading.Thread(target=websocket_server.serve_forever),
         ]
         for thread in threads:
             thread.start()
-        camera_host, camera_port = viewers.server_address[:2]
+        websocket_host, websocket_port = websocket_server.socket.getsockname()[:2]
+        camera_host, camera_port = camera_server.server_address[:2]
         try:
-            yield StreamerAddresses(
-                websocket=server.socket.getsockname()[:2],
-                camera=(str(camera_host), camera_port),
+            yield StreamerEndpoints(
+                drive=f"ws://{websocket_host}:{websocket_port}{DRIVE_PATH}",
+                telemetry=f"ws://{websocket_host}:{websocket_port}{TELEMETRY_PATH}",
+                camera=f"http://{camera_host!s}:{camera_port}{CAMERA_PATH}",
             )
         finally:
-            viewers.shutdown()
-            server.shutdown()
+            camera_server.shutdown()
+            websocket_server.shutdown()
             for thread in threads:
                 thread.join()
 
