@@ -92,12 +92,7 @@ type CarReader[M] = Callable[[Callable[[M], None]], Coroutine[Any, Any, None]]
 
 
 class AsyncCarFeed[M]:
-    """A RefCount over one car endpoint, read by a task on the event loop.
-
-    The first subscriber starts a task in `tasks` that runs `read`; the last
-    one cancels it. Every client subscribes to the same feed, so the car
-    serves one connection per endpoint no matter how many clients are connected.
-    """
+    """A `CarFeed` read by a task in `tasks`, started by the first subscriber."""
 
     def __init__(self, read: CarReader[M], tasks: asyncio.TaskGroup) -> None:
         """Initialize the object."""
@@ -137,11 +132,9 @@ async def read_car_websocket[M](
         with contextlib.suppress(websockets.exceptions.ConnectionClosed):
             async for raw in connection:
                 try:
-                    message = to_message(raw)
+                    publish(to_message(raw))
                 except Exception:
-                    logger.exception("Dropping an unreadable message from the car")
-                    continue
-                publish(message)
+                    logger.exception("Dropping a message from the car")
 
     await stay_connected(uri, publish_all)
 

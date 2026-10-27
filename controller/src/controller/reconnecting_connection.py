@@ -1,4 +1,4 @@
-"""A write-only WebSocket connection that stays connected, and its reconnect policy."""
+"""Staying connected to a WebSocket peer: the reconnect policy and its loops."""
 
 import asyncio
 import contextlib
@@ -8,6 +8,7 @@ import logging
 from collections.abc import Awaitable, Callable, Generator
 
 import websockets.asyncio.client
+import websockets.client
 import websockets.exceptions
 from websockets.asyncio.client import ClientConnection
 from websockets.frames import Close, CloseCode
@@ -35,6 +36,13 @@ def classify_close(close: Close | None) -> DeliberateClose | None:
     return DeliberateClose(close.reason)
 
 
+def fatal_connect_error(error: Exception) -> Exception | None:
+    """Return the error that ends reconnecting, or None to retry after `error`."""
+    if isinstance(error, websockets.exceptions.InvalidHandshake):
+        return None
+    return websockets.client.process_exception(error)
+
+
 def retry_delays() -> Generator[float]:
     """Yield the delay before each retry, in seconds."""
     yield from itertools.repeat(RETRY_DELAY_S)
@@ -45,7 +53,10 @@ async def stay_connected(
 ) -> None:
     """Keep connecting to `uri` until cancelled, awaiting `serve` on each connection."""
     async for connection in websockets.asyncio.client.connect(
-        uri, proxy=None, reconnect_delays=retry_delays
+        uri,
+        proxy=None,
+        process_exception=fatal_connect_error,
+        reconnect_delays=retry_delays,
     ):
         try:
             await serve(connection)
@@ -59,7 +70,8 @@ async def stay_connected(
 class ReconnectingConnection:
     """A write-only WebSocket connection to `uri`, reconnecting while `run` runs.
 
-    Messages sent while disconnected are dropped.
+    Messages sent while disconnected are dropped, and only the newest unsent
+    one is kept, so a stalled peer never receives a backlog.
     """
 
     def __init__(self, uri: str) -> None:
@@ -69,8 +81,11 @@ class ReconnectingConnection:
 
     def send(self, message: str) -> None:
         """Send `message` if connected, otherwise drop it."""
-        if self._outgoing is not None:
-            self._outgoing.put_nowait(message)
+        if self._outgoing is None:
+            return
+        with contextlib.suppress(asyncio.QueueEmpty):
+            self._outgoing.get_nowait()
+        self._outgoing.put_nowait(message)
 
     async def run(self) -> None:
         """Stay connected until cancelled."""
@@ -78,7 +93,7 @@ class ReconnectingConnection:
 
     async def _serve(self, connection: ClientConnection) -> None:
         logger.info("Connected to %s", self._uri)
-        outgoing: asyncio.Queue[str] = asyncio.Queue()
+        outgoing: asyncio.Queue[str] = asyncio.Queue(maxsize=1)
         self._outgoing = outgoing
         try:
             async with asyncio.TaskGroup() as tasks:

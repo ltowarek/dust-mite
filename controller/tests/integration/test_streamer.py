@@ -31,8 +31,10 @@ from .test_doubles import (
     MjpegPart,
     busy_refusals,
     car_camera_stub,
-    car_endpoint_that_hangs_up,
+    car_control_spy,
     car_feed_stub,
+    handshake_refusals,
+    hanging_up_car_endpoint_spy,
     read_mjpeg_part,
     telemetry,
 )
@@ -462,7 +464,7 @@ def test_reconnects_about_once_a_second_to_a_car_that_hangs_up(
 ) -> None:
     window_s = 3.0
     with (
-        car_endpoint_that_hangs_up() as control,
+        hanging_up_car_endpoint_spy() as control,
         _streamer(camera_feed, telemetry_feed, control),
     ):
         time.sleep(window_s)
@@ -487,3 +489,17 @@ def test_reconnects_to_a_car_that_hangs_up_while_no_driver_is_sending(
         wait_for(lambda: bool(car_control.received))
 
     assert car_control.received
+
+
+def test_keeps_retrying_while_the_cars_drive_endpoint_refuses_the_handshake(
+    camera_feed: CarEndpointSpy, telemetry_feed: CarEndpointSpy
+) -> None:
+    with (
+        car_control_spy(handshake_refusals(1, http.HTTPStatus.NOT_FOUND)) as control,
+        _streamer(camera_feed, telemetry_feed, control) as streamer,
+        websockets.sync.client.connect(streamer.drive) as driver,
+    ):
+        wait_for(lambda: control.open_connections == 1)
+        _send_command(driver, _ADVANCE)
+
+        assert wait_for(lambda: bool(control.received))

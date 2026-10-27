@@ -151,8 +151,8 @@ def _refusal_counter(refusals: int) -> Callable[[], bool]:
     return refuse
 
 
-def busy_refusals(refusals: int) -> ProcessRequest:
-    """Answer the first `refusals` handshakes as busy, as a car Endpoint in use does."""
+def handshake_refusals(refusals: int, status: http.HTTPStatus) -> ProcessRequest:
+    """Answer the first `refusals` handshakes with `status` instead of accepting."""
     refuse = _refusal_counter(refusals)
 
     def respond(
@@ -160,10 +160,15 @@ def busy_refusals(refusals: int) -> ProcessRequest:
         _: websockets.http11.Request,
     ) -> websockets.http11.Response | None:
         if refuse():
-            return connection.respond(http.HTTPStatus.SERVICE_UNAVAILABLE, "")
+            return connection.respond(status, "")
         return None
 
     return respond
+
+
+def busy_refusals(refusals: int) -> ProcessRequest:
+    """Answer the first `refusals` handshakes as busy, as a car Endpoint in use does."""
+    return handshake_refusals(refusals, http.HTTPStatus.SERVICE_UNAVAILABLE)
 
 
 def car_feed_stub(
@@ -180,17 +185,19 @@ def car_feed_stub(
     return car_endpoint_spy(push_messages, process_request)
 
 
-def car_control_spy() -> contextlib.AbstractContextManager[CarEndpointSpy]:
+def car_control_spy(
+    process_request: ProcessRequest = None,
+) -> contextlib.AbstractContextManager[CarEndpointSpy]:
     def record_commands(
         websocket: websockets.sync.server.ServerConnection, endpoint: CarEndpointSpy
     ) -> None:
         for message in websocket:
             endpoint.received.append(json.loads(message))
 
-    return car_endpoint_spy(record_commands)
+    return car_endpoint_spy(record_commands, process_request)
 
 
-def car_endpoint_that_hangs_up() -> contextlib.AbstractContextManager[CarEndpointSpy]:
+def hanging_up_car_endpoint_spy() -> contextlib.AbstractContextManager[CarEndpointSpy]:
     """A car WebSocket endpoint that closes each connection as soon as it opens."""
 
     def hang_up(_: websockets.sync.server.ServerConnection, __: CarEndpointSpy) -> None:
