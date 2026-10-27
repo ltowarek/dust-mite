@@ -1,3 +1,4 @@
+import websockets.sync.client
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -14,8 +15,8 @@ def test_send_delivers_command_and_value_over_the_wire(
     local_server_spy: LocalServerSpy,
 ) -> None:
     sent_value = 50
-    with WebSocketCommandSender(local_server_spy.uri) as sender:
-        sender.send(Command.ADVANCE, sent_value)
+    with websockets.sync.client.connect(local_server_spy.uri) as connection:
+        WebSocketCommandSender(connection).send(Command.ADVANCE, sent_value)
         assert local_server_spy.message_received.wait(timeout=_WAIT_TIMEOUT_S)
 
     assert local_server_spy.received[0]["command"] == Command.ADVANCE.value
@@ -34,8 +35,8 @@ def test_send_injects_trace_context(local_server_spy: LocalServerSpy) -> None:
     with tracer.start_as_current_span("outer") as outer_span:
         trace_id = outer_span.get_span_context().trace_id
 
-        with WebSocketCommandSender(local_server_spy.uri) as sender:
-            sender.send(Command.BRAKE, None)
+        with websockets.sync.client.connect(local_server_spy.uri) as connection:
+            WebSocketCommandSender(connection).send(Command.BRAKE, None)
             assert local_server_spy.message_received.wait(timeout=_WAIT_TIMEOUT_S)
 
     traceparent = local_server_spy.received[0]["traceparent"]

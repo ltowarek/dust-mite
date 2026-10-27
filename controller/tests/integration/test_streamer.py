@@ -216,8 +216,8 @@ def test_the_controller_cli_drives_through_the_streamer(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     turn_left = 4
-    with WebSocketCommandSender(streamer.drive) as sender:
-        sender.send(Command.TURN_LEFT, _SPEED)
+    with websockets.sync.client.connect(streamer.drive) as connection:
+        WebSocketCommandSender(connection).send(Command.TURN_LEFT, _SPEED)
         wait_for(lambda: bool(car_control.received))
 
     assert car_control.received[0]["command"] == turn_left
