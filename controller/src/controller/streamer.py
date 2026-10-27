@@ -27,16 +27,17 @@ from opentelemetry.semconv.attributes.http_attributes import (
 )
 from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL_NAME
 from opentelemetry.semconv.attributes.url_attributes import URL_PATH
+from websockets.asyncio.client import ClientConnection
 from websockets.frames import CloseCode
 
-from .car import AsyncCarFeed, CarFeed, read_car_websocket
+from .car import CarFeed
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
 from .observability import ObservabilitySettings, configure_observability
 from .outbox import send_until_closed, subscribe_all
-from .reconnecting_connection import forward
+from .reconnecting_connection import forward, stay_connected
 from .subject import Observable, Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
@@ -289,11 +290,9 @@ async def serve_streamer(
         functools.partial(relay_camera_part, process=process),
     )
     async with asyncio.TaskGroup() as tasks:
-        telemetry = AsyncCarFeed(
-            functools.partial(
-                read_car_websocket, settings.telemetry_uri, relay_telemetry_message
-            ),
-            tasks,
+        telemetry: Subject[WebSocketMessage] = Subject()
+        telemetry_task = tasks.create_task(
+            _publish_telemetry(settings.telemetry_uri, telemetry)
         )
         arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
         handler = functools.partial(server_handler, telemetry, arbiter)
@@ -318,6 +317,18 @@ async def serve_streamer(
                 )
         finally:
             car_drive_task.cancel()
+            telemetry_task.cancel()
+
+
+async def _publish_telemetry(uri: str, telemetry: Subject[WebSocketMessage]) -> None:
+    async def publish_all(connection: ClientConnection) -> None:
+        async for message in connection:
+            try:
+                telemetry.publish(relay_telemetry_message(message))
+            except Exception:
+                logger.exception("Dropping a Telemetry message from the car")
+
+    await stay_connected(uri, publish_all)
 
 
 @contextlib.asynccontextmanager

@@ -202,6 +202,13 @@ def test_opens_the_cars_drive_endpoint_at_once(car_control: CarEndpointSpy) -> N
     assert wait_for(lambda: car_control.open_connections == 1)
 
 
+@pytest.mark.usefixtures("streamer")
+def test_opens_the_cars_telemetry_endpoint_at_once(
+    telemetry_feed: CarEndpointSpy,
+) -> None:
+    assert wait_for(lambda: telemetry_feed.open_connections == 1)
+
+
 def test_forwards_drive_commands_to_the_car(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:

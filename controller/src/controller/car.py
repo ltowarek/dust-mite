@@ -1,16 +1,11 @@
 """The streamer's side of the car: its endpoints and its message format."""
 
-import asyncio
 import contextlib
 import logging
 import threading
-from collections.abc import Callable, Coroutine
-from typing import Any, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
-import websockets.exceptions
-from websockets.asyncio.client import ClientConnection
-
-from .reconnecting_connection import stay_connected
 from .subject import Subject
 from .tracing import inject_trace_context
 from .websocket_message import WebSocketMessage
@@ -85,58 +80,6 @@ class CarFeed[M]:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join()
-
-
-# Reads one car Endpoint until cancelled, calling the given function with each message.
-type CarReader[M] = Callable[[Callable[[M], None]], Coroutine[Any, Any, None]]
-
-
-class AsyncCarFeed[M]:
-    """A `CarFeed` read by a task in `tasks`, started by the first subscriber."""
-
-    def __init__(self, read: CarReader[M], tasks: asyncio.TaskGroup) -> None:
-        """Initialize the object."""
-        self._read = read
-        self._tasks = tasks
-        self._task: asyncio.Task[None] | None = None
-        self._subject: Subject[M] = Subject(on_active=self._start, on_idle=self._stop)
-
-    def subscription(
-        self, callback: Callable[[M], None]
-    ) -> contextlib.AbstractContextManager[None]:
-        """Call `callback` with each message from the car while the context is open."""
-        return self._subject.subscription(callback)
-
-    def _start(self) -> None:
-        self._task = self._tasks.create_task(self._read_after(self._task))
-
-    def _stop(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-
-    async def _read_after(self, previous: asyncio.Task[None] | None) -> None:
-        # The car refuses a second connection to one Endpoint as busy.
-        if previous is not None:
-            await asyncio.wait([previous])
-        await self._read(self._subject.publish)
-
-
-async def read_car_websocket[M](
-    uri: str,
-    to_message: Callable[[str | bytes], M],
-    publish: Callable[[M], None],
-) -> None:
-    """Publish each message from the car's WebSocket endpoint `uri` until cancelled."""
-
-    async def publish_all(connection: ClientConnection) -> None:
-        with contextlib.suppress(websockets.exceptions.ConnectionClosed):
-            async for raw in connection:
-                try:
-                    publish(to_message(raw))
-                except Exception:
-                    logger.exception("Dropping a message from the car")
-
-    await stay_connected(uri, publish_all)
 
 
 def prepare_drive_command(command: WebSocketMessage) -> WebSocketMessage:
