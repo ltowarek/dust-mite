@@ -1,13 +1,11 @@
-"""Staying connected to a WebSocket peer: the reconnect policy and its loops."""
+"""Staying connected to a WebSocket peer: the reconnect policy and its loop."""
 
 import asyncio
 import dataclasses
-import itertools
 import logging
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import Awaitable, Callable
 
 import websockets.asyncio.client
-import websockets.client
 import websockets.exceptions
 from websockets.asyncio.client import ClientConnection
 from websockets.frames import CloseCode
@@ -39,34 +37,28 @@ def classify_close(code: int | None, reason: str | None) -> DeliberateClose | No
     return DeliberateClose(reason or "")
 
 
-def fatal_connect_error(error: Exception) -> Exception | None:
-    """Return the error that ends reconnecting, or None to retry after `error`."""
-    if isinstance(error, websockets.exceptions.InvalidHandshake):
-        return None
-    return websockets.client.process_exception(error)
-
-
-def retry_delays() -> Generator[float]:
-    """Yield the delay before each retry, in seconds."""
-    yield from itertools.repeat(RETRY_DELAY_S)
+def is_retryable(error: Exception) -> bool:
+    """Return whether a new connection could succeed after `error`."""
+    return isinstance(
+        error,
+        OSError
+        | TimeoutError
+        | websockets.exceptions.InvalidHandshake
+        | websockets.exceptions.ConnectionClosed,
+    )
 
 
 async def stay_connected(
-    uri: str, serve: Callable[[ClientConnection], Awaitable[None]]
+    uri: str, handler: Callable[[ClientConnection], Awaitable[None]]
 ) -> None:
-    """Keep connecting to `uri` until cancelled, awaiting `serve` on each connection."""
-    async for connection in websockets.asyncio.client.connect(
-        uri,
-        proxy=None,
-        process_exception=fatal_connect_error,
-        reconnect_delays=retry_delays,
-    ):
+    """Await `handler` on a connection to `uri`, again 1 s after each loss."""
+    while True:
         try:
-            await serve(connection)
-        finally:
-            # Cancelling the loop body leaves the connection open until collected.
-            await connection.close()
-        # The loop resets its delays after any opened connection.
+            async with websockets.asyncio.client.connect(uri, proxy=None) as connection:
+                await handler(connection)
+        except Exception as error:
+            if not is_retryable(error):
+                raise
         await asyncio.sleep(RETRY_DELAY_S)
 
 
