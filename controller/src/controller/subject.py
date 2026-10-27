@@ -1,9 +1,12 @@
 """Observables, and the Subject that fans one out to any number of subscribers."""
 
 import contextlib
+import logging
 import threading
 from collections.abc import Callable, Iterator
 from typing import Protocol
+
+logger = logging.getLogger(__name__)
 
 
 class Observable[T](Protocol):
@@ -48,11 +51,14 @@ class Subject[T]:
             self._unsubscribe(callback)
 
     def publish(self, message: T) -> None:
-        """Deliver `message` to every current subscriber."""
+        """Deliver `message` to every current subscriber, logging any that raises."""
         with self._subscribers_lock:
             subscribers = list(self._subscribers)
         for callback in subscribers:
-            callback(message)
+            try:
+                callback(message)
+            except Exception:
+                logger.exception("A subscriber failed on a published message")
 
     def _subscribe(self, callback: Callable[[T], None]) -> None:
         with self._lifecycle_lock:

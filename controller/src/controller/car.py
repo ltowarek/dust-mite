@@ -1,15 +1,13 @@
 """The streamer's side of the car: its endpoints and its message format."""
 
 import contextlib
-import json
 import logging
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Protocol
 
 from .subject import Subject
 from .tracing import inject_trace_context
-from .websocket_client import WebSocketClient
 from .websocket_message import WebSocketMessage
 
 logger = logging.getLogger(__name__)
@@ -82,22 +80,6 @@ class CarFeed[M]:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join()
-
-
-@contextlib.contextmanager
-def send_commands_to_car(
-    uri: str, commands: Subject[WebSocketMessage]
-) -> Iterator[None]:
-    """Send each command published on `commands` to the car while the context is open.
-
-    The car's one Drive endpoint connection stays open for the whole context, so
-    every driver's commands share it.
-    """
-    with (
-        WebSocketClient(uri, "w") as connection,
-        commands.subscription(lambda command: connection.send(json.dumps(command))),
-    ):
-        yield
 
 
 def prepare_drive_command(command: WebSocketMessage) -> WebSocketMessage:

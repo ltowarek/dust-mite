@@ -16,7 +16,7 @@ def telemetry_client_uri(streamer_settings: StreamerSettings) -> str:
 @pytest.mark.asyncio
 async def test_performance(telemetry_client_uri: str) -> None:
     message_count = 100
-    async with connect(telemetry_client_uri) as websocket:
+    async with connect(telemetry_client_uri, proxy=None) as websocket:
         start = time.time()
         for _ in range(message_count):
             await websocket.recv()
@@ -31,7 +31,7 @@ async def test_performance(telemetry_client_uri: str) -> None:
 @pytest.mark.dut
 @pytest.mark.asyncio
 async def test_latency(telemetry_client_uri: str) -> None:
-    async with connect(telemetry_client_uri) as websocket:
+    async with connect(telemetry_client_uri, proxy=None) as websocket:
         pong_waiter = websocket.ping()
         latency_future = await pong_waiter
         latency = await latency_future

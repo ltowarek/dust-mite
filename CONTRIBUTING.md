@@ -459,8 +459,8 @@ To profile a run:
    in `.env` (preserving any other already-set variables, e.g. `WIFI_SSID`/`WIFI_PASSWORD`),
    then brings up the stack.
 2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
-   `{service_name="dust-mite-streamer"}`, optionally split by `thread_name` — `websockets.sync.server`
-   spawns one thread per connection, so this separates them in the flame graph.
+   `{service_name="dust-mite-streamer"}`, optionally split by `thread_name`. WebSocket connections share the
+   event loop's thread; the Camera stream's HTTP server spawns one thread per Viewer.
 
 #### Span profiles (trace → flame graph)
 

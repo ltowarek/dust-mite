@@ -6,6 +6,7 @@ that records its connections and the commands it receives.
 
 import contextlib
 import dataclasses
+import functools
 import http
 import http.client
 import json
@@ -39,33 +40,66 @@ ProcessRequest = (
 
 @dataclasses.dataclass
 class CarEndpointSpy:
-    """A car endpoint that records its connections and the commands it receives."""
+    """A car endpoint that records its connections and commands, and can hang up."""
 
     uri: str
     open_connections: int = 0
     peak_connections: int = 0
+    accepted_connections: int = 0
     received: list[dict[str, Any]] = dataclasses.field(default_factory=list)
     _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
+    _websockets: list[websockets.sync.server.ServerConnection] = dataclasses.field(
+        default_factory=list
+    )
+    _servers: contextlib.ExitStack = dataclasses.field(
+        default_factory=contextlib.ExitStack
+    )
+    _restart: Callable[[], contextlib.AbstractContextManager[object]] | None = None
 
     @contextlib.contextmanager
-    def connected(self) -> Iterator[None]:
+    def connected(
+        self, websocket: websockets.sync.server.ServerConnection | None = None
+    ) -> Iterator[None]:
         with self._lock:
+            self.accepted_connections += 1
             self.open_connections += 1
             self.peak_connections = max(self.peak_connections, self.open_connections)
+            if websocket is not None:
+                self._websockets.append(websocket)
         try:
             yield
         finally:
             with self._lock:
                 self.open_connections -= 1
+                if websocket is not None:
+                    self._websockets.remove(websocket)
+
+    def drop_connections(self) -> None:
+        """Close every open connection, as a car Endpoint that hangs up does."""
+        with self._lock:
+            open_websockets = list(self._websockets)
+        for websocket in open_websockets:
+            websocket.close()
+
+    @contextlib.contextmanager
+    def stopped(self) -> Iterator[None]:
+        """Stop serving for the context, then serve again on the same port."""
+        assert self._restart is not None
+        self._servers.close()
+        try:
+            yield
+        finally:
+            self._servers.enter_context(self._restart())
 
 
 @contextlib.contextmanager
 def serve(
     handler: Callable[[websockets.sync.server.ServerConnection], None],
     process_request: ProcessRequest = None,
+    port: int = 0,
 ) -> Iterator[websockets.sync.server.Server]:
     with websockets.sync.server.serve(
-        handler, "localhost", 0, process_request=process_request
+        handler, "localhost", port, process_request=process_request
     ) as server:
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
@@ -87,14 +121,19 @@ def car_endpoint_spy(
 
     def handler(websocket: websockets.sync.server.ServerConnection) -> None:
         with (
-            endpoint.connected(),
+            endpoint.connected(websocket),
             contextlib.suppress(websockets.exceptions.ConnectionClosed),
         ):
             serve_client(websocket, endpoint)
 
-    with serve(handler, process_request) as server:
+    with contextlib.ExitStack() as servers:
+        server = servers.enter_context(serve(handler, process_request))
         host, port = server.socket.getsockname()[:2]
-        endpoint = CarEndpointSpy(f"ws://{host}:{port}")
+        endpoint = CarEndpointSpy(
+            f"ws://{host}:{port}",
+            _servers=servers,
+            _restart=functools.partial(serve, handler, process_request, port),
+        )
         yield endpoint
 
 
@@ -112,8 +151,8 @@ def _refusal_counter(refusals: int) -> Callable[[], bool]:
     return refuse
 
 
-def busy_refusals(refusals: int) -> ProcessRequest:
-    """Answer the first `refusals` handshakes as busy, as a car Endpoint in use does."""
+def handshake_refusals(refusals: int, status: http.HTTPStatus) -> ProcessRequest:
+    """Answer the first `refusals` handshakes with `status` instead of accepting."""
     refuse = _refusal_counter(refusals)
 
     def respond(
@@ -121,10 +160,24 @@ def busy_refusals(refusals: int) -> ProcessRequest:
         _: websockets.http11.Request,
     ) -> websockets.http11.Response | None:
         if refuse():
-            return connection.respond(http.HTTPStatus.SERVICE_UNAVAILABLE, "")
+            return connection.respond(status, "")
         return None
 
     return respond
+
+
+def busy_refusals(refusals: int) -> ProcessRequest:
+    """Answer the first `refusals` handshakes as busy, as a car Endpoint in use does."""
+    return handshake_refusals(refusals, http.HTTPStatus.SERVICE_UNAVAILABLE)
+
+
+def _push_forever(
+    websocket: websockets.sync.server.ServerConnection,
+    message: Callable[[], dict[str, Any]],
+) -> None:
+    while True:
+        websocket.send(json.dumps(message()))
+        time.sleep(FEED_INTERVAL_S)
 
 
 def car_feed_stub(
@@ -134,21 +187,44 @@ def car_feed_stub(
     def push_messages(
         websocket: websockets.sync.server.ServerConnection, _: CarEndpointSpy
     ) -> None:
-        while True:
-            websocket.send(json.dumps(message()))
-            time.sleep(FEED_INTERVAL_S)
+        _push_forever(websocket, message)
 
     return car_endpoint_spy(push_messages, process_request)
 
 
-def car_control_spy() -> contextlib.AbstractContextManager[CarEndpointSpy]:
+def unreadable_first_car_feed_stub(
+    message: Callable[[], dict[str, Any]],
+) -> contextlib.AbstractContextManager[CarEndpointSpy]:
+    """A car feed that pushes one message that is not JSON before each `message`."""
+
+    def push_messages(
+        websocket: websockets.sync.server.ServerConnection, _: CarEndpointSpy
+    ) -> None:
+        websocket.send("not json")
+        _push_forever(websocket, message)
+
+    return car_endpoint_spy(push_messages)
+
+
+def car_control_spy(
+    process_request: ProcessRequest = None,
+) -> contextlib.AbstractContextManager[CarEndpointSpy]:
     def record_commands(
         websocket: websockets.sync.server.ServerConnection, endpoint: CarEndpointSpy
     ) -> None:
         for message in websocket:
             endpoint.received.append(json.loads(message))
 
-    return car_endpoint_spy(record_commands)
+    return car_endpoint_spy(record_commands, process_request)
+
+
+def hanging_up_car_endpoint_spy() -> contextlib.AbstractContextManager[CarEndpointSpy]:
+    """A car WebSocket endpoint that closes each connection as soon as it opens."""
+
+    def hang_up(_: websockets.sync.server.ServerConnection, __: CarEndpointSpy) -> None:
+        pass
+
+    return car_endpoint_spy(hang_up)
 
 
 def camera_frame() -> bytes:

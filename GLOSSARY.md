@@ -25,7 +25,7 @@ The WebSocket endpoint (`/telemetry`) on which the car sends Telemetry messages.
 The Camera or Telemetry endpoint: the car sends and the client only reads.
 
 **Car feed**:
-The streamer's one shared connection to a Push endpoint, open only while a client is subscribed; every client reads the same Car feed.
+The streamer's one shared connection to a Push endpoint; every client reads the same Car feed.
 _Avoid_: Subscription, channel
 
 ### Streamer endpoints

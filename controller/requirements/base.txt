@@ -78,7 +78,7 @@ urllib3==2.6.3
     # via
     #   -r requirements/base.in
     #   requests
-websockets==14.1
+websockets==17.3
     # via -r requirements/base.in
 wrapt==2.3.0
     # via opentelemetry-instrumentation

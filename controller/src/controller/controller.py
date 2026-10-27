@@ -7,6 +7,8 @@ import os
 from collections.abc import Mapping
 from typing import Self
 
+import websockets.sync.client
+
 from .command import Command
 from .curses_logging import curses_console_logging
 from .input_backends import (
@@ -75,7 +77,10 @@ def main() -> None:
     console_handler = _configure_console_logging()
 
     try:
-        with WebSocketCommandSender(settings.drive_uri) as sender:
+        with websockets.sync.client.connect(
+            settings.drive_uri, proxy=None
+        ) as connection:
+            sender = WebSocketCommandSender(connection)
             if settings.input_backend is InputBackendName.KEYBOARD:
 
                 def run(window: curses.window) -> None:
