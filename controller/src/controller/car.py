@@ -1,15 +1,18 @@
 """The streamer's side of the car: its endpoints and its message format."""
 
+import asyncio
 import contextlib
-import json
 import logging
 import threading
-from collections.abc import Callable, Iterator
-from typing import Protocol
+from collections.abc import Callable, Coroutine
+from typing import Any, Protocol
 
+import websockets.exceptions
+from websockets.asyncio.client import ClientConnection
+
+from .reconnecting_connection import stay_connected
 from .subject import Subject
 from .tracing import inject_trace_context
-from .websocket_client import WebSocketClient
 from .websocket_message import WebSocketMessage
 
 logger = logging.getLogger(__name__)
@@ -84,20 +87,63 @@ class CarFeed[M]:
             self._thread.join()
 
 
-@contextlib.contextmanager
-def send_commands_to_car(
-    uri: str, commands: Subject[WebSocketMessage]
-) -> Iterator[None]:
-    """Send each command published on `commands` to the car while the context is open.
+# Reads one car Endpoint until cancelled, calling the given function with each message.
+type CarReader[M] = Callable[[Callable[[M], None]], Coroutine[Any, Any, None]]
 
-    The car's one Drive endpoint connection stays open for the whole context, so
-    every driver's commands share it.
+
+class AsyncCarFeed[M]:
+    """A RefCount over one car endpoint, read by a task on the event loop.
+
+    The first subscriber starts a task in `tasks` that runs `read`; the last
+    one cancels it. Every client subscribes to the same feed, so the car
+    serves one connection per endpoint no matter how many clients are connected.
     """
-    with (
-        WebSocketClient(uri, "w") as connection,
-        commands.subscription(lambda command: connection.send(json.dumps(command))),
-    ):
-        yield
+
+    def __init__(self, read: CarReader[M], tasks: asyncio.TaskGroup) -> None:
+        """Initialize the object."""
+        self._read = read
+        self._tasks = tasks
+        self._task: asyncio.Task[None] | None = None
+        self._subject: Subject[M] = Subject(on_active=self._start, on_idle=self._stop)
+
+    def subscription(
+        self, callback: Callable[[M], None]
+    ) -> contextlib.AbstractContextManager[None]:
+        """Call `callback` with each message from the car while the context is open."""
+        return self._subject.subscription(callback)
+
+    def _start(self) -> None:
+        self._task = self._tasks.create_task(self._read_after(self._task))
+
+    def _stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+
+    async def _read_after(self, previous: asyncio.Task[None] | None) -> None:
+        # The car refuses a second connection to one Endpoint as busy.
+        if previous is not None:
+            await asyncio.wait([previous])
+        await self._read(self._subject.publish)
+
+
+async def read_car_websocket[M](
+    uri: str,
+    to_message: Callable[[str | bytes], M],
+    publish: Callable[[M], None],
+) -> None:
+    """Publish each message from the car's WebSocket endpoint `uri` until cancelled."""
+
+    async def publish_all(connection: ClientConnection) -> None:
+        with contextlib.suppress(websockets.exceptions.ConnectionClosed):
+            async for raw in connection:
+                try:
+                    message = to_message(raw)
+                except Exception:
+                    logger.exception("Dropping an unreadable message from the car")
+                    continue
+                publish(message)
+
+    await stay_connected(uri, publish_all)
 
 
 def prepare_drive_command(command: WebSocketMessage) -> WebSocketMessage:

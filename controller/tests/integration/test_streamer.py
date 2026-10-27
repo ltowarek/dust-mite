@@ -1,11 +1,14 @@
 """Guards the streamer as real clients see it through its Streamer endpoints."""
 
+import asyncio
+import concurrent.futures
 import contextlib
 import dataclasses
 import http
 import http.client
 import json
 import socket
+import threading
 import time
 import urllib.parse
 from collections.abc import Callable, Iterator
@@ -28,6 +31,7 @@ from .test_doubles import (
     MjpegPart,
     busy_refusals,
     car_camera_stub,
+    car_endpoint_that_hangs_up,
     car_feed_stub,
     read_mjpeg_part,
     telemetry,
@@ -62,8 +66,31 @@ def _streamer(
     processor = (
         {} if process_camera_frame is None else {"process": process_camera_frame}
     )
-    with serve_streamer(settings, **processor) as endpoints:
-        yield endpoints
+    started: concurrent.futures.Future[
+        tuple[StreamerEndpoints, asyncio.AbstractEventLoop, asyncio.Event]
+    ] = concurrent.futures.Future()
+
+    async def serve() -> None:
+        stop = asyncio.Event()
+        try:
+            async with serve_streamer(settings, **processor) as endpoints:
+                started.set_result((endpoints, asyncio.get_running_loop(), stop))
+                await stop.wait()
+        except BaseException as e:
+            if not started.done():
+                started.set_exception(e)
+            raise
+
+    thread = threading.Thread(target=asyncio.run, args=(serve(),))
+    thread.start()
+    try:
+        endpoints, loop, stop = started.result()
+        try:
+            yield endpoints
+        finally:
+            loop.call_soon_threadsafe(stop.set)
+    finally:
+        thread.join()
 
 
 @pytest.fixture
@@ -366,3 +393,97 @@ def test_a_viewer_that_stops_reading_does_not_stall_another(
             read_mjpeg_part(viewer.response)
 
         assert _parts_within(viewer, reading_window_s) >= min_parts_in_window
+
+
+def test_drops_drive_commands_sent_while_the_cars_drive_endpoint_is_down(
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
+) -> None:
+    sent_while_down = 1
+    sent_after_return = 2
+    with websockets.sync.client.connect(streamer.drive) as driver:
+        wait_for(lambda: car_control.open_connections == 1)
+        with car_control.stopped():
+            driver.send(json.dumps({"command": _ADVANCE, "value": sent_while_down}))
+        wait_for(lambda: car_control.open_connections == 1)
+        driver.send(json.dumps({"command": _ADVANCE, "value": sent_after_return}))
+        wait_for(lambda: bool(car_control.received))
+
+    assert [command["value"] for command in car_control.received] == [sent_after_return]
+
+
+def test_forwards_drive_commands_within_about_a_second_of_the_cars_return(
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
+) -> None:
+    resend_interval_s = 0.05
+    about_a_second_s = 1.5
+    with websockets.sync.client.connect(streamer.drive) as driver:
+        wait_for(lambda: car_control.open_connections == 1)
+        with car_control.stopped():
+            wait_for(lambda: car_control.open_connections == 0)
+        returned = time.monotonic()
+        deadline = returned + WAIT_TIMEOUT_S
+        while not car_control.received and time.monotonic() < deadline:
+            _send_command(driver, _ADVANCE)
+            time.sleep(resend_interval_s)
+
+    assert time.monotonic() - returned < about_a_second_s
+
+
+def test_the_driver_stays_responsive_while_the_cars_drive_endpoint_is_down(
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
+) -> None:
+    # More than the streamer buffers for a handler that stops reading.
+    many_commands = 100
+    with websockets.sync.client.connect(streamer.drive) as driver:
+        wait_for(lambda: car_control.open_connections == 1)
+        with car_control.stopped():
+            for _ in range(many_commands):
+                _send_command(driver, _ADVANCE)
+
+            assert driver.ping().wait(timeout=WAIT_TIMEOUT_S)
+
+
+def test_streams_telemetry_while_the_cars_drive_endpoint_is_down(
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
+) -> None:
+    with (
+        websockets.sync.client.connect(streamer.drive) as driver,
+        websockets.sync.client.connect(streamer.telemetry) as client,
+    ):
+        wait_for(lambda: car_control.open_connections == 1)
+        with car_control.stopped():
+            _send_command(driver, _ADVANCE)
+
+            assert "telemetry" in _receive_types(client, {"telemetry"})
+
+
+def test_reconnects_about_once_a_second_to_a_car_that_hangs_up(
+    camera_feed: CarEndpointSpy, telemetry_feed: CarEndpointSpy
+) -> None:
+    window_s = 3.0
+    with (
+        car_endpoint_that_hangs_up() as control,
+        _streamer(camera_feed, telemetry_feed, control),
+    ):
+        time.sleep(window_s)
+
+    assert control.connections <= window_s + 1
+
+
+def test_reconnects_to_a_car_that_hangs_up_while_no_driver_is_sending(
+    streamer: StreamerEndpoints, car_control: CarEndpointSpy
+) -> None:
+    second_connection = 2
+    with websockets.sync.client.connect(streamer.drive) as driver:
+        wait_for(lambda: car_control.open_connections == 1)
+        car_control.drop_connections()
+        wait_for(
+            lambda: (
+                car_control.connections == second_connection
+                and car_control.open_connections == 1
+            )
+        )
+        _send_command(driver, _ADVANCE)
+        wait_for(lambda: bool(car_control.received))
+
+    assert car_control.received

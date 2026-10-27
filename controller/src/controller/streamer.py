@@ -1,5 +1,6 @@
 """streamer module: serves the car's feeds and drive endpoint to local clients."""
 
+import asyncio
 import contextlib
 import dataclasses
 import functools
@@ -10,13 +11,13 @@ import os
 import select
 import socket
 import threading
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
 from typing import Any, Self, cast, override
 
+import websockets.asyncio.server
 import websockets.exceptions
-import websockets.sync.server
 from opentelemetry import trace
 from opentelemetry.semconv.attributes.client_attributes import CLIENT_ADDRESS
 from opentelemetry.semconv.attributes.http_attributes import (
@@ -28,16 +29,16 @@ from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL
 from opentelemetry.semconv.attributes.url_attributes import URL_PATH
 from websockets.frames import CloseCode
 
-from .car import CarFeed, send_commands_to_car
+from .car import AsyncCarFeed, CarFeed, read_car_websocket
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
 from .observability import ObservabilitySettings, configure_observability
+from .reconnecting_connection import ReconnectingConnection
 from .subject import Observable, Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
-from .websocket_client import WebSocketClient
 from .websocket_message import WebSocketMessage
 
 logging.basicConfig()
@@ -46,19 +47,63 @@ logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
 
-# How long an idle client handler waits for a message before rechecking
-# whether its client has disconnected.
+# How long an idle Viewer handler waits for a Camera frame before rechecking
+# whether its Viewer has disconnected.
 _OUTBOX_POLL_S = 0.2
+
+
+def _subscribe_all[M](
+    sources: tuple[Observable[M], ...], put: Callable[[int, M], None]
+) -> contextlib.ExitStack:
+    """Subscribe `put` to each source, by its slot; unsubscribe all on any failure."""
+    with contextlib.ExitStack() as subscriptions:
+        for slot, source in enumerate(sources):
+            subscriptions.enter_context(
+                source.subscription(functools.partial(put, slot))
+            )
+        return subscriptions.pop_all()
 
 
 class _Outbox[M]:
     """One client's view of some sources, keeping the newest message of each.
 
     Use as a context manager: it subscribes to `sources` on entry and
-    unsubscribes on exit. A client that falls behind skips stale camera
-    frames and telemetry instead of stalling the feed that every other client
-    shares.
+    unsubscribes on exit. A client that falls behind skips stale telemetry
+    instead of stalling the feed that every other client shares.
     """
+
+    def __init__(self, *sources: Observable[M]) -> None:
+        self._sources = sources
+        self._subscriptions = contextlib.ExitStack()
+        self._ready = asyncio.Event()
+        self._pending: dict[int, M] = {}
+
+    def __enter__(self) -> Self:
+        self._subscriptions = _subscribe_all(self._sources, self._put)
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: TracebackType | None,
+    ) -> None:
+        self._subscriptions.close()
+
+    async def take(self) -> list[M]:
+        await self._ready.wait()
+        self._ready.clear()
+        messages = list(self._pending.values())
+        self._pending.clear()
+        return messages
+
+    def _put(self, slot: int, message: M) -> None:
+        self._pending[slot] = message
+        self._ready.set()
+
+
+class _ThreadedOutbox[M]:
+    """An `_Outbox` for Viewer threads, whose sources publish from other threads."""
 
     def __init__(self, *sources: Observable[M]) -> None:
         self._sources = sources
@@ -67,13 +112,7 @@ class _Outbox[M]:
         self._pending: dict[int, M] = {}
 
     def __enter__(self) -> Self:
-        # Unsubscribes from the sources already entered if a later one fails.
-        with contextlib.ExitStack() as subscriptions:
-            for slot, source in enumerate(self._sources):
-                subscriptions.enter_context(
-                    source.subscription(functools.partial(self._put, slot))
-                )
-            self._subscriptions = subscriptions.pop_all()
+        self._subscriptions = _subscribe_all(self._sources, self._put)
         return self
 
     def __exit__(
@@ -102,10 +141,10 @@ DRIVE_PATH = "/drive"
 
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
-def server_handler(
-    telemetry: CarFeed[WebSocketMessage],
+async def server_handler(
+    telemetry: Observable[WebSocketMessage],
     arbiter: CommandArbiter,
-    websocket: websockets.sync.server.ServerConnection,
+    websocket: websockets.asyncio.server.ServerConnection,
 ) -> None:
     """WebSocket handler for incoming requests, routed by path."""
     span = trace.get_current_span()
@@ -117,43 +156,48 @@ def server_handler(
 
     try:
         if path == TELEMETRY_PATH:
-            _serve_telemetry(websocket, telemetry, arbiter.collision_state)
+            await _serve_telemetry(websocket, telemetry, arbiter.collision_state)
         elif path == DRIVE_PATH:
-            _serve_driver(arbiter, websocket)
+            await _serve_driver(arbiter, websocket)
         else:
-            websocket.close(CloseCode.POLICY_VIOLATION, f"unknown path: {path}")
+            await websocket.close(CloseCode.POLICY_VIOLATION, f"unknown path: {path}")
     except websockets.exceptions.ConnectionClosed:
         pass
     logger.info("Server connection closed")
 
 
-def _serve_driver(
-    arbiter: CommandArbiter, websocket: websockets.sync.server.ServerConnection
+async def _serve_driver(
+    arbiter: CommandArbiter, websocket: websockets.asyncio.server.ServerConnection
 ) -> None:
     try:
         with arbiter.claim() as submit:
-            for message in websocket:
+            async for message in websocket:
                 submit(json.loads(message))
     except DriverAlreadyConnectedError as e:
-        websocket.close(CloseCode.TRY_AGAIN_LATER, str(e))
+        await websocket.close(CloseCode.TRY_AGAIN_LATER, str(e))
 
 
-def _serve_telemetry(
-    websocket: websockets.sync.server.ServerConnection,
-    telemetry: CarFeed[WebSocketMessage],
+async def _serve_telemetry(
+    websocket: websockets.asyncio.server.ServerConnection,
+    telemetry: Observable[WebSocketMessage],
     collision_state: Subject[WebSocketMessage],
 ) -> None:
     with _Outbox(telemetry, collision_state) as outbox:
-        _send_until_closed(websocket, outbox)
+        # Telemetry may stall, so the client's departure is awaited on its own.
+        async with asyncio.TaskGroup() as tasks:
+            sender = tasks.create_task(_send_all(websocket, outbox))
+            await websocket.wait_closed()
+            sender.cancel()
 
 
-def _send_until_closed(
-    websocket: websockets.sync.server.ServerConnection,
+async def _send_all(
+    websocket: websockets.asyncio.server.ServerConnection,
     outbox: _Outbox[WebSocketMessage],
 ) -> None:
-    while websocket.close_code is None:
-        for message in outbox.take(timeout=_OUTBOX_POLL_S):
-            websocket.send(json.dumps(message))
+    with contextlib.suppress(websockets.exceptions.ConnectionClosed):
+        while True:
+            for message in await outbox.take():
+                await websocket.send(json.dumps(message))
 
 
 CAMERA_PATH = "/camera"
@@ -201,7 +245,7 @@ def _serve_viewer(
     viewer.end_headers()
     span.set_attribute(HTTP_RESPONSE_STATUS_CODE, http.HTTPStatus.OK)
     with (
-        _Outbox(camera) as outbox,
+        _ThreadedOutbox(camera) as outbox,
         contextlib.suppress(BrokenPipeError, ConnectionResetError),
     ):
         while not _viewer_left(viewer.connection):
@@ -298,50 +342,74 @@ class StreamerEndpoints:
     camera: str
 
 
-@contextlib.contextmanager
-def serve_streamer(
+@contextlib.asynccontextmanager
+async def serve_streamer(
     settings: StreamerSettings, process: CameraFrameProcessor = process_camera_frame
-) -> Iterator[StreamerEndpoints]:
+) -> AsyncIterator[StreamerEndpoints]:
     """Serve the Streamer endpoints while the context is open; port 0 binds any."""
     commands: Subject[WebSocketMessage] = Subject()
     camera = CarFeed(
         functools.partial(MjpegClient, settings.camera_uri),
         functools.partial(relay_camera_part, process=process),
     )
-    telemetry = CarFeed(
-        functools.partial(WebSocketClient, settings.telemetry_uri, "r"),
-        relay_telemetry_message,
-    )
-    arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
-    handler = functools.partial(server_handler, telemetry, arbiter)
-    with (
-        send_commands_to_car(settings.drive_uri, commands),
-        CameraServer(
-            (settings.listen_host, settings.camera_port), camera
-        ) as camera_server,
-        websockets.sync.server.serve(
-            handler, settings.listen_host, settings.websocket_port
-        ) as websocket_server,
-    ):
-        threads = [
-            threading.Thread(target=camera_server.serve_forever),
-            threading.Thread(target=websocket_server.serve_forever),
-        ]
-        for thread in threads:
-            thread.start()
-        websocket_host, websocket_port = websocket_server.socket.getsockname()[:2]
-        camera_host, camera_port = camera_server.server_address[:2]
+    car_drive = ReconnectingConnection(settings.drive_uri)
+    async with asyncio.TaskGroup() as tasks:
+        telemetry = AsyncCarFeed(
+            functools.partial(
+                read_car_websocket, settings.telemetry_uri, relay_telemetry_message
+            ),
+            tasks,
+        )
+        arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
+        handler = functools.partial(server_handler, telemetry, arbiter)
+        car_drive_task = tasks.create_task(car_drive.run())
         try:
-            yield StreamerEndpoints(
-                drive=f"ws://{websocket_host}:{websocket_port}{DRIVE_PATH}",
-                telemetry=f"ws://{websocket_host}:{websocket_port}{TELEMETRY_PATH}",
-                camera=f"http://{camera_host!s}:{camera_port}{CAMERA_PATH}",
-            )
+            async with (
+                websockets.asyncio.server.serve(
+                    handler, settings.listen_host, settings.websocket_port
+                ) as websocket_server,
+                _serve_camera(
+                    CameraServer((settings.listen_host, settings.camera_port), camera)
+                ) as camera_url,
+            ):
+                websocket_host, websocket_port = websocket_server.sockets[
+                    0
+                ].getsockname()[:2]
+                websocket_url = f"ws://{websocket_host}:{websocket_port}"
+                with commands.subscription(
+                    lambda command: car_drive.send(json.dumps(command))
+                ):
+                    yield StreamerEndpoints(
+                        drive=f"{websocket_url}{DRIVE_PATH}",
+                        telemetry=f"{websocket_url}{TELEMETRY_PATH}",
+                        camera=camera_url,
+                    )
         finally:
-            camera_server.shutdown()
-            websocket_server.shutdown()
-            for thread in threads:
-                thread.join()
+            car_drive_task.cancel()
+
+
+@contextlib.asynccontextmanager
+async def _serve_camera(server: CameraServer) -> AsyncIterator[str]:
+    """Run `server` on its own thread beside the event loop; yield its Camera URL."""
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    host, port = server.server_address[:2]
+    try:
+        yield f"http://{host!s}:{port}{CAMERA_PATH}"
+    finally:
+        await asyncio.to_thread(_stop_camera_server, server, thread)
+
+
+def _stop_camera_server(server: CameraServer, thread: threading.Thread) -> None:
+    server.shutdown()
+    thread.join()
+    server.server_close()
+
+
+async def _serve_until_cancelled(settings: StreamerSettings) -> None:
+    async with serve_streamer(settings):
+        logger.info("Starting server")
+        await asyncio.Event().wait()
 
 
 def main() -> None:
@@ -349,9 +417,7 @@ def main() -> None:
     settings = StreamerSettings.from_env(os.environ)
     configure_observability("dust-mite-streamer", settings.observability)
     try:
-        with serve_streamer(settings):
-            logger.info("Starting server")
-            threading.Event().wait()
+        asyncio.run(_serve_until_cancelled(settings))
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
     logger.info("Shutting down server")

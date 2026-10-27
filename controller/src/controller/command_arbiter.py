@@ -1,7 +1,6 @@
 """Decides which drive commands reach the car."""
 
 import contextlib
-import threading
 from collections.abc import Callable, Iterator
 
 from opentelemetry import trace
@@ -33,6 +32,7 @@ class CommandArbiter:
     then published on `commands`. While a driver holds the claim, the arbiter
     keeps `collision_monitor` fed from the telemetry feed.
     `collision_state` carries whether the monitor is stopping the car.
+    It is confined to one thread, the event loop's.
     """
 
     def __init__(
@@ -45,7 +45,6 @@ class CommandArbiter:
         self._commands = commands
         self._telemetry = telemetry
         self._collision_monitor = collision_monitor
-        self._lock = threading.Lock()
         self._claimed = False
         # Race: only changes are published, so a client that subscribes after
         # the latest change sees no collision state until the next one.
@@ -57,10 +56,9 @@ class CommandArbiter:
 
         Raises `DriverAlreadyConnectedError` if another driver holds it.
         """
-        with self._lock:
-            if self._claimed:
-                raise DriverAlreadyConnectedError(DRIVER_ALREADY_CONNECTED)
-            self._claimed = True
+        if self._claimed:
+            raise DriverAlreadyConnectedError(DRIVER_ALREADY_CONNECTED)
+        self._claimed = True
         try:
             with self._telemetry.subscription(self._on_telemetry):
                 yield self._submit
@@ -68,8 +66,7 @@ class CommandArbiter:
             if self._collision_monitor.stopping:
                 self._collision_monitor.reset()
                 self._publish_collision_state()
-            with self._lock:
-                self._claimed = False
+            self._claimed = False
 
     def _submit(self, drive_command: WebSocketMessage) -> None:
         driver_context = extract_trace_context(drive_command)

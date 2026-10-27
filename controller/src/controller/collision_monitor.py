@@ -1,7 +1,5 @@
 """Collision monitor: keeps drive commands from advancing into an obstacle."""
 
-import threading
-
 from .command import Command
 from .websocket_message import WebSocketMessage
 
@@ -13,7 +11,7 @@ class CollisionMonitor:
     Stopping starts below `STOP_DISTANCE_CM` and lasts until the obstacle is
     at least `RESUME_DISTANCE_CM` away, so sensor jitter around a single
     cutoff doesn't flip it on and off. RETREAT and the turns always pass
-    through, so the driver can back away.
+    through, so the driver can back away. It is confined to one thread.
     """
 
     STOP_DISTANCE_CM = 5
@@ -21,14 +19,12 @@ class CollisionMonitor:
 
     def __init__(self) -> None:
         """Initialize the object."""
-        self._lock = threading.Lock()
         self._stopping = False
 
     @property
     def stopping(self) -> bool:
         """Whether ADVANCE is currently being turned into BRAKE."""
-        with self._lock:
-            return self._stopping
+        return self._stopping
 
     def update(self, distance_ahead_cm: float) -> bool:
         """Take a new distance reading; return whether `stopping` changed.
@@ -36,21 +32,19 @@ class CollisionMonitor:
         A negative reading means the sensor received no echo and leaves the
         state unchanged.
         """
-        with self._lock:
-            if distance_ahead_cm < 0:
-                return False
-            if self._stopping:
-                stopping = distance_ahead_cm < self.RESUME_DISTANCE_CM
-            else:
-                stopping = distance_ahead_cm < self.STOP_DISTANCE_CM
-            changed = stopping != self._stopping
-            self._stopping = stopping
-            return changed
+        if distance_ahead_cm < 0:
+            return False
+        if self._stopping:
+            stopping = distance_ahead_cm < self.RESUME_DISTANCE_CM
+        else:
+            stopping = distance_ahead_cm < self.STOP_DISTANCE_CM
+        changed = stopping != self._stopping
+        self._stopping = stopping
+        return changed
 
     def reset(self) -> None:
         """Clear the stopping state."""
-        with self._lock:
-            self._stopping = False
+        self._stopping = False
 
     def filter(self, drive_command: WebSocketMessage) -> WebSocketMessage:
         """Return the command to send to the car in place of `drive_command`."""
