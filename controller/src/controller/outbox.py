@@ -30,9 +30,8 @@ def subscribe_all[M](
 class Outbox[M]:
     """One peer's view of some sources, keeping the newest message of each.
 
-    Use as a context manager: it subscribes to `sources` on entry and
-    unsubscribes on exit. A peer that falls behind skips stale messages
-    instead of stalling the sources that every other peer shares.
+    A peer that falls behind skips stale messages instead of stalling the
+    sources that every other peer shares.
     """
 
     def __init__(self, *sources: Observable[M]) -> None:
@@ -72,10 +71,7 @@ class Outbox[M]:
 async def send_until_closed(
     connection: Connection, *sources: Observable[WebSocketMessage]
 ) -> None:
-    """Send the newest message of each source to `connection` until it closes.
-
-    Messages published before the call or after the close are dropped.
-    """
+    """Send each source's newest message to `connection` while it is open."""
     with Outbox(*sources) as outbox:
         # Sources may go quiet, so the close is awaited on its own.
         async with asyncio.TaskGroup() as tasks:

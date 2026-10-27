@@ -11,7 +11,7 @@ class CollisionMonitor:
     Stopping starts below `STOP_DISTANCE_CM` and lasts until the obstacle is
     at least `RESUME_DISTANCE_CM` away, so sensor jitter around a single
     cutoff doesn't flip it on and off. RETREAT and the turns always pass
-    through, so the driver can back away. It is confined to one thread.
+    through, so the driver can back away.
     """
 
     STOP_DISTANCE_CM = 5

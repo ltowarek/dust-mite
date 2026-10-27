@@ -212,7 +212,7 @@ def test_opens_the_cars_telemetry_endpoint_at_once(
 def test_forwards_drive_commands_to_the_car(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
-    with websockets.sync.client.connect(streamer.drive) as driver:
+    with websockets.sync.client.connect(streamer.drive, proxy=None) as driver:
         _send_command(driver, _ADVANCE)
         wait_for(lambda: bool(car_control.received))
 
@@ -226,12 +226,12 @@ def test_refuses_a_second_driver(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     try_again_later = 1013
-    with websockets.sync.client.connect(streamer.drive) as first:
+    with websockets.sync.client.connect(streamer.drive, proxy=None) as first:
         _send_command(first, _ADVANCE)
         wait_for(lambda: bool(car_control.received))
 
         with (
-            websockets.sync.client.connect(streamer.drive) as second,
+            websockets.sync.client.connect(streamer.drive, proxy=None) as second,
             pytest.raises(websockets.exceptions.ConnectionClosedError) as closed,
         ):
             second.recv(timeout=WAIT_TIMEOUT_S)
@@ -242,7 +242,7 @@ def test_refuses_a_second_driver(
 def test_closes_a_connection_to_an_unknown_path(streamer: StreamerEndpoints) -> None:
     unknown = urllib.parse.urljoin(streamer.drive, "/")
     with (
-        websockets.sync.client.connect(unknown) as client,
+        websockets.sync.client.connect(unknown, proxy=None) as client,
         pytest.raises(websockets.exceptions.ConnectionClosedError),
     ):
         client.recv(timeout=WAIT_TIMEOUT_S)
@@ -252,7 +252,7 @@ def test_the_controller_cli_drives_through_the_streamer(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     turn_left = 4
-    with websockets.sync.client.connect(streamer.drive) as connection:
+    with websockets.sync.client.connect(streamer.drive, proxy=None) as connection:
         WebSocketCommandSender(connection).send(Command.TURN_LEFT, _SPEED)
         wait_for(lambda: bool(car_control.received))
 
@@ -260,7 +260,7 @@ def test_the_controller_cli_drives_through_the_streamer(
 
 
 def test_streams_telemetry(streamer: StreamerEndpoints) -> None:
-    with websockets.sync.client.connect(streamer.telemetry) as client:
+    with websockets.sync.client.connect(streamer.telemetry, proxy=None) as client:
         assert "telemetry" in _receive_types(client, {"telemetry"})
 
 
@@ -270,11 +270,11 @@ def test_publishes_collision_monitor_state_on_the_telemetry_endpoint(
     with (
         car_feed_stub(telemetry(OBSTACLE_DISTANCE_CM)) as telemetry_feed,
         _streamer(camera_feed, telemetry_feed, car_control) as streamer,
-        websockets.sync.client.connect(streamer.telemetry) as client,
+        websockets.sync.client.connect(streamer.telemetry, proxy=None) as client,
     ):
         # Only changes are published, so subscribe before a driver attaches.
         _receive_types(client, {"telemetry"})
-        with websockets.sync.client.connect(streamer.drive):
+        with websockets.sync.client.connect(streamer.drive, proxy=None):
             assert _receive_collision_state(client) is True
 
 
@@ -286,7 +286,7 @@ def test_keeps_retrying_while_the_cars_telemetry_endpoint_is_busy(
             telemetry(CLEAR_DISTANCE_CM), process_request=busy_refusals(1)
         ) as telemetry_feed,
         _streamer(camera_feed, telemetry_feed, car_control) as streamer,
-        websockets.sync.client.connect(streamer.telemetry) as client,
+        websockets.sync.client.connect(streamer.telemetry, proxy=None) as client,
     ):
         assert "telemetry" in _receive_types(client, {"telemetry"})
 
@@ -357,12 +357,16 @@ def test_viewers_that_come_and_go_share_one_car_connection(
 def test_telemetry_clients_and_drivers_that_come_and_go_share_one_car_connection(
     streamer: StreamerEndpoints, telemetry_feed: CarEndpointSpy
 ) -> None:
-    with websockets.sync.client.connect(streamer.telemetry) as long_lived_client:
+    with websockets.sync.client.connect(
+        streamer.telemetry, proxy=None
+    ) as long_lived_client:
         _receive_types(long_lived_client, {"telemetry"})
         for _ in range(_CLIENTS_THAT_COME_AND_GO):
-            with websockets.sync.client.connect(streamer.telemetry) as client:
+            with websockets.sync.client.connect(
+                streamer.telemetry, proxy=None
+            ) as client:
                 _receive_types(client, {"telemetry"})
-            with websockets.sync.client.connect(streamer.drive):
+            with websockets.sync.client.connect(streamer.drive, proxy=None):
                 pass
 
     assert telemetry_feed.peak_connections == 1
@@ -372,7 +376,7 @@ def test_drivers_that_come_and_go_share_one_car_connection(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     for _ in range(_CLIENTS_THAT_COME_AND_GO):
-        with websockets.sync.client.connect(streamer.drive):
+        with websockets.sync.client.connect(streamer.drive, proxy=None):
             pass
 
     assert car_control.peak_connections == 1
@@ -409,7 +413,7 @@ def test_drops_drive_commands_sent_while_the_cars_drive_endpoint_is_down(
 ) -> None:
     sent_while_down = 1
     sent_after_return = 2
-    with websockets.sync.client.connect(streamer.drive) as driver:
+    with websockets.sync.client.connect(streamer.drive, proxy=None) as driver:
         wait_for(lambda: car_control.open_connections == 1)
         with car_control.stopped():
             driver.send(json.dumps({"command": _ADVANCE, "value": sent_while_down}))
@@ -425,7 +429,7 @@ def test_forwards_drive_commands_within_about_a_second_of_the_cars_return(
 ) -> None:
     resend_interval_s = 0.05
     about_a_second_s = 1.5
-    with websockets.sync.client.connect(streamer.drive) as driver:
+    with websockets.sync.client.connect(streamer.drive, proxy=None) as driver:
         wait_for(lambda: car_control.open_connections == 1)
         with car_control.stopped():
             wait_for(lambda: car_control.open_connections == 0)
@@ -443,7 +447,7 @@ def test_the_driver_stays_responsive_while_the_cars_drive_endpoint_is_down(
 ) -> None:
     # More than the streamer buffers for a handler that stops reading.
     many_commands = 100
-    with websockets.sync.client.connect(streamer.drive) as driver:
+    with websockets.sync.client.connect(streamer.drive, proxy=None) as driver:
         wait_for(lambda: car_control.open_connections == 1)
         with car_control.stopped():
             for _ in range(many_commands):
@@ -456,8 +460,8 @@ def test_streams_telemetry_while_the_cars_drive_endpoint_is_down(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     with (
-        websockets.sync.client.connect(streamer.drive) as driver,
-        websockets.sync.client.connect(streamer.telemetry) as client,
+        websockets.sync.client.connect(streamer.drive, proxy=None) as driver,
+        websockets.sync.client.connect(streamer.telemetry, proxy=None) as client,
     ):
         wait_for(lambda: car_control.open_connections == 1)
         with car_control.stopped():
@@ -470,32 +474,33 @@ def test_reconnects_about_once_a_second_to_a_car_that_hangs_up(
     camera_feed: CarEndpointSpy, telemetry_feed: CarEndpointSpy
 ) -> None:
     window_s = 3.0
+    retry_delay_s = 1.0
+    max_connections = int(window_s / retry_delay_s) + 1
     with (
         hanging_up_car_endpoint_spy() as control,
         _streamer(camera_feed, telemetry_feed, control),
     ):
         time.sleep(window_s)
 
-    assert control.connections <= window_s + 1
+    assert control.accepted_connections <= max_connections
 
 
 def test_reconnects_to_a_car_that_hangs_up_while_no_driver_is_sending(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
     second_connection = 2
-    with websockets.sync.client.connect(streamer.drive) as driver:
+    with websockets.sync.client.connect(streamer.drive, proxy=None) as driver:
         wait_for(lambda: car_control.open_connections == 1)
         car_control.drop_connections()
         wait_for(
             lambda: (
-                car_control.connections == second_connection
+                car_control.accepted_connections == second_connection
                 and car_control.open_connections == 1
             )
         )
         _send_command(driver, _ADVANCE)
-        wait_for(lambda: bool(car_control.received))
 
-    assert car_control.received
+        assert wait_for(lambda: bool(car_control.received))
 
 
 def test_keeps_retrying_while_the_cars_drive_endpoint_refuses_the_handshake(
@@ -504,7 +509,7 @@ def test_keeps_retrying_while_the_cars_drive_endpoint_refuses_the_handshake(
     with (
         car_control_spy(handshake_refusals(1, http.HTTPStatus.NOT_FOUND)) as control,
         _streamer(camera_feed, telemetry_feed, control) as streamer,
-        websockets.sync.client.connect(streamer.drive) as driver,
+        websockets.sync.client.connect(streamer.drive, proxy=None) as driver,
     ):
         wait_for(lambda: control.open_connections == 1)
         _send_command(driver, _ADVANCE)

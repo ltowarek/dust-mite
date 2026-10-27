@@ -40,12 +40,12 @@ ProcessRequest = (
 
 @dataclasses.dataclass
 class CarEndpointSpy:
-    """A car endpoint that records its connections and the commands it receives."""
+    """A car endpoint that records its connections and commands, and can hang up."""
 
     uri: str
     open_connections: int = 0
     peak_connections: int = 0
-    connections: int = 0
+    accepted_connections: int = 0
     received: list[dict[str, Any]] = dataclasses.field(default_factory=list)
     _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
     _websockets: list[websockets.sync.server.ServerConnection] = dataclasses.field(
@@ -61,7 +61,7 @@ class CarEndpointSpy:
         self, websocket: websockets.sync.server.ServerConnection | None = None
     ) -> Iterator[None]:
         with self._lock:
-            self.connections += 1
+            self.accepted_connections += 1
             self.open_connections += 1
             self.peak_connections = max(self.peak_connections, self.open_connections)
             if websocket is not None:

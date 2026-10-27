@@ -9,45 +9,44 @@ from websockets.exceptions import (
     InvalidStatus,
     InvalidURI,
 )
+from websockets.frames import CloseCode
 from websockets.http11 import Response
 
-from controller.reconnecting_connection import (
-    DeliberateClose,
-    classify_close,
-    is_retryable,
-)
+from controller.reconnecting_connection import deliberate_close_reason, is_retryable
 
 
 @pytest.mark.parametrize(
     ("code", "reason", "expected"),
     [
-        pytest.param(1006, "", None, id="no-close-frame"),
-        pytest.param(1001, "shutting down", None, id="going-away"),
+        pytest.param(None, None, None, id="no-close-frame"),
+        pytest.param(CloseCode.ABNORMAL_CLOSURE, "", None, id="abnormal-closure"),
+        pytest.param(CloseCode.GOING_AWAY, "shutting down", None, id="going-away"),
         pytest.param(
-            1013,
+            CloseCode.TRY_AGAIN_LATER,
             "another driver is connected",
-            DeliberateClose("another driver is connected"),
+            "another driver is connected",
             id="try-again-later",
         ),
         pytest.param(
-            1008,
+            CloseCode.POLICY_VIOLATION,
             "unknown path: /",
-            DeliberateClose("unknown path: /"),
+            "unknown path: /",
             id="policy-violation",
         ),
-        pytest.param(1000, "", DeliberateClose(""), id="normal-closure"),
+        pytest.param(CloseCode.NORMAL_CLOSURE, "", "", id="normal-closure"),
+        pytest.param(CloseCode.NO_STATUS_RCVD, None, "", id="no-status-code"),
         pytest.param(
-            1011,
+            CloseCode.INTERNAL_ERROR,
             "internal error",
-            DeliberateClose("internal error"),
+            "internal error",
             id="internal-error",
         ),
     ],
 )
-def test_classifies_a_close(
-    code: int, reason: str, expected: DeliberateClose | None
+def test_gives_the_reason_of_a_deliberate_close(
+    code: int | None, reason: str | None, expected: str | None
 ) -> None:
-    assert classify_close(code, reason) == expected
+    assert deliberate_close_reason(code, reason) == expected
 
 
 def _status(status: http.HTTPStatus) -> InvalidStatus:

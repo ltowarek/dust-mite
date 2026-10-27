@@ -41,3 +41,15 @@ class TestSubject:
 
     def test_publishing_without_subscribers_is_a_no_op(self) -> None:
         Subject[str]().publish("nobody listening")
+
+    def test_delivers_to_the_other_subscribers_when_one_raises(self) -> None:
+        subject = Subject[str]()
+        subscriber = SubscriberSpy[str]()
+
+        def fail(message: str) -> None:
+            raise KeyError(message)
+
+        with subject.subscription(fail), subject.subscription(subscriber):
+            subject.publish("frame")
+
+        assert subscriber.messages == ["frame"]

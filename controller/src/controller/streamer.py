@@ -49,10 +49,6 @@ logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
 
-# How long an idle Viewer handler waits for a Camera frame before rechecking
-# whether its Viewer has disconnected.
-_OUTBOX_POLL_S = 0.2
-
 
 class _ThreadedOutbox[M]:
     """An `Outbox` for Viewer threads, whose sources publish from other threads."""
@@ -108,7 +104,7 @@ async def server_handler(
 
     try:
         if path == TELEMETRY_PATH:
-            await _serve_telemetry(websocket, telemetry, arbiter.collision_state)
+            await send_until_closed(websocket, telemetry, arbiter.collision_state)
         elif path == DRIVE_PATH:
             await _serve_driver(arbiter, websocket)
         else:
@@ -127,14 +123,6 @@ async def _serve_driver(
                 submit(json.loads(message))
     except DriverAlreadyConnectedError as e:
         await websocket.close(CloseCode.TRY_AGAIN_LATER, str(e))
-
-
-async def _serve_telemetry(
-    websocket: websockets.asyncio.server.ServerConnection,
-    telemetry: Observable[WebSocketMessage],
-    collision_state: Subject[WebSocketMessage],
-) -> None:
-    await send_until_closed(websocket, telemetry, collision_state)
 
 
 CAMERA_PATH = "/camera"
@@ -181,12 +169,14 @@ def _serve_viewer(
     viewer.send_header("Cache-Control", "no-store")
     viewer.end_headers()
     span.set_attribute(HTTP_RESPONSE_STATUS_CODE, http.HTTPStatus.OK)
+    # How long an idle Viewer waits for a Camera frame before checking it left.
+    poll_s = 0.2
     with (
         _ThreadedOutbox(camera) as outbox,
         contextlib.suppress(BrokenPipeError, ConnectionResetError),
     ):
         while not _viewer_left(viewer.connection):
-            for part in outbox.take(timeout=_OUTBOX_POLL_S):
+            for part in outbox.take(timeout=poll_s):
                 _send_part(viewer, part)
 
 
@@ -324,9 +314,11 @@ async def _publish_telemetry(uri: str, telemetry: Subject[WebSocketMessage]) -> 
     async def publish_all(connection: ClientConnection) -> None:
         async for message in connection:
             try:
-                telemetry.publish(relay_telemetry_message(message))
+                relayed = relay_telemetry_message(message)
             except Exception:
                 logger.exception("Dropping a Telemetry message from the car")
+            else:
+                telemetry.publish(relayed)
 
     await stay_connected(uri, publish_all)
 
