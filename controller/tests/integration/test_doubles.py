@@ -171,6 +171,15 @@ def busy_refusals(refusals: int) -> ProcessRequest:
     return handshake_refusals(refusals, http.HTTPStatus.SERVICE_UNAVAILABLE)
 
 
+def _push_forever(
+    websocket: websockets.sync.server.ServerConnection,
+    message: Callable[[], dict[str, Any]],
+) -> None:
+    while True:
+        websocket.send(json.dumps(message()))
+        time.sleep(FEED_INTERVAL_S)
+
+
 def car_feed_stub(
     message: Callable[[], dict[str, Any]],
     process_request: ProcessRequest = None,
@@ -178,11 +187,23 @@ def car_feed_stub(
     def push_messages(
         websocket: websockets.sync.server.ServerConnection, _: CarEndpointSpy
     ) -> None:
-        while True:
-            websocket.send(json.dumps(message()))
-            time.sleep(FEED_INTERVAL_S)
+        _push_forever(websocket, message)
 
     return car_endpoint_spy(push_messages, process_request)
+
+
+def unreadable_first_car_feed_stub(
+    message: Callable[[], dict[str, Any]],
+) -> contextlib.AbstractContextManager[CarEndpointSpy]:
+    """A car feed that pushes one message that is not JSON before each `message`."""
+
+    def push_messages(
+        websocket: websockets.sync.server.ServerConnection, _: CarEndpointSpy
+    ) -> None:
+        websocket.send("not json")
+        _push_forever(websocket, message)
+
+    return car_endpoint_spy(push_messages)
 
 
 def car_control_spy(

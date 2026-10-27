@@ -1,6 +1,7 @@
 import http
 
 import pytest
+from websockets.asyncio.client import ClientConnection
 from websockets.datastructures import Headers
 from websockets.exceptions import (
     ConnectionClosedError,
@@ -12,7 +13,11 @@ from websockets.exceptions import (
 from websockets.frames import CloseCode
 from websockets.http11 import Response
 
-from controller.reconnecting_connection import deliberate_close_reason, is_retryable
+from controller.reconnecting_connection import (
+    deliberate_close_reason,
+    is_retryable,
+    stay_connected,
+)
 
 
 @pytest.mark.parametrize(
@@ -78,3 +83,12 @@ def test_gives_up_on_an_invalid_uri() -> None:
     error = InvalidURI("car.invalid", "scheme isn't ws or wss")
 
     assert is_retryable(error) is False
+
+
+@pytest.mark.asyncio
+async def test_stops_reconnecting_to_an_invalid_uri() -> None:
+    async def handle(_: ClientConnection) -> None:
+        pass
+
+    with pytest.raises(InvalidURI):
+        await stay_connected("car.invalid", handle)

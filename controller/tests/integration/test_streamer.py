@@ -37,6 +37,7 @@ from .test_doubles import (
     hanging_up_car_endpoint_spy,
     read_mjpeg_part,
     telemetry,
+    unreadable_first_car_feed_stub,
 )
 from .waiting import WAIT_TIMEOUT_S, wait_for
 
@@ -285,6 +286,17 @@ def test_keeps_retrying_while_the_cars_telemetry_endpoint_is_busy(
         car_feed_stub(
             telemetry(CLEAR_DISTANCE_CM), process_request=busy_refusals(1)
         ) as telemetry_feed,
+        _streamer(camera_feed, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(streamer.telemetry, proxy=None) as client,
+    ):
+        assert "telemetry" in _receive_types(client, {"telemetry"})
+
+
+def test_streams_telemetry_after_an_unreadable_message_from_the_car(
+    camera_feed: CarEndpointSpy, car_control: CarEndpointSpy
+) -> None:
+    with (
+        unreadable_first_car_feed_stub(telemetry(CLEAR_DISTANCE_CM)) as telemetry_feed,
         _streamer(camera_feed, telemetry_feed, car_control) as streamer,
         websockets.sync.client.connect(streamer.telemetry, proxy=None) as client,
     ):
