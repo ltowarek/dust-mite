@@ -9,7 +9,6 @@ from websockets.exceptions import (
     InvalidStatus,
     InvalidURI,
 )
-from websockets.frames import Close
 from websockets.http11 import Response
 
 from controller.reconnecting_connection import (
@@ -21,32 +20,35 @@ from controller.reconnecting_connection import (
 
 
 @pytest.mark.parametrize(
-    ("close", "expected"),
+    ("code", "reason", "expected"),
     [
-        pytest.param(None, None, id="no-close-frame"),
-        pytest.param(Close(1001, "shutting down"), None, id="going-away"),
+        pytest.param(1006, "", None, id="no-close-frame"),
+        pytest.param(1001, "shutting down", None, id="going-away"),
         pytest.param(
-            Close(1013, "another driver is connected"),
+            1013,
+            "another driver is connected",
             DeliberateClose("another driver is connected"),
             id="try-again-later",
         ),
         pytest.param(
-            Close(1008, "unknown path: /"),
+            1008,
+            "unknown path: /",
             DeliberateClose("unknown path: /"),
             id="policy-violation",
         ),
-        pytest.param(Close(1000, ""), DeliberateClose(""), id="normal-closure"),
+        pytest.param(1000, "", DeliberateClose(""), id="normal-closure"),
         pytest.param(
-            Close(1011, "internal error"),
+            1011,
+            "internal error",
             DeliberateClose("internal error"),
             id="internal-error",
         ),
     ],
 )
 def test_classifies_a_close(
-    close: Close | None, expected: DeliberateClose | None
+    code: int, reason: str, expected: DeliberateClose | None
 ) -> None:
-    assert classify_close(close) == expected
+    assert classify_close(code, reason) == expected
 
 
 @pytest.mark.parametrize(

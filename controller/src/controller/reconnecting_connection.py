@@ -1,7 +1,6 @@
 """Staying connected to a WebSocket peer: the reconnect policy and its loops."""
 
 import asyncio
-import contextlib
 import dataclasses
 import itertools
 import logging
@@ -11,7 +10,11 @@ import websockets.asyncio.client
 import websockets.client
 import websockets.exceptions
 from websockets.asyncio.client import ClientConnection
-from websockets.frames import Close, CloseCode
+from websockets.frames import CloseCode
+
+from .outbox import send_until_closed
+from .subject import Observable
+from .websocket_message import WebSocketMessage
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -26,14 +29,14 @@ class DeliberateClose:
     reason: str
 
 
-def classify_close(close: Close | None) -> DeliberateClose | None:
-    """Return the deliberate close `close` is, or None if the peer is to be retried.
+def classify_close(code: int | None, reason: str | None) -> DeliberateClose | None:
+    """Return the deliberate close a closed connection's code and reason are.
 
-    `close` is the close frame the peer sent, None if it sent none.
+    None means the peer went away and is to be retried.
     """
-    if close is None or close.code == CloseCode.GOING_AWAY:
+    if code in {None, CloseCode.ABNORMAL_CLOSURE, CloseCode.GOING_AWAY}:
         return None
-    return DeliberateClose(close.reason)
+    return DeliberateClose(reason or "")
 
 
 def fatal_connect_error(error: Exception) -> Exception | None:
@@ -67,58 +70,20 @@ async def stay_connected(
         await asyncio.sleep(RETRY_DELAY_S)
 
 
-class ReconnectingConnection:
-    """A write-only WebSocket connection to `uri`, reconnecting while `run` runs.
+async def forward(uri: str, messages: Observable[WebSocketMessage]) -> None:
+    """Send each message published on `messages` to `uri` until cancelled.
 
-    Messages sent while disconnected are dropped, and only the newest unsent
-    one is kept, so a stalled peer never receives a backlog.
+    Messages published while disconnected are dropped, and only the newest
+    unsent one is kept, so a stalled peer never receives a backlog.
     """
 
-    def __init__(self, uri: str) -> None:
-        """Initialize the object."""
-        self._uri = uri
-        self._outgoing: asyncio.Queue[str] | None = None
-
-    def send(self, message: str) -> None:
-        """Send `message` if connected, otherwise drop it."""
-        if self._outgoing is None:
-            return
-        with contextlib.suppress(asyncio.QueueEmpty):
-            self._outgoing.get_nowait()
-        self._outgoing.put_nowait(message)
-
-    async def run(self) -> None:
-        """Stay connected until cancelled."""
-        await stay_connected(self._uri, self._serve)
-
-    async def _serve(self, connection: ClientConnection) -> None:
-        logger.info("Connected to %s", self._uri)
-        outgoing: asyncio.Queue[str] = asyncio.Queue(maxsize=1)
-        self._outgoing = outgoing
-        try:
-            async with asyncio.TaskGroup() as tasks:
-                sender = tasks.create_task(_send_all(connection, outgoing))
-                close = await _closed(connection)
-                sender.cancel()
-        finally:
-            self._outgoing = None
-        deliberate = classify_close(close)
+    async def send_until_lost(connection: ClientConnection) -> None:
+        logger.info("Connected to %s", uri)
+        await send_until_closed(connection, messages)
+        deliberate = classify_close(connection.close_code, connection.close_reason)
         if deliberate is None:
-            logger.warning("Lost the connection to %s", self._uri)
+            logger.warning("Lost the connection to %s", uri)
         else:
-            logger.warning("%s closed the connection: %s", self._uri, deliberate.reason)
+            logger.warning("%s closed the connection: %s", uri, deliberate.reason)
 
-
-async def _send_all(connection: ClientConnection, outgoing: asyncio.Queue[str]) -> None:
-    with contextlib.suppress(websockets.exceptions.ConnectionClosed):
-        while True:
-            await connection.send(await outgoing.get())
-
-
-async def _closed(connection: ClientConnection) -> Close | None:
-    """Return the peer's close frame once `connection` closes, discarding messages."""
-    try:
-        while True:
-            await connection.recv()
-    except websockets.exceptions.ConnectionClosed as e:
-        return e.rcvd
+    await stay_connected(uri, send_until_lost)

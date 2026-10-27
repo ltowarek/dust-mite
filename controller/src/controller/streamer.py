@@ -35,7 +35,8 @@ from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
 from .observability import ObservabilitySettings, configure_observability
-from .reconnecting_connection import ReconnectingConnection
+from .outbox import send_until_closed, subscribe_all
+from .reconnecting_connection import forward
 from .subject import Observable, Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
@@ -52,58 +53,8 @@ tracer = trace.get_tracer(__name__)
 _OUTBOX_POLL_S = 0.2
 
 
-def _subscribe_all[M](
-    sources: tuple[Observable[M], ...], put: Callable[[int, M], None]
-) -> contextlib.ExitStack:
-    """Subscribe `put` to each source, by its slot; unsubscribe all on any failure."""
-    with contextlib.ExitStack() as subscriptions:
-        for slot, source in enumerate(sources):
-            subscriptions.enter_context(
-                source.subscription(functools.partial(put, slot))
-            )
-        return subscriptions.pop_all()
-
-
-class _Outbox[M]:
-    """One client's view of some sources, keeping the newest message of each.
-
-    Use as a context manager: it subscribes to `sources` on entry and
-    unsubscribes on exit. A client that falls behind skips stale telemetry
-    instead of stalling the feed that every other client shares.
-    """
-
-    def __init__(self, *sources: Observable[M]) -> None:
-        self._sources = sources
-        self._subscriptions = contextlib.ExitStack()
-        self._ready = asyncio.Event()
-        self._pending: dict[int, M] = {}
-
-    def __enter__(self) -> Self:
-        self._subscriptions = _subscribe_all(self._sources, self._put)
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        exc_traceback: TracebackType | None,
-    ) -> None:
-        self._subscriptions.close()
-
-    async def take(self) -> list[M]:
-        await self._ready.wait()
-        self._ready.clear()
-        messages = list(self._pending.values())
-        self._pending.clear()
-        return messages
-
-    def _put(self, slot: int, message: M) -> None:
-        self._pending[slot] = message
-        self._ready.set()
-
-
 class _ThreadedOutbox[M]:
-    """An `_Outbox` for Viewer threads, whose sources publish from other threads."""
+    """An `Outbox` for Viewer threads, whose sources publish from other threads."""
 
     def __init__(self, *sources: Observable[M]) -> None:
         self._sources = sources
@@ -112,7 +63,7 @@ class _ThreadedOutbox[M]:
         self._pending: dict[int, M] = {}
 
     def __enter__(self) -> Self:
-        self._subscriptions = _subscribe_all(self._sources, self._put)
+        self._subscriptions = subscribe_all(self._sources, self._put)
         return self
 
     def __exit__(
@@ -182,22 +133,7 @@ async def _serve_telemetry(
     telemetry: Observable[WebSocketMessage],
     collision_state: Subject[WebSocketMessage],
 ) -> None:
-    with _Outbox(telemetry, collision_state) as outbox:
-        # Telemetry may stall, so the client's departure is awaited on its own.
-        async with asyncio.TaskGroup() as tasks:
-            sender = tasks.create_task(_send_all(websocket, outbox))
-            await websocket.wait_closed()
-            sender.cancel()
-
-
-async def _send_all(
-    websocket: websockets.asyncio.server.ServerConnection,
-    outbox: _Outbox[WebSocketMessage],
-) -> None:
-    with contextlib.suppress(websockets.exceptions.ConnectionClosed):
-        while True:
-            for message in await outbox.take():
-                await websocket.send(json.dumps(message))
+    await send_until_closed(websocket, telemetry, collision_state)
 
 
 CAMERA_PATH = "/camera"
@@ -352,7 +288,6 @@ async def serve_streamer(
         functools.partial(MjpegClient, settings.camera_uri),
         functools.partial(relay_camera_part, process=process),
     )
-    car_drive = ReconnectingConnection(settings.drive_uri)
     async with asyncio.TaskGroup() as tasks:
         telemetry = AsyncCarFeed(
             functools.partial(
@@ -362,7 +297,7 @@ async def serve_streamer(
         )
         arbiter = CommandArbiter(commands, telemetry, CollisionMonitor())
         handler = functools.partial(server_handler, telemetry, arbiter)
-        car_drive_task = tasks.create_task(car_drive.run())
+        car_drive_task = tasks.create_task(forward(settings.drive_uri, commands))
         try:
             async with (
                 websockets.asyncio.server.serve(
@@ -376,14 +311,11 @@ async def serve_streamer(
                     0
                 ].getsockname()[:2]
                 websocket_url = f"ws://{websocket_host}:{websocket_port}"
-                with commands.subscription(
-                    lambda command: car_drive.send(json.dumps(command))
-                ):
-                    yield StreamerEndpoints(
-                        drive=f"{websocket_url}{DRIVE_PATH}",
-                        telemetry=f"{websocket_url}{TELEMETRY_PATH}",
-                        camera=camera_url,
-                    )
+                yield StreamerEndpoints(
+                    drive=f"{websocket_url}{DRIVE_PATH}",
+                    telemetry=f"{websocket_url}{TELEMETRY_PATH}",
+                    camera=camera_url,
+                )
         finally:
             car_drive_task.cancel()
 
