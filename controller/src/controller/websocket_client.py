@@ -41,7 +41,7 @@ class WebSocketClient:
     def _worker_main(self) -> None:
         while not self._stop_event.is_set():
             try:
-                client = websockets.sync.client.connect(self._uri)
+                client = websockets.sync.client.connect(self._uri, proxy=None)
             except (
                 ConnectionRefusedError,
                 OSError,

@@ -77,7 +77,9 @@ def main() -> None:
     console_handler = _configure_console_logging()
 
     try:
-        with websockets.sync.client.connect(settings.drive_uri) as connection:
+        with websockets.sync.client.connect(
+            settings.drive_uri, proxy=None
+        ) as connection:
             sender = WebSocketCommandSender(connection)
             if settings.input_backend is InputBackendName.KEYBOARD:
 

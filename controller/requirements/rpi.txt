@@ -5,5 +5,5 @@
 #
 #    pip-compile-multi
 #
-websockets==14.1
+websockets==17.3
     # via -r requirements/rpi.in
