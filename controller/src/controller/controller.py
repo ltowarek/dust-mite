@@ -4,13 +4,13 @@ import curses
 import dataclasses
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Self
 
 import websockets.sync.client
 
 from .command import Command
-from .curses_logging import curses_console_logging
+from .curses_logging import queued_console_logging, queued_log_writer
 from .input_backends import (
     DualSenseInputBackend,
     InputBackend,
@@ -50,15 +50,21 @@ def _configure_console_logging() -> logging.Handler:
     return handler
 
 
-def control(input_backend: InputBackend, sender: CommandSender) -> None:
+def control(
+    input_backend: InputBackend,
+    sender: CommandSender,
+    between_polls: Callable[[], None] = lambda: None,
+) -> None:
     """Read input in a loop and send commands to the car.
 
     Every command except a repeated BRAKE is sent on each poll, so a held
     command keeps the car's drive-command watchdog from braking.
+    `between_polls` runs before each poll, never during one.
     """
     last_command = Command.BRAKE
 
     while True:
+        between_polls()
         result = input_backend.poll()
         if result is None:
             break
@@ -84,10 +90,16 @@ def main() -> None:
             if settings.input_backend is InputBackendName.KEYBOARD:
 
                 def run(window: curses.window) -> None:
-                    with curses_console_logging(window, console_handler):
-                        control(KeyboardInputBackend(window), sender)
+                    control(
+                        KeyboardInputBackend(window),
+                        sender,
+                        between_polls=queued_log_writer(
+                            records, window, console_handler.formatter
+                        ),
+                    )
 
-                curses.wrapper(run)
+                with queued_console_logging(console_handler) as records:
+                    curses.wrapper(run)
             else:
                 with DualSenseInputBackend() as backend:
                     control(backend, sender)

@@ -1,4 +1,7 @@
+import io
 import logging
+import threading
+from typing import override
 
 import pytest
 
@@ -8,7 +11,12 @@ from controller.controller import (
     _configure_console_logging,
     control,
 )
-from controller.input_backends import InputBackendName
+from controller.curses_logging import (
+    LogWindow,
+    queued_console_logging,
+    queued_log_writer,
+)
+from controller.input_backends import InputBackendName, KeyboardInputBackend
 
 from .test_doubles import CommandSenderSpy
 
@@ -88,6 +96,86 @@ class TestControl:
         control(input_backend, sender)
 
         assert sender.sent == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
+
+
+class LoggingKeyboardWindowSpy(LogWindow):
+    """Keyboard window whose every read logs from another thread, recording writes."""
+
+    def __init__(self, keys: list[int], logger: logging.Logger) -> None:
+        self._keys = iter(keys)
+        self._logger = logger
+        self._reads = 0
+        self._reading = False
+        self.written: list[str] = []
+        self.writes_during_reads = 0
+
+    def timeout(self, delay: int, /) -> None:
+        """Accept the backend's read timeout."""
+
+    def getch(self) -> int:
+        self._reading = True
+        self._reads += 1
+        thread = threading.Thread(
+            target=self._logger.info, args=("read %d", self._reads)
+        )
+        thread.start()
+        thread.join()
+        self._reading = False
+        return next(self._keys)
+
+    @override
+    def scrollok(self, flag: bool, /) -> None:
+        """Accept the handler's scrolling setup."""
+
+    @override
+    def addstr(self, text: str, /) -> None:
+        self.writes_during_reads += self._reading
+        self.written.append(text)
+
+    @override
+    def refresh(self) -> None:
+        self.writes_during_reads += self._reading
+
+
+class TestCursesLogging:
+    @pytest.fixture
+    def console(self) -> io.StringIO:
+        return io.StringIO()
+
+    @pytest.fixture
+    def window(
+        self, console: io.StringIO, root_logger: logging.Logger
+    ) -> LoggingKeyboardWindowSpy:
+        console_handler = logging.StreamHandler(console)
+        root_logger.addHandler(console_handler)
+        logger = logging.getLogger("test-curses-logging")
+        logger.setLevel(logging.DEBUG)
+        window = LoggingKeyboardWindowSpy([ord("a"), ord("q")], logger)
+        with queued_console_logging(console_handler) as records:
+            control(
+                KeyboardInputBackend(window),
+                CommandSenderSpy(),
+                between_polls=queued_log_writer(
+                    records, window, console_handler.formatter
+                ),
+            )
+        return window
+
+    def test_writes_nothing_to_the_window_while_a_poll_reads(
+        self, window: LoggingKeyboardWindowSpy
+    ) -> None:
+        assert window.writes_during_reads == 0
+
+    def test_writes_records_logged_from_another_thread_between_polls(
+        self, window: LoggingKeyboardWindowSpy
+    ) -> None:
+        assert "read 1\n" in window.written
+
+    @pytest.mark.usefixtures("window")
+    def test_writes_a_record_logged_after_the_last_poll_to_the_console(
+        self, console: io.StringIO
+    ) -> None:
+        assert "read 2\n" in console.getvalue()
 
 
 _CONTROLLER_ENV = {
