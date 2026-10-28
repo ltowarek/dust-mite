@@ -367,6 +367,30 @@ def test_a_viewer_receives_a_camera_frame_while_the_car_stalls_before_the_next(
         assert _first_part(streamer.camera).jpeg[:2] == b"\xff\xd8"
 
 
+def test_a_viewer_receives_camera_frames_after_a_corrupt_part_from_the_car(
+    telemetry_feed: CarEndpointSpy, car_control: CarEndpointSpy
+) -> None:
+    with (
+        car_camera_stub(corrupted=1) as camera,
+        _streamer(camera, telemetry_feed, car_control) as streamer,
+    ):
+        assert _first_part(streamer.camera).jpeg[:2] == b"\xff\xd8"
+
+
+def test_forwards_drive_commands_after_a_corrupt_part_from_the_car(
+    telemetry_feed: CarEndpointSpy, car_control: CarEndpointSpy
+) -> None:
+    with (
+        car_camera_stub(corrupted=1) as camera,
+        _streamer(camera, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(streamer.drive, proxy=None) as driver,
+    ):
+        _first_part(streamer.camera)
+        _send_command(driver, _ADVANCE)
+
+        assert wait_for(lambda: bool(car_control.received))
+
+
 def test_viewers_that_come_and_go_share_one_car_connection(
     streamer: StreamerEndpoints, camera_feed: CarEndpointSpy
 ) -> None:
@@ -441,7 +465,7 @@ def test_forwards_drive_commands_promptly_while_a_slow_processor_is_busy(
     promptly_s = 0.5
     busy = threading.Event()
 
-    def slow_processor(jpeg: bytes) -> bytes:
+    def slow_processor_spy(jpeg: bytes) -> bytes:
         busy.set()
         time.sleep(processing_s)
         return jpeg
@@ -451,7 +475,7 @@ def test_forwards_drive_commands_promptly_while_a_slow_processor_is_busy(
             camera_feed,
             telemetry_feed,
             car_control,
-            process_camera_frame=slow_processor,
+            process_camera_frame=slow_processor_spy,
         ) as streamer,
         _viewer(streamer.camera),
         websockets.sync.client.connect(streamer.drive, proxy=None) as driver,
@@ -475,14 +499,17 @@ def test_viewers_skip_stale_camera_frames_while_a_slow_processor_is_busy(
         for number in itertools.count():
             yield number.to_bytes(4)
 
-    def slow_processor(jpeg: bytes) -> bytes:
+    def slow_processor_stub(jpeg: bytes) -> bytes:
         time.sleep(processing_s)
         return jpeg
 
     with (
         car_camera_stub(camera_frames=numbered_camera_frames) as camera,
         _streamer(
-            camera, telemetry_feed, car_control, process_camera_frame=slow_processor
+            camera,
+            telemetry_feed,
+            car_control,
+            process_camera_frame=slow_processor_stub,
         ) as streamer,
         _viewer(streamer.camera) as viewer,
     ):

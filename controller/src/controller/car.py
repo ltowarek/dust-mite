@@ -22,10 +22,7 @@ class CarFeed[M]:
         read: Callable[[Callable[[M], None]], Awaitable[None]],
         tasks: asyncio.TaskGroup,
     ) -> None:
-        """Initialize the object; `read` publishes to every subscriber until cancelled.
-
-        The first subscriber starts it in `tasks` and the last one cancels it.
-        """
+        """Initialize the object; the first subscriber starts `read` in `tasks`."""
         self._read = read
         self._tasks = tasks
         self._task: asyncio.Task[None] | None = None

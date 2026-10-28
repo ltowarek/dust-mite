@@ -25,8 +25,10 @@ def _part(jpeg: bytes = _JPEG) -> bytes:
     )
 
 
-def _stream(data: bytes, *, ended: bool = True) -> asyncio.StreamReader:
-    stream = asyncio.StreamReader()
+def _stream(
+    data: bytes, *, ended: bool = True, line_limit: int = 2**16
+) -> asyncio.StreamReader:
+    stream = asyncio.StreamReader(limit=line_limit)
     stream.feed_data(data)
     if ended:
         stream.feed_eof()
@@ -79,6 +81,22 @@ async def test_a_stream_that_ends_mid_part_raises_eof(stream: bytes) -> None:
         await read_part(_stream(stream))
 
 
+@pytest.mark.parametrize(
+    "head",
+    [
+        pytest.param(b"Content-Length: four\r\n", id="non-numeric-length"),
+        pytest.param(b"Content-Length 4\r\n", id="malformed-header-line"),
+        pytest.param(b"X-Padding: " + bytes(100) + b"\r\n", id="over-long-line"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_malformed_part_raises_a_payload_error(head: bytes) -> None:
+    stream = _stream(b"\r\n--frame\r\n" + head + b"\r\n" + _JPEG, line_limit=64)
+
+    with pytest.raises(aiohttp.ClientPayloadError):
+        await read_part(stream)
+
+
 def test_formats_a_part_with_its_boundary_and_headers() -> None:
     part = CameraStreamPart({"traceparent": _TRACEPARENT}, _JPEG)
 
@@ -121,8 +139,8 @@ def test_gives_up_on_an_invalid_uri(error: Exception) -> None:
 
 @pytest.mark.asyncio
 async def test_stops_reconnecting_to_an_invalid_uri() -> None:
-    def publish(_: CameraStreamPart) -> None:
+    def publish_dummy(_: CameraStreamPart) -> None:
         pass
 
     with pytest.raises(aiohttp.InvalidURL):
-        await read_stream("car.invalid", publish)
+        await read_stream("car.invalid", publish_dummy)

@@ -252,14 +252,17 @@ def car_camera_stub(
     *,
     stalled: bool = False,
     camera_frames: Callable[[], Iterable[bytes]] = _endless_camera_frames,
+    corrupted: int = 0,
 ) -> Iterator[CarEndpointSpy]:
     """The car's Camera endpoint: answers `refusals` requests as busy, then streams.
 
-    Each connection sends `camera_frames`, then no more parts until the client
-    hangs up; a `stalled` endpoint sends none.
+    Each connection sends `camera_frames`, then nothing until the client hangs
+    up; a `stalled` one sends none, and the first `corrupted` start with a
+    corrupt part.
     """
     endpoint: CarEndpointSpy
     refuse = _refusal_counter(refusals)
+    corrupt = _refusal_counter(corrupted)
 
     class CameraHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -273,6 +276,8 @@ def car_camera_stub(
                 endpoint.connected(),
                 contextlib.suppress(BrokenPipeError, ConnectionResetError),
             ):
+                if corrupt():
+                    self.wfile.write(b"\r\n--frame\r\nContent-Length: four\r\n\r\n")
                 for jpeg in [] if stalled else camera_frames():
                     self.wfile.write(_mjpeg_part(jpeg))
                     self.wfile.flush()

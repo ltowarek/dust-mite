@@ -460,8 +460,8 @@ To profile a run:
    then brings up the stack.
 2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-streamer"}`, optionally split by `thread_name`. Splitting by thread
-   name separates the event loop, which serves every connection, from worker threads such as the
-   one processing Camera frames; it does not separate one connection from another.
+   name separates the event loop, which serves every connection, from worker threads such as those
+   processing Camera frames; it does not separate one connection from another.
 
 #### Span profiles (trace → flame graph)
 

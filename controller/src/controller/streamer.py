@@ -109,19 +109,19 @@ async def _serve_viewer(
     with Outbox(camera) as outbox, contextlib.suppress(ConnectionResetError):
         while True:
             for part in await outbox.take():
-                await _send_part(request, response, part)
+                await _send_part(response, part, request.remote or "")
     return response
 
 
 async def _send_part(
-    request: web.Request, response: web.StreamResponse, part: CameraStreamPart
+    response: web.StreamResponse, part: CameraStreamPart, client_address: str
 ) -> None:
     with tracer.start_as_current_span(
         "streamer.send_camera_frame",
         context=extract_trace_context(part.headers),
         kind=trace.SpanKind.PRODUCER,
     ) as span:
-        span.set_attribute(CLIENT_ADDRESS, request.remote or "")
+        span.set_attribute(CLIENT_ADDRESS, client_address)
         await response.write(
             format_part(CameraStreamPart(inject_trace_context({}), part.jpeg))
         )
@@ -157,7 +157,6 @@ async def _relay_camera(
             while True:
                 for part in await newest.take():
                     try:
-                        # Spans start in the worker, so its samples link to them.
                         relayed = await asyncio.to_thread(
                             relay_camera_part, part, process
                         )

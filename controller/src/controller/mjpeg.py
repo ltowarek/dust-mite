@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 import aiohttp
+import aiohttp.http_exceptions
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -37,25 +38,30 @@ class CameraStreamPart:
 async def read_part(stream: _Readable) -> CameraStreamPart:
     """Read the next part of `stream`, raising `EOFError` if the stream ends first.
 
-    It returns once the JPEG is read, without waiting for the next boundary.
+    A part that cannot be framed raises `aiohttp.ClientPayloadError`.
     """
-    line = await stream.readline()
-    while not line.startswith(b"--"):
-        if not line:
-            raise EOFError
+    try:
         line = await stream.readline()
-    head: list[bytes] = []
-    while (line := await stream.readline()) not in {b"\r\n", b"\n"}:
-        if not line:
-            raise EOFError
-        head.append(line)
-    message = http.client.parse_headers(io.BytesIO(b"".join(head)))
-    headers = {name.lower(): value for name, value in message.items()}
-    if "content-length" not in headers:
-        raise EOFError
-    return CameraStreamPart(
-        headers, await stream.readexactly(int(headers["content-length"]))
-    )
+        while not line.startswith(b"--"):
+            if not line:
+                raise EOFError
+            line = await stream.readline()
+        head: list[bytes] = []
+        while (line := await stream.readline()) not in {b"\r\n", b"\n"}:
+            if not line:
+                raise EOFError
+            head.append(line)
+        message = http.client.parse_headers(io.BytesIO(b"".join(head)))
+        headers = {name.lower(): value for name, value in message.items()}
+        length = int(headers["content-length"])
+        return CameraStreamPart(headers, await stream.readexactly(length))
+    except (
+        KeyError,
+        ValueError,
+        http.client.HTTPException,
+        aiohttp.http_exceptions.BadHttpMessage,
+    ) as error:
+        raise aiohttp.ClientPayloadError(repr(error)) from error
 
 
 def format_part(part: CameraStreamPart) -> bytes:
