@@ -26,7 +26,6 @@ from opentelemetry.semconv.attributes.url_attributes import URL_PATH
 from websockets.asyncio.client import ClientConnection
 from websockets.frames import CloseCode
 
-from .car import CarFeed
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
@@ -34,7 +33,7 @@ from .mjpeg import CONTENT_TYPE, CameraStreamPart, format_part, read_stream
 from .observability import ObservabilitySettings, configure_observability
 from .outbox import Outbox, send_until_closed
 from .reconnecting_connection import forward, stay_connected
-from .subject import Observable, Subject
+from .subject import Observable, RefCountFeed, Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
 from .websocket_message import WebSocketMessage
@@ -226,7 +225,7 @@ async def serve_streamer(
     """Serve the Streamer endpoints while the context is open; port 0 binds any."""
     commands: Subject[WebSocketMessage] = Subject()
     async with asyncio.TaskGroup() as tasks:
-        camera = CarFeed(
+        camera = RefCountFeed(
             functools.partial(_relay_camera, settings.camera_uri, process), tasks
         )
         telemetry: Subject[WebSocketMessage] = Subject()

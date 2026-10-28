@@ -1,8 +1,10 @@
-"""Observables, and the Subject that fans one out to any number of subscribers."""
+"""Observables, the Subject that fans one out, and a feed shared by reference count."""
 
+import asyncio
 import contextlib
+import contextvars
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Protocol
 
 logger = logging.getLogger(__name__)
@@ -64,3 +66,40 @@ class Subject[T]:
         self._subscribers.remove(callback)
         if not self._subscribers and self._on_idle is not None:
             self._on_idle()
+
+
+class RefCountFeed[T]:
+    """An Observable that runs one shared `read` only while it has subscribers."""
+
+    def __init__(
+        self,
+        read: Callable[[Callable[[T], None]], Awaitable[None]],
+        tasks: asyncio.TaskGroup,
+    ) -> None:
+        """Initialize the object; the first subscriber starts `read` in `tasks`."""
+        self._read = read
+        self._tasks = tasks
+        self._task: asyncio.Task[None] | None = None
+        # Held while reading, so a new read waits until a cancelled one has finished.
+        self._reading = asyncio.Lock()
+        self._subject: Subject[T] = Subject(on_active=self._start, on_idle=self._stop)
+
+    def subscription(
+        self, callback: Callable[[T], None]
+    ) -> contextlib.AbstractContextManager[None]:
+        """Call `callback` with each message `read` publishes while subscribed."""
+        return self._subject.subscription(callback)
+
+    def _start(self) -> None:
+        # A fresh context, so the feed does not run inside its first subscriber's span.
+        self._task = self._tasks.create_task(
+            self._read_alone(), context=contextvars.Context()
+        )
+
+    def _stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+
+    async def _read_alone(self) -> None:
+        async with self._reading:
+            await self._read(self._subject.publish)
