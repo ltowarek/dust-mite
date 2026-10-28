@@ -4,7 +4,7 @@ import pytest
 from pydualsense import pydualsense
 from pydualsense.pydualsense import DSState
 
-from controller.command import Command
+from controller.command import Command, DriveCommand
 from controller.controller import control
 from controller.input_backends import (
     _KEYBOARD_POLL_TIMEOUT_MS,
@@ -97,7 +97,7 @@ class TestDualSenseInputBackend:
     def test_translates_state_to_command(
         self,
         state_overrides: dict[str, bool | int],
-        expected: tuple[Command, int | None],
+        expected: DriveCommand,
     ) -> None:
         backend = DualSenseInputBackend(_dualsense(**state_overrides))
         assert backend.poll() == expected
@@ -212,9 +212,7 @@ class TestKeyboardInputBackend:
             ),
         ],
     )
-    def test_translates_key_to_command(
-        self, key: int, expected: tuple[Command, int | None]
-    ) -> None:
+    def test_translates_key_to_command(self, key: int, expected: DriveCommand) -> None:
         backend = KeyboardInputBackend(ScriptedWindowStub([key]))
         assert backend.poll() == expected
 

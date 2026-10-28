@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from controller.command import Command
+from controller.command import Command, DriveCommand
 from controller.controller import (
     ControllerSettings,
     _configure_console_logging,
@@ -24,10 +24,10 @@ class TestConfigureConsoleLogging:
 
 
 class InputBackendStub:
-    def __init__(self, results: list[tuple[Command, int | None] | None]) -> None:
+    def __init__(self, results: list[DriveCommand | None]) -> None:
         self._results = iter(results)
 
-    def poll(self) -> tuple[Command, int | None] | None:
+    def poll(self) -> DriveCommand | None:
         return next(self._results)
 
 
