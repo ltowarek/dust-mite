@@ -74,6 +74,27 @@ def car_control() -> Iterator[CarEndpointSpy]:
         yield control
 
 
+def local_streamer_settings(
+    camera: CarEndpointSpy,
+    telemetry: CarEndpointSpy,
+    control: CarEndpointSpy,
+    websocket_port: int = 0,
+) -> StreamerSettings:
+    """Settings for a streamer on loopback in front of the given car doubles."""
+    return dataclasses.replace(
+        StreamerSettings.from_env(
+            {
+                "STREAM_CLIENT_URI": camera.uri,
+                "TELEMETRY_CLIENT_URI": telemetry.uri,
+                "DRIVE_CLIENT_URI": control.uri,
+                "STREAMER_CAMERA_PORT": "0",
+            }
+        ),
+        listen_host="127.0.0.1",
+        websocket_port=websocket_port,
+    )
+
+
 @pytest.fixture
 def streamer_settings() -> StreamerSettings:
     """The streamer's own settings, for tests that reach the car it is set up for."""

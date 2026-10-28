@@ -21,8 +21,9 @@ from websockets.frames import Close
 
 from controller.command import Command
 from controller.senders import WebSocketCommandSender
-from controller.streamer import StreamerEndpoints, StreamerSettings, serve_streamer
+from controller.streamer import StreamerEndpoints, serve_streamer
 
+from .conftest import local_streamer_settings
 from .test_doubles import (
     CAR_TRACEPARENT,
     CLEAR_DISTANCE_CM,
@@ -54,18 +55,7 @@ def _streamer(
     control: CarEndpointSpy,
     process_camera_frame: Callable[[bytes], bytes] | None = None,
 ) -> Iterator[StreamerEndpoints]:
-    settings = dataclasses.replace(
-        StreamerSettings.from_env(
-            {
-                "STREAM_CLIENT_URI": camera.uri,
-                "TELEMETRY_CLIENT_URI": telemetry.uri,
-                "DRIVE_CLIENT_URI": control.uri,
-                "STREAMER_CAMERA_PORT": "0",
-            }
-        ),
-        listen_host="127.0.0.1",
-        websocket_port=0,
-    )
+    settings = local_streamer_settings(camera, telemetry, control)
     processor = (
         {} if process_camera_frame is None else {"process": process_camera_frame}
     )
