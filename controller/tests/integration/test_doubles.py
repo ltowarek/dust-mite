@@ -12,7 +12,7 @@ import http.client
 import json
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, override
 
@@ -232,6 +232,11 @@ def camera_frame() -> bytes:
     return bytes(cv2.imencode(".jpg", image)[1].tobytes())
 
 
+def _endless_camera_frames() -> Iterator[bytes]:
+    while True:
+        yield camera_frame()
+
+
 def _mjpeg_part(jpeg: bytes) -> bytes:
     return (
         b"\r\n--frame\r\nContent-Type: image/jpeg\r\n"
@@ -243,11 +248,15 @@ def _mjpeg_part(jpeg: bytes) -> bytes:
 
 @contextlib.contextmanager
 def car_camera_stub(
-    refusals: int = 0, *, stalled: bool = False
+    refusals: int = 0,
+    *,
+    stalled: bool = False,
+    camera_frames: Callable[[], Iterable[bytes]] = _endless_camera_frames,
 ) -> Iterator[CarEndpointSpy]:
     """The car's Camera endpoint: answers `refusals` requests as busy, then streams.
 
-    A `stalled` endpoint sends no parts until the client hangs up.
+    Each connection sends `camera_frames`, then no more parts until the client
+    hangs up; a `stalled` endpoint sends none.
     """
     endpoint: CarEndpointSpy
     refuse = _refusal_counter(refusals)
@@ -264,13 +273,11 @@ def car_camera_stub(
                 endpoint.connected(),
                 contextlib.suppress(BrokenPipeError, ConnectionResetError),
             ):
-                if stalled:
-                    self.rfile.read(1)
-                    return
-                while True:
-                    self.wfile.write(_mjpeg_part(camera_frame()))
+                for jpeg in [] if stalled else camera_frames():
+                    self.wfile.write(_mjpeg_part(jpeg))
                     self.wfile.flush()
                     time.sleep(FEED_INTERVAL_S)
+                self.rfile.read(1)
 
         @override
         def log_message(self, *args: object) -> None:

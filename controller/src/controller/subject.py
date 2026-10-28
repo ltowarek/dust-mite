@@ -2,7 +2,6 @@
 
 import contextlib
 import logging
-import threading
 from collections.abc import Callable, Iterator
 from typing import Protocol
 
@@ -24,8 +23,7 @@ class Subject[T]:
 
     `on_active` runs when the first subscriber arrives and `on_idle` after the
     last one leaves: the hooks a RefCount connects and disconnects its upstream
-    feed on. Both run on the subscribing/unsubscribing thread, serialized
-    against each other.
+    feed on. It is confined to one thread, the event loop's.
     """
 
     def __init__(
@@ -37,8 +35,6 @@ class Subject[T]:
         """Initialize the object."""
         self._on_active = on_active
         self._on_idle = on_idle
-        self._lifecycle_lock = threading.Lock()
-        self._subscribers_lock = threading.Lock()
         self._subscribers: list[Callable[[T], None]] = []
 
     @contextlib.contextmanager
@@ -52,26 +48,19 @@ class Subject[T]:
 
     def publish(self, message: T) -> None:
         """Deliver `message` to every current subscriber, logging any that raises."""
-        with self._subscribers_lock:
-            subscribers = list(self._subscribers)
-        for callback in subscribers:
+        for callback in list(self._subscribers):
             try:
                 callback(message)
             except Exception:
                 logger.exception("A subscriber failed on a published message")
 
     def _subscribe(self, callback: Callable[[T], None]) -> None:
-        with self._lifecycle_lock:
-            with self._subscribers_lock:
-                first = not self._subscribers
-                self._subscribers.append(callback)
-            if first and self._on_active is not None:
-                self._on_active()
+        first = not self._subscribers
+        self._subscribers.append(callback)
+        if first and self._on_active is not None:
+            self._on_active()
 
     def _unsubscribe(self, callback: Callable[[T], None]) -> None:
-        with self._lifecycle_lock:
-            with self._subscribers_lock:
-                self._subscribers.remove(callback)
-                last = not self._subscribers
-            if last and self._on_idle is not None:
-                self._on_idle()
+        self._subscribers.remove(callback)
+        if not self._subscribers and self._on_idle is not None:
+            self._on_idle()

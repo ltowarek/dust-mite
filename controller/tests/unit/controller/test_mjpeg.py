@@ -1,8 +1,17 @@
-import io
+import asyncio
 
+import aiohttp
 import pytest
+import yarl
+from multidict import CIMultiDict, CIMultiDictProxy
 
-from controller.mjpeg import CameraStreamPart, format_part, read_part
+from controller.mjpeg import (
+    CameraStreamPart,
+    format_part,
+    is_retryable,
+    read_part,
+    read_stream,
+)
 
 _JPEG = b"\xff\xd8\xff\xd9"
 _TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
@@ -16,19 +25,44 @@ def _part(jpeg: bytes = _JPEG) -> bytes:
     )
 
 
-def test_reads_the_jpeg_of_a_part() -> None:
-    assert read_part(io.BytesIO(_part())).jpeg == _JPEG
+def _stream(data: bytes, *, ended: bool = True) -> asyncio.StreamReader:
+    stream = asyncio.StreamReader()
+    stream.feed_data(data)
+    if ended:
+        stream.feed_eof()
+    return stream
 
 
-def test_reads_the_headers_of_a_part_by_lowercase_name() -> None:
-    assert read_part(io.BytesIO(_part())).headers["traceparent"] == _TRACEPARENT
+@pytest.mark.asyncio
+async def test_reads_the_jpeg_of_a_part() -> None:
+    assert (await read_part(_stream(_part()))).jpeg == _JPEG
 
 
-def test_reads_parts_in_order() -> None:
-    stream = io.BytesIO(_part(b"first") + _part(b"second"))
-    read_part(stream)
+@pytest.mark.asyncio
+async def test_reads_the_headers_of_a_part_by_lowercase_name() -> None:
+    assert (await read_part(_stream(_part()))).headers["traceparent"] == _TRACEPARENT
 
-    assert read_part(stream).jpeg == b"second"
+
+@pytest.mark.asyncio
+async def test_reads_parts_in_order() -> None:
+    stream = _stream(_part(b"first") + _part(b"second"))
+    await read_part(stream)
+
+    assert (await read_part(stream)).jpeg == b"second"
+
+
+@pytest.mark.asyncio
+async def test_reads_a_part_before_the_next_boundary_arrives() -> None:
+    stream = _stream(_part(), ended=False)
+
+    assert (await asyncio.wait_for(read_part(stream), timeout=1)).jpeg == _JPEG
+
+
+@pytest.mark.asyncio
+async def test_reads_the_jpeg_by_its_content_length_not_by_the_boundary() -> None:
+    jpeg = b"\xff\xd8\r\n--frame\r\n\xff\xd9"
+
+    assert (await read_part(_stream(_part(jpeg)))).jpeg == jpeg
 
 
 @pytest.mark.parametrize(
@@ -39,20 +73,56 @@ def test_reads_parts_in_order() -> None:
         pytest.param(_part()[:-1], id="in-jpeg"),
     ],
 )
-def test_a_stream_that_ends_mid_part_raises_eof(stream: bytes) -> None:
+@pytest.mark.asyncio
+async def test_a_stream_that_ends_mid_part_raises_eof(stream: bytes) -> None:
     with pytest.raises(EOFError):
-        read_part(io.BytesIO(stream))
+        await read_part(_stream(stream))
 
 
-def _round_trip() -> CameraStreamPart:
-    return read_part(
-        io.BytesIO(format_part(CameraStreamPart({"traceparent": _TRACEPARENT}, _JPEG)))
-    )
+def test_formats_a_part_with_its_boundary_and_headers() -> None:
+    part = CameraStreamPart({"traceparent": _TRACEPARENT}, _JPEG)
+
+    assert format_part(part) == _part()
 
 
-def test_a_formatted_part_reads_back_its_jpeg() -> None:
-    assert _round_trip().jpeg == _JPEG
+def _status(status: int) -> aiohttp.ClientResponseError:
+    url = yarl.URL("http://car.invalid/stream")
+    request = aiohttp.RequestInfo(url, "GET", CIMultiDictProxy(CIMultiDict()), url)
+    return aiohttp.ClientResponseError(request, (), status=status)
 
 
-def test_a_formatted_part_reads_back_its_headers() -> None:
-    assert _round_trip().headers["traceparent"] == _TRACEPARENT
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(_status(503), id="busy"),
+        pytest.param(_status(404), id="not-found"),
+        pytest.param(aiohttp.ServerDisconnectedError(), id="disconnected"),
+        pytest.param(aiohttp.ServerTimeoutError(), id="stalled"),
+        pytest.param(aiohttp.ClientPayloadError("lost"), id="lost-mid-body"),
+        pytest.param(ConnectionRefusedError(), id="refused"),
+        pytest.param(TimeoutError(), id="timed-out"),
+        pytest.param(EOFError(), id="ended"),
+    ],
+)
+def test_retries_after_an_error_that_can_pass(error: Exception) -> None:
+    assert is_retryable(error) is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(aiohttp.InvalidUrlClientError("car.invalid"), id="invalid"),
+        pytest.param(aiohttp.NonHttpUrlClientError("ws://car.invalid"), id="non-http"),
+    ],
+)
+def test_gives_up_on_an_invalid_uri(error: Exception) -> None:
+    assert is_retryable(error) is False
+
+
+@pytest.mark.asyncio
+async def test_stops_reconnecting_to_an_invalid_uri() -> None:
+    def publish(_: CameraStreamPart) -> None:
+        pass
+
+    with pytest.raises(aiohttp.InvalidURL):
+        await read_stream("car.invalid", publish)

@@ -1,17 +1,14 @@
 """MJPEG over HTTP: a multipart/x-mixed-replace stream of JPEG parts."""
 
-import contextlib
+import asyncio
 import dataclasses
-import http
 import http.client
+import io
 import logging
-import queue
-import threading
-from types import TracebackType
-from typing import Protocol, Self
+from collections.abc import Callable
+from typing import Protocol
 
-import requests
-import urllib3.exceptions
+import aiohttp
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -21,13 +18,12 @@ CONTENT_TYPE = f"multipart/x-mixed-replace;boundary={BOUNDARY}"
 
 # A stream that sends nothing for this long is treated as dropped.
 _READ_TIMEOUT_S = 5.0
-_RECONNECT_DELAY_S = 1.0
 
 
 class _Readable(Protocol):
-    def readline(self, size: int = -1, /) -> bytes: ...
+    async def readline(self) -> bytes: ...
 
-    def read(self, size: int = -1, /) -> bytes: ...
+    async def readexactly(self, n: int) -> bytes: ...
 
 
 @dataclasses.dataclass(frozen=True)
@@ -38,22 +34,28 @@ class CameraStreamPart:
     jpeg: bytes
 
 
-def read_part(stream: _Readable) -> CameraStreamPart:
-    """Read the next part of `stream`, raising `EOFError` if the stream ends first."""
-    line = stream.readline()
+async def read_part(stream: _Readable) -> CameraStreamPart:
+    """Read the next part of `stream`, raising `EOFError` if the stream ends first.
+
+    It returns once the JPEG is read, without waiting for the next boundary.
+    """
+    line = await stream.readline()
     while not line.startswith(b"--"):
         if not line:
             raise EOFError
-        line = stream.readline()
-    message = http.client.parse_headers(stream)
+        line = await stream.readline()
+    head: list[bytes] = []
+    while (line := await stream.readline()) not in {b"\r\n", b"\n"}:
+        if not line:
+            raise EOFError
+        head.append(line)
+    message = http.client.parse_headers(io.BytesIO(b"".join(head)))
     headers = {name.lower(): value for name, value in message.items()}
     if "content-length" not in headers:
         raise EOFError
-    length = int(headers["content-length"])
-    jpeg = stream.read(length)
-    if len(jpeg) < length:
-        raise EOFError
-    return CameraStreamPart(headers, jpeg)
+    return CameraStreamPart(
+        headers, await stream.readexactly(int(headers["content-length"]))
+    )
 
 
 def format_part(part: CameraStreamPart) -> bytes:
@@ -67,69 +69,26 @@ def format_part(part: CameraStreamPart) -> bytes:
     return f"\r\n--{BOUNDARY}\r\n{head}\r\n".encode("latin-1") + part.jpeg
 
 
-class StreamRefusedError(Exception):
-    """The server answered the stream request with something other than 200 OK."""
+def is_retryable(error: Exception) -> bool:
+    """Return whether a new connection could succeed after `error`."""
+    if isinstance(error, aiohttp.InvalidURL | aiohttp.NonHttpUrlClientError):
+        return False
+    return isinstance(error, aiohttp.ClientError | OSError | EOFError)
 
 
-class MjpegClient:
-    """Reads an MJPEG stream, reconnecting until closed, keeping only the newest part.
-
-    Use as a context manager: it connects on entry and disconnects on exit.
-    """
-
-    def __init__(self, uri: str) -> None:
-        """Initialize the object."""
-        self._uri = uri
-        self._stop_event = threading.Event()
-        self._parts: queue.Queue[CameraStreamPart] = queue.Queue(1)
-        self._worker = threading.Thread(target=self._worker_main)
-
-    def __enter__(self) -> Self:
-        """Start reading the stream."""
-        self._worker.start()
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        exc_traceback: TracebackType | None,
-    ) -> None:
-        """Stop reading and disconnect; a stalled stream takes its read timeout."""
-        self._stop_event.set()
-        self._worker.join()
-
-    def recv(self, timeout: float) -> CameraStreamPart:
-        """Return the newest part; raise `TimeoutError` if none arrives in `timeout`."""
-        try:
-            return self._parts.get(timeout=timeout)
-        except queue.Empty:
-            raise TimeoutError from None
-
-    def _worker_main(self) -> None:
-        while not self._stop_event.is_set():
+async def read_stream(uri: str, publish: Callable[[CameraStreamPart], None]) -> None:
+    """Publish each part of the stream at `uri`, reconnecting after each loss."""
+    retry_delay_s = 1.0
+    timeout = aiohttp.ClientTimeout(total=None, sock_read=_READ_TIMEOUT_S)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        while True:
             try:
-                self._read_stream()
-            except (
-                OSError,
-                EOFError,
-                requests.RequestException,
-                urllib3.exceptions.HTTPError,
-                StreamRefusedError,
-            ) as e:
-                if not self._stop_event.is_set():
-                    logger.warning("Lost the stream from %s: %r", self._uri, e)
-                self._stop_event.wait(_RECONNECT_DELAY_S)
-
-    def _read_stream(self) -> None:
-        with requests.get(self._uri, stream=True, timeout=_READ_TIMEOUT_S) as response:
-            if response.status_code != http.HTTPStatus.OK:
-                raise StreamRefusedError(response.status_code)
-            logger.info("Stream connected: %s", self._uri)
-            while not self._stop_event.is_set():
-                self._keep_newest(read_part(response.raw))
-
-    def _keep_newest(self, part: CameraStreamPart) -> None:
-        with contextlib.suppress(queue.Empty):
-            self._parts.get_nowait()
-        self._parts.put_nowait(part)
+                async with session.get(uri, raise_for_status=True) as response:
+                    logger.info("Stream connected: %s", uri)
+                    while True:
+                        publish(await read_part(response.content))
+            except Exception as error:
+                if not is_retryable(error):
+                    raise
+                logger.warning("Lost the stream from %s: %r", uri, error)
+            await asyncio.sleep(retry_delay_s)
