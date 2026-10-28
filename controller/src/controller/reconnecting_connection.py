@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from typing import NoReturn
 
 import websockets.asyncio.client
 import websockets.exceptions
@@ -38,7 +39,7 @@ def is_retryable(error: Exception) -> bool:
 
 async def stay_connected(
     uri: str, handler: Callable[[ClientConnection], Awaitable[None]]
-) -> None:
+) -> NoReturn:
     """Await `handler` on a connection to `uri`, again after each retryable loss."""
     retry_delay_s = 1.0
     while True:

@@ -12,8 +12,6 @@ from controller.input_backends import (
     KeyboardInputBackend,
 )
 
-from .test_doubles import CommandSenderSpy
-
 # `curses.getch` returns -1 (ERR) when the poll timeout lapses with no key.
 _CURSES_ERR = -1
 
@@ -102,15 +100,16 @@ class TestDualSenseInputBackend:
         backend = DualSenseInputBackend(_dualsense(**state_overrides))
         assert backend.poll() == expected
 
-    def test_drives_the_control_loop(self) -> None:
+    @pytest.mark.asyncio
+    async def test_drives_the_control_loop(self) -> None:
         ds = pydualsense()
         ds.state = AutoExitDSStateStub(exit_after=1)
         backend = DualSenseInputBackend(ds)
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(backend, sender)
+        await control(backend, published.append)
 
-        assert sender.sent == [(Command.ADVANCE, 50)]
+        assert published == [(Command.ADVANCE, 50)]
 
 
 class HeldKeyWindowStub:
@@ -264,13 +263,14 @@ class TestKeyboardInputBackend:
 
         assert window.elapsed_ms - hold_ms <= _KEYBOARD_POLL_TIMEOUT_MS
 
-    def test_drives_the_control_loop(self) -> None:
+    @pytest.mark.asyncio
+    async def test_drives_the_control_loop(self) -> None:
         window = ScriptedWindowStub([ord("a"), ord("a"), ord("d"), ord("q")])
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(KeyboardInputBackend(window), sender)
+        await control(KeyboardInputBackend(window), published.append)
 
-        assert sender.sent == [
+        assert published == [
             (Command.TURN_LEFT, 50),
             (Command.TURN_LEFT, 50),
             (Command.TURN_RIGHT, 50),

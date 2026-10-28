@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 import threading
@@ -17,8 +18,6 @@ from controller.curses_logging import (
     queued_log_writer,
 )
 from controller.input_backends import InputBackendName, KeyboardInputBackend
-
-from .test_doubles import CommandSenderSpy
 
 
 class TestConfigureConsoleLogging:
@@ -40,62 +39,68 @@ class InputBackendStub:
 
 
 class TestControl:
-    def test_exits_immediately_when_backend_returns_none(self) -> None:
+    @pytest.mark.asyncio
+    async def test_exits_immediately_when_backend_returns_none(self) -> None:
         input_backend = InputBackendStub([None])
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(input_backend, sender)
+        await control(input_backend, published.append)
 
-        assert sender.sent == []
+        assert published == []
 
-    def test_sends_first_command(self) -> None:
+    @pytest.mark.asyncio
+    async def test_sends_first_command(self) -> None:
         input_backend = InputBackendStub([(Command.ADVANCE, 50), None])
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(input_backend, sender)
+        await control(input_backend, published.append)
 
-        assert sender.sent == [(Command.ADVANCE, 50)]
+        assert published == [(Command.ADVANCE, 50)]
 
-    def test_resends_an_unchanged_non_brake_command(self) -> None:
+    @pytest.mark.asyncio
+    async def test_resends_an_unchanged_non_brake_command(self) -> None:
         """Keeps the car's drive-command watchdog satisfied while a command is held."""
         input_backend = InputBackendStub(
             [(Command.ADVANCE, 50), (Command.ADVANCE, 50), None]
         )
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(input_backend, sender)
+        await control(input_backend, published.append)
 
-        assert sender.sent == [(Command.ADVANCE, 50), (Command.ADVANCE, 50)]
+        assert published == [(Command.ADVANCE, 50), (Command.ADVANCE, 50)]
 
-    def test_does_not_resend_repeated_brake(self) -> None:
+    @pytest.mark.asyncio
+    async def test_does_not_resend_repeated_brake(self) -> None:
         input_backend = InputBackendStub(
             [(Command.ADVANCE, 50), (Command.BRAKE, None), (Command.BRAKE, None), None]
         )
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(input_backend, sender)
+        await control(input_backend, published.append)
 
-        assert sender.sent == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
+        assert published == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
 
-    def test_sends_again_when_value_changes(self) -> None:
+    @pytest.mark.asyncio
+    async def test_sends_again_when_value_changes(self) -> None:
         input_backend = InputBackendStub(
             [(Command.TURN_LEFT, 30), (Command.TURN_LEFT, 60), None]
         )
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(input_backend, sender)
+        await control(input_backend, published.append)
 
-        assert sender.sent == [(Command.TURN_LEFT, 30), (Command.TURN_LEFT, 60)]
+        assert published == [(Command.TURN_LEFT, 30), (Command.TURN_LEFT, 60)]
 
-    def test_sends_again_when_command_changes(self) -> None:
+    @pytest.mark.asyncio
+    async def test_sends_again_when_command_changes(self) -> None:
         input_backend = InputBackendStub(
             [(Command.ADVANCE, 50), (Command.BRAKE, None), None]
         )
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(input_backend, sender)
+        await control(input_backend, published.append)
 
-        assert sender.sent == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
+        assert published == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
 
 
 class LoggingKeyboardWindowSpy(LogWindow):
@@ -151,13 +156,14 @@ class TestCursesLogging:
         logger = logging.getLogger("test-curses-logging")
         logger.setLevel(logging.DEBUG)
         window = LoggingKeyboardWindowSpy([ord("a"), ord("q")], logger)
+        published: list[DriveCommand] = []
         with queued_console_logging(console_handler) as records:
-            control(
-                KeyboardInputBackend(window),
-                CommandSenderSpy(),
-                between_polls=queued_log_writer(
-                    records, window, console_handler.formatter
-                ),
+            asyncio.run(
+                control(
+                    KeyboardInputBackend(window),
+                    published.append,
+                    queued_log_writer(records, window, console_handler.formatter),
+                )
             )
         return window
 

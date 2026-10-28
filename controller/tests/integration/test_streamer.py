@@ -19,8 +19,6 @@ import websockets.sync.client
 import websockets.sync.connection
 from websockets.frames import Close
 
-from controller.command import Command
-from controller.senders import WebSocketCommandSender
 from controller.streamer import StreamerEndpoints, serve_streamer
 
 from .conftest import local_streamer_settings
@@ -237,17 +235,6 @@ def test_closes_a_connection_to_an_unknown_path(streamer: StreamerEndpoints) -> 
         pytest.raises(websockets.exceptions.ConnectionClosedError),
     ):
         client.recv(timeout=WAIT_TIMEOUT_S)
-
-
-def test_the_controller_cli_drives_through_the_streamer(
-    streamer: StreamerEndpoints, car_control: CarEndpointSpy
-) -> None:
-    turn_left = 4
-    with websockets.sync.client.connect(streamer.drive, proxy=None) as connection:
-        WebSocketCommandSender(connection).send(Command.TURN_LEFT, _SPEED)
-        wait_for(lambda: bool(car_control.received))
-
-    assert car_control.received[0]["command"] == turn_left
 
 
 def test_streams_telemetry(streamer: StreamerEndpoints) -> None:
