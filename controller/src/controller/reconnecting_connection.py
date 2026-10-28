@@ -9,7 +9,7 @@ import websockets.exceptions
 from websockets.asyncio.client import ClientConnection
 from websockets.frames import CloseCode
 
-from .outbox import send_until_closed
+from .outbox import send_json, send_until_closed
 from .subject import Observable
 from .websocket_message import WebSocketMessage
 
@@ -58,7 +58,7 @@ async def forward(uri: str, messages: Observable[WebSocketMessage]) -> None:
 
     async def send_until_lost(connection: ClientConnection) -> None:
         logger.info("Connected to %s", uri)
-        await send_until_closed(connection, messages)
+        await send_until_closed(connection, send_json, messages)
         reason = deliberate_close_reason(connection.close_code, connection.close_reason)
         if reason is None:
             logger.warning("Lost the connection to %s", uri)

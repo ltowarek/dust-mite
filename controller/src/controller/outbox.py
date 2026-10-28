@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import functools
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from types import TracebackType
 from typing import Self
 
@@ -68,20 +68,31 @@ class Outbox[M]:
         self._ready.set()
 
 
-async def send_until_closed(
-    connection: Connection, *sources: Observable[WebSocketMessage]
+async def send_until_closed[M](
+    connection: Connection,
+    send: Callable[[Connection, M], Awaitable[None]],
+    *sources: Observable[M],
 ) -> None:
-    """Send each source's newest message to `connection` while it is open."""
+    """Pass each source's newest message to `send` while `connection` is open."""
     with Outbox(*sources) as outbox:
         # Sources may go quiet, so the close is awaited on its own.
         async with asyncio.TaskGroup() as tasks:
-            sender = tasks.create_task(_send_all(connection, outbox))
+            sender = tasks.create_task(_send_all(connection, send, outbox))
             await connection.wait_closed()
             sender.cancel()
 
 
-async def _send_all(connection: Connection, outbox: Outbox[WebSocketMessage]) -> None:
+async def send_json(connection: Connection, message: WebSocketMessage) -> None:
+    """Send `message` to `connection` as JSON."""
+    await connection.send(json.dumps(message))
+
+
+async def _send_all[M](
+    connection: Connection,
+    send: Callable[[Connection, M], Awaitable[None]],
+    outbox: Outbox[M],
+) -> None:
     with contextlib.suppress(websockets.exceptions.ConnectionClosed):
         while True:
             for message in await outbox.take():
-                await connection.send(json.dumps(message))
+                await send(connection, message)
