@@ -6,6 +6,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from pydualsense import pydualsense
+from pydualsense.pydualsense import DSState
 
 from .command import Command, DriveCommand
 
@@ -63,42 +64,48 @@ class DualSenseInputBackend:
 
     def poll(self) -> DriveCommand | None:
         """Return the current command/value, or `None` if the PS button was pressed."""
-        if self._ds.state.ps:
-            return None
-        return self._read_state()
+        return command_from_dualsense(self._ds.state, self._analog_dead_zone)
 
-    def _read_state(self) -> DriveCommand:
-        ds = self._ds
-        analog_dead_zone = self._analog_dead_zone
-        command = Command.BRAKE
-        value = None
 
-        if ds.state.DpadUp > 0:
-            command, value = Command.ADVANCE, 50
-        elif ds.state.DpadRight:
-            command, value = Command.TURN_RIGHT, 50
-        elif ds.state.DpadDown:
-            command, value = Command.RETREAT, 50
-        elif ds.state.DpadLeft:
-            command, value = Command.TURN_LEFT, 50
-        elif not (-analog_dead_zone <= ds.state.LX <= analog_dead_zone):
-            if ds.state.LX < 0:
-                command = Command.TURN_LEFT
-                value = int(interpolate(ds.state.LX, -128, 0, 100, 0))
-            else:
-                command = Command.TURN_RIGHT
-                value = int(interpolate(ds.state.LX, 0, 127, 0, 100))
-        elif not (-analog_dead_zone <= ds.state.RX <= analog_dead_zone):
-            command = Command.LOOK_HORIZONTALLY
-            value = int(interpolate(ds.state.RX, -128, 127, -90, 90))
-        elif not (-analog_dead_zone <= ds.state.RY <= analog_dead_zone):
-            command = Command.LOOK_VERTICALLY
-            value = int(interpolate(ds.state.RY, -128, 127, 90, -90))
-        elif ds.state.R2 > 0:
-            command = Command.ADVANCE
-            value = int(interpolate(ds.state.R2, 0, 255, 0, 100))
+def command_from_dualsense(
+    state: DSState, analog_dead_zone: int = 5
+) -> DriveCommand | None:
+    """Return the command and value `state` asks for, or `None` to quit."""
+    if state.ps:
+        return None
+    return _held_command(state, analog_dead_zone)
 
-        return command, value
+
+def _held_command(state: DSState, analog_dead_zone: int) -> DriveCommand:
+    command = Command.BRAKE
+    value = None
+
+    if state.DpadUp > 0:
+        command, value = Command.ADVANCE, 50
+    elif state.DpadRight:
+        command, value = Command.TURN_RIGHT, 50
+    elif state.DpadDown:
+        command, value = Command.RETREAT, 50
+    elif state.DpadLeft:
+        command, value = Command.TURN_LEFT, 50
+    elif not (-analog_dead_zone <= state.LX <= analog_dead_zone):
+        if state.LX < 0:
+            command = Command.TURN_LEFT
+            value = int(interpolate(state.LX, -128, 0, 100, 0))
+        else:
+            command = Command.TURN_RIGHT
+            value = int(interpolate(state.LX, 0, 127, 0, 100))
+    elif not (-analog_dead_zone <= state.RX <= analog_dead_zone):
+        command = Command.LOOK_HORIZONTALLY
+        value = int(interpolate(state.RX, -128, 127, -90, 90))
+    elif not (-analog_dead_zone <= state.RY <= analog_dead_zone):
+        command = Command.LOOK_VERTICALLY
+        value = int(interpolate(state.RY, -128, 127, 90, -90))
+    elif state.R2 > 0:
+        command = Command.ADVANCE
+        value = int(interpolate(state.R2, 0, 255, 0, 100))
+
+    return command, value
 
 
 # Fixed values, mirroring the DualSense D-pad's existing fixed-value convention
@@ -159,9 +166,11 @@ class KeyboardInputBackend:
 
     def poll(self) -> DriveCommand | None:
         """Return the current command and value, or `None` if 'q' was pressed."""
-        key = self._window.getch()
-        if key == _KEYBOARD_EXIT_KEY:
-            return None
-        if key in _KEYBOARD_BINDINGS:
-            return _KEYBOARD_BINDINGS[key]
-        return Command.BRAKE, None
+        return command_from_key(self._window.getch())
+
+
+def command_from_key(key: int) -> DriveCommand | None:
+    """Return the command and value `key` asks for, or `None` to quit."""
+    if key == _KEYBOARD_EXIT_KEY:
+        return None
+    return _KEYBOARD_BINDINGS.get(key, (Command.BRAKE, None))

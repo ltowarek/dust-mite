@@ -10,26 +10,27 @@ from controller.input_backends import (
     _KEYBOARD_POLL_TIMEOUT_MS,
     DualSenseInputBackend,
     KeyboardInputBackend,
+    command_from_dualsense,
+    command_from_key,
 )
 
 # `curses.getch` returns -1 (ERR) when the poll timeout lapses with no key.
 _CURSES_ERR = -1
 
 
-def _dualsense(**state_overrides: bool | int) -> pydualsense:
-    """Build a real, hardware-free `pydualsense` with `.state` fields set."""
-    ds = pydualsense()
-    ds.state = DSState()
+def _dualsense_state(**state_overrides: bool | int) -> DSState:
+    """Build a `DSState` at rest, with the given fields set."""
+    state = DSState()
     # DSState()'s raw LX/RX/RY/LY default (128) is an unpopulated
     # placeholder, not a real reading: `readInput()` normalizes a real
     # report to `raw_byte - 128`, so 0 is what an at-rest stick reads as.
-    ds.state.LX = 0
-    ds.state.RX = 0
-    ds.state.RY = 0
-    ds.state.LY = 0
+    state.LX = 0
+    state.RX = 0
+    state.RY = 0
+    state.LY = 0
     for name, value in state_overrides.items():
-        setattr(ds.state, name, value)
-    return ds
+        setattr(state, name, value)
+    return state
 
 
 class AutoExitDSStateStub:
@@ -59,10 +60,9 @@ class AutoExitDSStateStub:
         return self._ps_reads > self._exit_after
 
 
-class TestDualSenseInputBackend:
-    def test_ps_button_returns_none(self) -> None:
-        backend = DualSenseInputBackend(_dualsense(ps=True))
-        assert backend.poll() is None
+class TestCommandFromDualSense:
+    def test_ps_button_quits(self) -> None:
+        assert command_from_dualsense(_dualsense_state(ps=True)) is None
 
     @pytest.mark.parametrize(
         ("state_overrides", "expected"),
@@ -97,9 +97,10 @@ class TestDualSenseInputBackend:
         state_overrides: dict[str, bool | int],
         expected: DriveCommand,
     ) -> None:
-        backend = DualSenseInputBackend(_dualsense(**state_overrides))
-        assert backend.poll() == expected
+        assert command_from_dualsense(_dualsense_state(**state_overrides)) == expected
 
+
+class TestDualSenseInputBackend:
     @pytest.mark.asyncio
     async def test_drives_the_control_loop(self) -> None:
         ds = pydualsense()
@@ -191,7 +192,7 @@ def _drive(backend: KeyboardInputBackend, polls: int) -> list[Command]:
     return commands
 
 
-class TestKeyboardInputBackend:
+class TestCommandFromKey:
     @pytest.mark.parametrize(
         ("key", "expected"),
         [
@@ -212,21 +213,20 @@ class TestKeyboardInputBackend:
         ],
     )
     def test_translates_key_to_command(self, key: int, expected: DriveCommand) -> None:
-        backend = KeyboardInputBackend(ScriptedWindowStub([key]))
-        assert backend.poll() == expected
+        assert command_from_key(key) == expected
 
-    def test_exit_key_returns_none(self) -> None:
-        backend = KeyboardInputBackend(ScriptedWindowStub([ord("q")]))
-        assert backend.poll() is None
+    def test_exit_key_quits(self) -> None:
+        assert command_from_key(ord("q")) is None
 
     @pytest.mark.parametrize(
         "key",
         [pytest.param(_CURSES_ERR, id="no_key"), pytest.param(ord("z"), id="unbound")],
     )
     def test_reads_back_as_brake(self, key: int) -> None:
-        backend = KeyboardInputBackend(ScriptedWindowStub([key]))
-        assert backend.poll() == (Command.BRAKE, None)
+        assert command_from_key(key) == (Command.BRAKE, None)
 
+
+class TestKeyboardInputBackend:
     @pytest.mark.parametrize(
         "repeat_delay_ms",
         [pytest.param(500, id="ubuntu_default"), pytest.param(200, id="shortened")],
