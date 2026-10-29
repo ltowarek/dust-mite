@@ -100,7 +100,7 @@ async def _serve_viewer(
     span = trace.get_current_span()
     span.set_attribute(HTTP_REQUEST_METHOD, HttpRequestMethodValues.GET.value)
     span.set_attribute(URL_PATH, CAMERA_PATH)
-    span.set_attribute(CLIENT_ADDRESS, request.remote or "")
+    span.set_attribute(CLIENT_ADDRESS, _client_address(request))
     response = web.StreamResponse(
         headers={"Content-Type": CONTENT_TYPE, "Cache-Control": "no-store"}
     )
@@ -110,23 +110,27 @@ async def _serve_viewer(
     with Outbox(camera) as outbox, contextlib.suppress(ConnectionResetError):
         while True:
             for part in await outbox.take():
-                await _send_part(response, part, request.remote or "")
+                await _send_part(request, response, part)
     return response
 
 
 async def _send_part(
-    response: web.StreamResponse, part: CameraStreamPart, client_address: str
+    request: web.Request, response: web.StreamResponse, part: CameraStreamPart
 ) -> None:
     with tracer.start_as_current_span(
         "streamer.send_camera_frame",
         context=extract_trace_context(part.headers),
         kind=trace.SpanKind.PRODUCER,
     ) as span:
-        span.set_attribute(CLIENT_ADDRESS, client_address)
+        span.set_attribute(CLIENT_ADDRESS, _client_address(request))
         await response.write(
             format_part(CameraStreamPart(inject_trace_context({}), part.jpeg))
         )
     record_viewer_camera_frame_sent()
+
+
+def _client_address(request: web.Request) -> str:
+    return request.remote or ""
 
 
 # Turns one Camera frame, a JPEG, into the one viewers see.

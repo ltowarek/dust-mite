@@ -137,23 +137,23 @@ def car_endpoint_spy(
         yield endpoint
 
 
-def _refusal_counter(refusals: int) -> Callable[[], bool]:
-    """Return whether to refuse the next request: true for the first `refusals`."""
+def _first(count: int) -> Callable[[], bool]:
+    """Return a check that is true for its first `count` calls, then false."""
     lock = threading.Lock()
-    left = refusals
+    left = count
 
-    def refuse() -> bool:
+    def check() -> bool:
         nonlocal left
         with lock:
             left -= 1
             return left >= 0
 
-    return refuse
+    return check
 
 
 def handshake_refusals(refusals: int, status: http.HTTPStatus) -> ProcessRequest:
     """Answer the first `refusals` handshakes with `status` instead of accepting."""
-    refuse = _refusal_counter(refusals)
+    refuse = _first(refusals)
 
     def respond(
         connection: websockets.sync.server.ServerConnection,
@@ -254,15 +254,10 @@ def car_camera_stub(
     camera_frames: Callable[[], Iterable[bytes]] = _endless_camera_frames,
     corrupted: int = 0,
 ) -> Iterator[CarEndpointSpy]:
-    """The car's Camera endpoint: answers `refusals` requests as busy, then streams.
-
-    Each connection sends `camera_frames`, then nothing until the client hangs
-    up; a `stalled` one sends none, and the first `corrupted` start with a
-    corrupt part.
-    """
+    """The car's Camera endpoint: refuses, corrupts, then streams `camera_frames`."""
     endpoint: CarEndpointSpy
-    refuse = _refusal_counter(refusals)
-    corrupt = _refusal_counter(corrupted)
+    refuse = _first(refusals)
+    corrupt = _first(corrupted)
 
     class CameraHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:

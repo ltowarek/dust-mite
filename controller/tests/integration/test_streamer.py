@@ -438,8 +438,8 @@ def test_forwards_drive_commands_promptly_while_a_slow_processor_is_busy(
     telemetry_feed: CarEndpointSpy,
     car_control: CarEndpointSpy,
 ) -> None:
-    processing_s = 2.0
-    promptly_s = 0.5
+    processing_s = 4.0
+    promptly_s = 1.0
     busy = threading.Event()
 
     def slow_processor_spy(jpeg: bytes) -> bytes:
@@ -457,8 +457,10 @@ def test_forwards_drive_commands_promptly_while_a_slow_processor_is_busy(
         _viewer(streamer.camera),
         websockets.sync.client.connect(streamer.drive, proxy=None) as driver,
     ):
-        wait_for(lambda: car_control.open_connections == 1)
-        busy.wait(WAIT_TIMEOUT_S)
+        if not wait_for(lambda: car_control.open_connections == 1):
+            pytest.fail("The streamer never connected to the car's Drive endpoint")
+        if not busy.wait(WAIT_TIMEOUT_S):
+            pytest.fail("The processor never started on a Camera frame")
         sent = time.monotonic()
         _send_command(driver, _ADVANCE)
         wait_for(lambda: bool(car_control.received))

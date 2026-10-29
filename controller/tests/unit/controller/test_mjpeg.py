@@ -103,7 +103,7 @@ def test_formats_a_part_with_its_boundary_and_headers() -> None:
     assert format_part(part) == _part()
 
 
-def _status(status: int) -> aiohttp.ClientResponseError:
+def _status_error(status: int) -> aiohttp.ClientResponseError:
     url = yarl.URL("http://car.invalid/stream")
     request = aiohttp.RequestInfo(url, "GET", CIMultiDictProxy(CIMultiDict()), url)
     return aiohttp.ClientResponseError(request, (), status=status)
@@ -112,8 +112,8 @@ def _status(status: int) -> aiohttp.ClientResponseError:
 @pytest.mark.parametrize(
     "error",
     [
-        pytest.param(_status(503), id="busy"),
-        pytest.param(_status(404), id="not-found"),
+        pytest.param(_status_error(503), id="busy"),
+        pytest.param(_status_error(404), id="not-found"),
         pytest.param(aiohttp.ServerDisconnectedError(), id="disconnected"),
         pytest.param(aiohttp.ServerTimeoutError(), id="stalled"),
         pytest.param(aiohttp.ClientPayloadError("lost"), id="lost-mid-body"),

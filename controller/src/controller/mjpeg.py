@@ -18,7 +18,6 @@ BOUNDARY = "frame"
 CONTENT_TYPE = f"multipart/x-mixed-replace;boundary={BOUNDARY}"
 
 # A stream that sends nothing for this long is treated as dropped.
-_READ_TIMEOUT_S = 5.0
 
 
 class _Readable(Protocol):
@@ -40,27 +39,30 @@ async def read_part(stream: _Readable) -> CameraStreamPart:
 
     A part that cannot be framed raises `aiohttp.ClientPayloadError`.
     """
+    line = await _read_line(stream)
+    while not line.startswith(b"--"):
+        if not line:
+            raise EOFError
+        line = await _read_line(stream)
+    head: list[bytes] = []
+    while (line := await _read_line(stream)) not in {b"\r\n", b"\n"}:
+        if not line:
+            raise EOFError
+        head.append(line)
     try:
-        line = await stream.readline()
-        while not line.startswith(b"--"):
-            if not line:
-                raise EOFError
-            line = await stream.readline()
-        head: list[bytes] = []
-        while (line := await stream.readline()) not in {b"\r\n", b"\n"}:
-            if not line:
-                raise EOFError
-            head.append(line)
         message = http.client.parse_headers(io.BytesIO(b"".join(head)))
-        headers = {name.lower(): value for name, value in message.items()}
-        length = int(headers["content-length"])
-        return CameraStreamPart(headers, await stream.readexactly(length))
-    except (
-        KeyError,
-        ValueError,
-        http.client.HTTPException,
-        aiohttp.http_exceptions.BadHttpMessage,
-    ) as error:
+        length = int(message.get("Content-Length", ""))
+    except (http.client.HTTPException, ValueError) as error:
+        raise aiohttp.ClientPayloadError(repr(error)) from error
+    headers = {name.lower(): value for name, value in message.items()}
+    return CameraStreamPart(headers, await stream.readexactly(length))
+
+
+async def _read_line(stream: _Readable) -> bytes:
+    try:
+        return await stream.readline()
+    # Each stream reader raises its own error for a line over its limit.
+    except (ValueError, aiohttp.http_exceptions.LineTooLong) as error:
         raise aiohttp.ClientPayloadError(repr(error)) from error
 
 
@@ -85,7 +87,7 @@ def is_retryable(error: Exception) -> bool:
 async def read_stream(uri: str, publish: Callable[[CameraStreamPart], None]) -> None:
     """Publish each part of the stream at `uri`, reconnecting after each loss."""
     retry_delay_s = 1.0
-    timeout = aiohttp.ClientTimeout(total=None, sock_read=_READ_TIMEOUT_S)
+    timeout = aiohttp.ClientTimeout(total=None, sock_read=5.0)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         while True:
             try:
