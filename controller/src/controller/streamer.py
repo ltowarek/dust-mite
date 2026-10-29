@@ -31,9 +31,8 @@ from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, format_part, read_stream
 from .observability import ObservabilitySettings, configure_observability
-from .outbox import Outbox, send_json, send_until_closed
+from .outbox import Broadcast, Outbox, RefCountFeed, send_json, send_until_closed
 from .reconnecting_connection import forward, stay_connected
-from .subject import Observable, RefCountFeed, Subject
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
 from .websocket_message import WebSocketMessage
@@ -51,7 +50,7 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 async def server_handler(
-    telemetry: Observable[WebSocketMessage],
+    telemetry: Broadcast[WebSocketMessage],
     arbiter: CommandArbiter,
     websocket: websockets.asyncio.server.ServerConnection,
 ) -> None:
@@ -81,7 +80,7 @@ async def _serve_driver(
     arbiter: CommandArbiter, websocket: websockets.asyncio.server.ServerConnection
 ) -> None:
     try:
-        with arbiter.claim() as submit:
+        async with arbiter.claim() as submit:
             async for message in websocket:
                 submit(json.loads(message))
     except DriverAlreadyConnectedError as e:
@@ -95,7 +94,7 @@ DEFAULT_WEBSOCKET_PORT = 8765
 
 @tracer.start_as_current_span(f"GET {CAMERA_PATH}", kind=trace.SpanKind.SERVER)
 async def _serve_viewer(
-    camera: Observable[CameraStreamPart], request: web.Request
+    camera: RefCountFeed[CameraStreamPart], request: web.Request
 ) -> web.StreamResponse:
     span = trace.get_current_span()
     span.set_attribute(HTTP_REQUEST_METHOD, HttpRequestMethodValues.GET.value)
@@ -107,9 +106,9 @@ async def _serve_viewer(
     await response.prepare(request)
     span.set_attribute(HTTP_RESPONSE_STATUS_CODE, http.HTTPStatus.OK)
     # A departing Viewer cancels this handler, even while no Camera frame flows.
-    with Outbox(camera) as outbox, contextlib.suppress(ConnectionResetError):
-        while True:
-            for part in await outbox.take():
+    with contextlib.suppress(ConnectionResetError):
+        async with camera.watching() as outbox:
+            async for part in outbox:
                 await _send_part(request, response, part)
     return response
 
@@ -155,20 +154,16 @@ async def _relay_camera(
     publish: Callable[[CameraStreamPart], None],
 ) -> None:
     """Publish each Camera stream part from `uri`, processed, skipping stale ones."""
-    unprocessed: Subject[CameraStreamPart] = Subject()
-    with Outbox(unprocessed) as newest:
-        async with asyncio.TaskGroup() as tasks:
-            tasks.create_task(read_stream(uri, unprocessed.publish))
-            while True:
-                for part in await newest.take():
-                    try:
-                        relayed = await asyncio.to_thread(
-                            relay_camera_part, part, process
-                        )
-                    except Exception:
-                        logger.exception("Dropping an unreadable Camera frame")
-                    else:
-                        publish(relayed)
+    unprocessed: Broadcast[CameraStreamPart] = Broadcast()
+    async with Outbox(unprocessed) as newest, asyncio.TaskGroup() as tasks:
+        tasks.create_task(read_stream(uri, unprocessed.publish))
+        async for part in newest:
+            try:
+                relayed = await asyncio.to_thread(relay_camera_part, part, process)
+            except Exception:
+                logger.exception("Dropping an unreadable Camera frame")
+            else:
+                publish(relayed)
 
 
 def relay_telemetry_message(raw: str | bytes) -> WebSocketMessage:
@@ -229,12 +224,12 @@ async def serve_streamer(
     settings: StreamerSettings, process: CameraFrameProcessor = process_camera_frame
 ) -> AsyncIterator[StreamerEndpoints]:
     """Serve the Streamer endpoints while the context is open; port 0 binds any."""
-    commands: Subject[WebSocketMessage] = Subject()
+    commands: Broadcast[WebSocketMessage] = Broadcast()
     async with asyncio.TaskGroup() as tasks:
         camera = RefCountFeed(
             functools.partial(_relay_camera, settings.camera_uri, process), tasks
         )
-        telemetry: Subject[WebSocketMessage] = Subject()
+        telemetry: Broadcast[WebSocketMessage] = Broadcast()
         telemetry_task = tasks.create_task(
             _publish_telemetry(settings.telemetry_uri, telemetry)
         )
@@ -264,7 +259,7 @@ async def serve_streamer(
             telemetry_task.cancel()
 
 
-async def _publish_telemetry(uri: str, telemetry: Subject[WebSocketMessage]) -> None:
+async def _publish_telemetry(uri: str, telemetry: Broadcast[WebSocketMessage]) -> None:
     async def publish_all(connection: ClientConnection) -> None:
         async for message in connection:
             try:
@@ -279,7 +274,7 @@ async def _publish_telemetry(uri: str, telemetry: Subject[WebSocketMessage]) -> 
 
 @contextlib.asynccontextmanager
 async def _serve_camera(
-    host: str, port: int, camera: Observable[CameraStreamPart]
+    host: str, port: int, camera: RefCountFeed[CameraStreamPart]
 ) -> AsyncIterator[str]:
     """Serve the processed Camera stream on `CAMERA_PATH`; yield its URL."""
     app = web.Application()
