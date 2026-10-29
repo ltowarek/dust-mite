@@ -227,8 +227,9 @@ async def serve_streamer(
     commands: Broadcast[WebSocketMessage] = Broadcast()
     async with asyncio.TaskGroup() as tasks:
         camera = RefCountFeed(
-            functools.partial(_relay_camera, settings.camera_uri, process), tasks
+            functools.partial(_relay_camera, settings.camera_uri, process)
         )
+        camera_task = tasks.create_task(camera.supervise())
         telemetry: Broadcast[WebSocketMessage] = Broadcast()
         telemetry_task = tasks.create_task(
             _publish_telemetry(settings.telemetry_uri, telemetry)
@@ -257,6 +258,7 @@ async def serve_streamer(
         finally:
             car_drive_task.cancel()
             telemetry_task.cancel()
+            camera_task.cancel()
 
 
 async def _publish_telemetry(uri: str, telemetry: Broadcast[WebSocketMessage]) -> None:

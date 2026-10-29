@@ -4,11 +4,10 @@ import abc
 import asyncio
 import collections
 import contextlib
-import contextvars
 import json
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from types import TracebackType
-from typing import Self, override
+from typing import Any, Self, override
 
 import websockets.exceptions
 from websockets.asyncio.connection import Connection
@@ -156,40 +155,41 @@ class RefCountFeed[M]:
     """A Broadcast fed by one shared `read` that runs only while someone watches."""
 
     def __init__(
-        self,
-        read: Callable[[Callable[[M], None]], Awaitable[None]],
-        tasks: asyncio.TaskGroup,
+        self, read: Callable[[Callable[[M], None]], Coroutine[Any, Any, None]]
     ) -> None:
-        """Initialize the object; the first watcher starts `read` in `tasks`."""
+        """Initialize the object; `supervise` runs `read`."""
         self._read = read
-        self._tasks = tasks
         self._broadcast: Broadcast[M] = Broadcast()
         self._watchers = 0
-        self._task: asyncio.Task[None] | None = None
+        self._watchers_changed = asyncio.Condition()
 
     @contextlib.asynccontextmanager
     async def watching(self) -> AsyncIterator[Outbox[M]]:
-        """Receive the feed through an Outbox; the last exit awaits the read's end."""
+        """Receive the feed through an Outbox while the context is open."""
         async with Outbox(self._broadcast) as outbox:
-            self._watchers += 1
-            if self._watchers == 1:
-                # A fresh context, so the read does not run inside this watcher's span.
-                self._task = self._tasks.create_task(
-                    self._read_after(self._task), context=contextvars.Context()
-                )
+            await self._add_watchers(1)
             try:
                 yield outbox
             finally:
-                self._watchers -= 1
-                if self._watchers == 0 and self._task is not None:
-                    self._task.cancel()
-                    await asyncio.wait([self._task])
+                await self._add_watchers(-1)
 
-    async def _read_after(self, previous: asyncio.Task[None] | None) -> None:
-        # A watcher may arrive while the last one still awaits the previous read.
-        if previous is not None:
-            await asyncio.wait([previous])
-        await self._read(self._broadcast.publish)
+    async def supervise(self) -> None:
+        """Run `read` while anyone watches, until cancelled; its errors propagate."""
+        while True:
+            await self._wait_until(lambda: self._watchers > 0)
+            async with asyncio.TaskGroup() as tasks:
+                reader = tasks.create_task(self._read(self._broadcast.publish))
+                await self._wait_until(lambda: self._watchers == 0)
+                reader.cancel()
+
+    async def _add_watchers(self, count: int) -> None:
+        async with self._watchers_changed:
+            self._watchers += count
+            self._watchers_changed.notify_all()
+
+    async def _wait_until(self, predicate: Callable[[], bool]) -> None:
+        async with self._watchers_changed:
+            await self._watchers_changed.wait_for(predicate)
 
 
 async def send_until_closed[M](
