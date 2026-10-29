@@ -152,7 +152,7 @@ class Inbox[M](_Subscription[M]):
 
 
 class RefCountFeed[M]:
-    """A Broadcast fed by one shared `read` that runs only while someone watches."""
+    """A Broadcast fed by one shared `read` that runs only while an Outbox is open."""
 
     def __init__(
         self, read: Callable[[Callable[[M], None]], Coroutine[Any, Any, None]]
@@ -160,36 +160,36 @@ class RefCountFeed[M]:
         """Initialize the object; `supervise` runs `read`."""
         self._read = read
         self._broadcast: Broadcast[M] = Broadcast()
-        self._watchers = 0
-        self._watchers_changed = asyncio.Condition()
+        self._open_outboxes = 0
+        self._outboxes_changed = asyncio.Event()
 
     @contextlib.asynccontextmanager
-    async def watching(self) -> AsyncIterator[Outbox[M]]:
+    async def outbox(self) -> AsyncIterator[Outbox[M]]:
         """Receive the feed through an Outbox while the context is open."""
         async with Outbox(self._broadcast) as outbox:
-            await self._add_watchers(1)
+            self._add_outboxes(1)
             try:
                 yield outbox
             finally:
-                await self._add_watchers(-1)
+                self._add_outboxes(-1)
 
     async def supervise(self) -> None:
-        """Run `read` while anyone watches, until cancelled; its errors propagate."""
+        """Run `read` while an Outbox is open, until cancelled; its errors propagate."""
         while True:
-            await self._wait_until(lambda: self._watchers > 0)
+            await self._wait_until(lambda: self._open_outboxes > 0)
             async with asyncio.TaskGroup() as tasks:
                 reader = tasks.create_task(self._read(self._broadcast.publish))
-                await self._wait_until(lambda: self._watchers == 0)
+                await self._wait_until(lambda: self._open_outboxes == 0)
                 reader.cancel()
 
-    async def _add_watchers(self, count: int) -> None:
-        async with self._watchers_changed:
-            self._watchers += count
-            self._watchers_changed.notify_all()
+    def _add_outboxes(self, count: int) -> None:
+        self._open_outboxes += count
+        self._outboxes_changed.set()
 
     async def _wait_until(self, predicate: Callable[[], bool]) -> None:
-        async with self._watchers_changed:
-            await self._watchers_changed.wait_for(predicate)
+        while not predicate():
+            self._outboxes_changed.clear()
+            await self._outboxes_changed.wait()
 
 
 async def send_until_closed[M](

@@ -127,21 +127,21 @@ async def _settle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_watchers_share_one_read() -> None:
+async def test_outboxes_share_one_read() -> None:
     read = _ReadSpy()
     feed = RefCountFeed(read)
-    async with _supervised(feed), feed.watching(), feed.watching():
+    async with _supervised(feed), feed.outbox(), feed.outbox():
         await _settle()
 
     assert read.most_running == 1
 
 
 @pytest.mark.asyncio
-async def test_the_read_ends_after_the_last_watcher_leaves() -> None:
+async def test_the_read_ends_after_the_last_outbox_closes() -> None:
     read = _ReadSpy()
     feed = RefCountFeed(read)
     async with _supervised(feed):
-        async with feed.watching():
+        async with feed.outbox():
             await _settle()
         await asyncio.wait_for(read.ended.wait(), timeout=1)
 
@@ -153,36 +153,36 @@ async def test_a_new_read_waits_for_the_previous_one_to_end() -> None:
     read = _ReadSpy(closing_s=0.05)
     feed = RefCountFeed(read)
     async with _supervised(feed):
-        async with feed.watching():
+        async with feed.outbox():
             await _settle()
         await _settle()
-        async with feed.watching():
+        async with feed.outbox():
             await asyncio.sleep(0.1)
 
     assert read.most_running == 1
 
 
 @pytest.mark.asyncio
-async def test_a_watcher_returning_at_once_keeps_the_read() -> None:
+async def test_an_outbox_reopened_at_once_keeps_the_read() -> None:
     read = _ReadSpy()
     feed = RefCountFeed(read)
     async with _supervised(feed):
-        async with feed.watching():
+        async with feed.outbox():
             await _settle()
-        async with feed.watching():
+        async with feed.outbox():
             await _settle()
 
     assert read.started == 1
 
 
 @pytest.mark.asyncio
-async def test_a_watcher_receives_what_the_read_publishes() -> None:
-    async def read(publish: Callable[[str], None]) -> None:
+async def test_an_outbox_receives_what_the_read_publishes() -> None:
+    async def read_stub(publish: Callable[[str], None]) -> None:
         publish("frame")
         await asyncio.Event().wait()
 
-    feed = RefCountFeed(read)
-    async with _supervised(feed), feed.watching() as outbox:
+    feed = RefCountFeed(read_stub)
+    async with _supervised(feed), feed.outbox() as outbox:
         received = await anext(outbox)
 
     assert received == "frame"
@@ -190,13 +190,13 @@ async def test_a_watcher_receives_what_the_read_publishes() -> None:
 
 @pytest.mark.asyncio
 async def test_an_error_from_the_read_stops_the_supervisor() -> None:
-    async def read(_publish: Callable[[str], None]) -> None:
+    async def read_stub(_publish: Callable[[str], None]) -> None:
         raise ValueError
 
-    feed = RefCountFeed(read)
+    feed = RefCountFeed(read_stub)
     supervisor = asyncio.create_task(feed.supervise())
     with pytest.raises(ExceptionGroup) as raised:
-        async with feed.watching():
+        async with feed.outbox():
             await supervisor
 
     assert raised.group_contains(ValueError)

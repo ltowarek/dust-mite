@@ -69,12 +69,14 @@ async def read_stream(uri: str, publish: Callable[[CameraStreamPart], None]) -> 
             try:
                 async with session.get(uri, raise_for_status=True) as response:
                     logger.info("Stream connected: %s", uri)
-                    try:
-                        while True:
-                            publish(await read_part(response.content))
-                    # Corrupt data must never stop the streamer.
-                    except Exception:
-                        logger.exception("Lost the stream from %s", uri)
+                    while True:
+                        try:
+                            part = await read_part(response.content)
+                        # Corrupt data must never stop the streamer.
+                        except Exception:
+                            logger.exception("Lost the stream from %s", uri)
+                            break
+                        publish(part)
             except Exception as error:
                 if not is_retryable(error):
                     raise

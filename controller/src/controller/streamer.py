@@ -96,10 +96,11 @@ DEFAULT_WEBSOCKET_PORT = 8765
 async def _serve_viewer(
     camera: RefCountFeed[CameraStreamPart], request: web.Request
 ) -> web.StreamResponse:
+    client_address = request.remote or ""
     span = trace.get_current_span()
     span.set_attribute(HTTP_REQUEST_METHOD, HttpRequestMethodValues.GET.value)
     span.set_attribute(URL_PATH, CAMERA_PATH)
-    span.set_attribute(CLIENT_ADDRESS, _client_address(request))
+    span.set_attribute(CLIENT_ADDRESS, client_address)
     response = web.StreamResponse(
         headers={"Content-Type": CONTENT_TYPE, "Cache-Control": "no-store"}
     )
@@ -107,29 +108,25 @@ async def _serve_viewer(
     span.set_attribute(HTTP_RESPONSE_STATUS_CODE, http.HTTPStatus.OK)
     # A departing Viewer cancels this handler, even while no Camera frame flows.
     with contextlib.suppress(ConnectionResetError):
-        async with camera.watching() as outbox:
+        async with camera.outbox() as outbox:
             async for part in outbox:
-                await _send_part(request, response, part)
+                await _send_part(response, part, client_address)
     return response
 
 
 async def _send_part(
-    request: web.Request, response: web.StreamResponse, part: CameraStreamPart
+    response: web.StreamResponse, part: CameraStreamPart, client_address: str
 ) -> None:
     with tracer.start_as_current_span(
         "streamer.send_camera_frame",
         context=extract_trace_context(part.headers),
         kind=trace.SpanKind.PRODUCER,
     ) as span:
-        span.set_attribute(CLIENT_ADDRESS, _client_address(request))
+        span.set_attribute(CLIENT_ADDRESS, client_address)
         await response.write(
             format_part(CameraStreamPart(inject_trace_context({}), part.jpeg))
         )
     record_viewer_camera_frame_sent()
-
-
-def _client_address(request: web.Request) -> str:
-    return request.remote or ""
 
 
 # Turns one Camera frame, a JPEG, into the one viewers see.
