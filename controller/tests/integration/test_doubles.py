@@ -47,6 +47,8 @@ class CarEndpointSpy:
     peak_connections: int = 0
     accepted_connections: int = 0
     received: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    # The `time.monotonic()` at which each of `received` arrived.
+    received_at: list[float] = dataclasses.field(default_factory=list)
     _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
     _websockets: list[websockets.sync.server.ServerConnection] = dataclasses.field(
         default_factory=list
@@ -213,6 +215,7 @@ def car_control_spy(
         websocket: websockets.sync.server.ServerConnection, endpoint: CarEndpointSpy
     ) -> None:
         for message in websocket:
+            endpoint.received_at.append(time.monotonic())
             endpoint.received.append(json.loads(message))
 
     return car_endpoint_spy(record_commands, process_request)

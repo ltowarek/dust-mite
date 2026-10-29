@@ -1,6 +1,7 @@
 """Input backends: sources of driving commands for the gamepad CLI."""
 
 import curses
+import time
 from enum import StrEnum
 from types import TracebackType
 from typing import Protocol, Self
@@ -64,6 +65,9 @@ class DualSenseInputBackend:
 
     def poll(self) -> DriveCommand | None:
         """Return the current command/value, or `None` if the PS button was pressed."""
+        # pydualsense reads reports on its own thread; this paces reading its state.
+        poll_interval_s = 0.016
+        time.sleep(poll_interval_s)
         return command_from_dualsense(self._ds.state, self._analog_dead_zone)
 
 

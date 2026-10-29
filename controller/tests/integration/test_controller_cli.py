@@ -2,9 +2,12 @@
 
 import asyncio
 import contextlib
+import dataclasses
+import itertools
 import logging
 import socket
 import threading
+import time
 import urllib.parse
 from collections.abc import Callable
 
@@ -49,6 +52,110 @@ async def _eventually(condition: Callable[[], bool]) -> bool:
 
 def _received_values(control: CarEndpointSpy) -> list[int]:
     return [command["value"] for command in control.received]
+
+
+@dataclasses.dataclass(frozen=True)
+class HeldThenReleased:
+    """What reached the car while the CLI sat parked, held a control, then let go."""
+
+    held_at: float
+    arrivals: list[tuple[float, Command]]
+
+    def held(self) -> list[float]:
+        return [at for at, command in self.arrivals if command is not Command.BRAKE]
+
+
+@pytest.fixture
+def held_then_released(
+    camera_feed: CarEndpointSpy,
+    telemetry_feed: CarEndpointSpy,
+    car_control: CarEndpointSpy,
+    caplog: pytest.LogCaptureFixture,
+) -> HeldThenReleased:
+    return asyncio.run(
+        _hold_then_release(camera_feed, telemetry_feed, car_control, caplog)
+    )
+
+
+async def _hold_then_release(
+    camera_feed: CarEndpointSpy,
+    telemetry_feed: CarEndpointSpy,
+    car_control: CarEndpointSpy,
+    caplog: pytest.LogCaptureFixture,
+) -> HeldThenReleased:
+    phase_s = 0.5
+    inputs = HeldInputStub()
+    settings = local_streamer_settings(camera_feed, telemetry_feed, car_control)
+    async with asyncio.timeout(WAIT_TIMEOUT_S), serve_streamer(settings) as streamer:
+        cli = asyncio.create_task(drive(inputs, streamer.drive))
+        await _eventually(lambda: _connected_to(caplog.records, streamer.drive))
+        await asyncio.sleep(phase_s)
+        held_at = time.monotonic()
+        inputs.hold(Command.TURN_LEFT, _SPEED)
+        await asyncio.sleep(phase_s)
+        inputs.hold(Command.BRAKE, None)
+        await asyncio.sleep(phase_s)
+        inputs.quit()
+        await cli
+
+    arrivals = [
+        (at, Command(message["command"]))
+        for at, message in zip(
+            car_control.received_at, car_control.received, strict=True
+        )
+    ]
+    return HeldThenReleased(held_at, arrivals)
+
+
+def test_sends_a_held_command_at_once(held_then_released: HeldThenReleased) -> None:
+    # Within the stub's own 50 ms poll, well before the first resend.
+    at_once_s = 0.1
+    first_s = held_then_released.held()[0] - held_then_released.held_at
+
+    assert first_s < at_once_s
+
+
+def test_resends_a_held_command(held_then_released: HeldThenReleased) -> None:
+    # The 0.5 s hold spans about five sends.
+    fewest = 3
+
+    assert len(held_then_released.held()) >= fewest
+
+
+def test_resends_a_held_command_about_every_100_ms(
+    held_then_released: HeldThenReleased,
+) -> None:
+    shortest_s, longest_s = 0.05, 0.15
+    held = held_then_released.held()
+    gaps_s = [later - earlier for earlier, later in itertools.pairwise(held)]
+
+    assert all(shortest_s < gap_s < longest_s for gap_s in gaps_s)
+
+
+def test_sends_one_brake_on_release(held_then_released: HeldThenReleased) -> None:
+    commands = [command for _, command in held_then_released.arrivals]
+
+    assert commands.count(Command.BRAKE) == 1
+
+
+def test_sends_nothing_after_the_brake(
+    held_then_released: HeldThenReleased,
+) -> None:
+    commands = [command for _, command in held_then_released.arrivals]
+
+    assert commands[-1] is Command.BRAKE
+
+
+def test_sends_nothing_while_parked_before_driving(
+    held_then_released: HeldThenReleased,
+) -> None:
+    before_hold = [
+        command
+        for at, command in held_then_released.arrivals
+        if at < held_then_released.held_at
+    ]
+
+    assert before_hold == []
 
 
 @pytest.mark.asyncio
@@ -160,5 +267,14 @@ def _connections_to(records: list[logging.LogRecord], path: str) -> int:
         and record.msg == "Server connection from: %s to %s"
         and isinstance(record.args, tuple)
         and record.args[1] == path
+        for record in records
+    )
+
+
+def _connected_to(records: list[logging.LogRecord], uri: str) -> bool:
+    return any(
+        record.name == "controller.reconnecting_connection"
+        and record.msg == "Connected to %s"
+        and record.args == (uri,)
         for record in records
     )

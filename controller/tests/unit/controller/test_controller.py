@@ -49,58 +49,20 @@ class TestControl:
         assert published == []
 
     @pytest.mark.asyncio
-    async def test_sends_first_command(self) -> None:
-        input_backend = InputBackendStub([(Command.ADVANCE, 50), None])
+    async def test_publishes_every_reading(self) -> None:
+        """Repeats and BRAKEs pass through; the send policy filters them."""
+        readings: list[DriveCommand] = [
+            (Command.ADVANCE, 50),
+            (Command.ADVANCE, 50),
+            (Command.BRAKE, None),
+            (Command.BRAKE, None),
+        ]
+        input_backend = InputBackendStub([*readings, None])
         published: list[DriveCommand] = []
 
         await control(input_backend, published.append)
 
-        assert published == [(Command.ADVANCE, 50)]
-
-    @pytest.mark.asyncio
-    async def test_resends_an_unchanged_non_brake_command(self) -> None:
-        """Keeps the car's drive-command watchdog satisfied while a command is held."""
-        input_backend = InputBackendStub(
-            [(Command.ADVANCE, 50), (Command.ADVANCE, 50), None]
-        )
-        published: list[DriveCommand] = []
-
-        await control(input_backend, published.append)
-
-        assert published == [(Command.ADVANCE, 50), (Command.ADVANCE, 50)]
-
-    @pytest.mark.asyncio
-    async def test_does_not_resend_repeated_brake(self) -> None:
-        input_backend = InputBackendStub(
-            [(Command.ADVANCE, 50), (Command.BRAKE, None), (Command.BRAKE, None), None]
-        )
-        published: list[DriveCommand] = []
-
-        await control(input_backend, published.append)
-
-        assert published == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
-
-    @pytest.mark.asyncio
-    async def test_sends_again_when_value_changes(self) -> None:
-        input_backend = InputBackendStub(
-            [(Command.TURN_LEFT, 30), (Command.TURN_LEFT, 60), None]
-        )
-        published: list[DriveCommand] = []
-
-        await control(input_backend, published.append)
-
-        assert published == [(Command.TURN_LEFT, 30), (Command.TURN_LEFT, 60)]
-
-    @pytest.mark.asyncio
-    async def test_sends_again_when_command_changes(self) -> None:
-        input_backend = InputBackendStub(
-            [(Command.ADVANCE, 50), (Command.BRAKE, None), None]
-        )
-        published: list[DriveCommand] = []
-
-        await control(input_backend, published.append)
-
-        assert published == [(Command.ADVANCE, 50), (Command.BRAKE, None)]
+        assert published == readings
 
 
 class LoggingKeyboardWindowSpy(LogWindow):

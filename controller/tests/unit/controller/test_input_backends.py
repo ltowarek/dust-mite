@@ -1,4 +1,5 @@
 import curses
+import time
 
 import pytest
 from pydualsense import pydualsense
@@ -101,6 +102,19 @@ class TestCommandFromDualSense:
 
 
 class TestDualSenseInputBackend:
+    def test_polls_no_faster_than_every_16_ms(self) -> None:
+        polls = 5
+        ds = pydualsense()
+        ds.state = AutoExitDSStateStub(exit_after=polls)
+        backend = DualSenseInputBackend(ds)
+
+        started = time.monotonic()
+        for _ in range(polls):
+            backend.poll()
+        elapsed_s = time.monotonic() - started
+
+        assert elapsed_s >= polls * 0.016
+
     @pytest.mark.asyncio
     async def test_drives_the_control_loop(self) -> None:
         ds = pydualsense()
