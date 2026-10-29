@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 import pytest
 import yarl
+from aiohttp.base_protocol import BaseProtocol
 from multidict import CIMultiDict, CIMultiDictProxy
 
 from controller.mjpeg import (
@@ -25,10 +26,9 @@ def _part(jpeg: bytes = _JPEG) -> bytes:
     )
 
 
-def _stream(
-    data: bytes, *, ended: bool = True, line_limit: int = 2**16
-) -> asyncio.StreamReader:
-    stream = asyncio.StreamReader(limit=line_limit)
+def _stream(data: bytes, *, ended: bool = True) -> aiohttp.StreamReader:
+    loop = asyncio.get_running_loop()
+    stream = aiohttp.StreamReader(BaseProtocol(loop), 2**16, loop=loop)
     stream.feed_data(data)
     if ended:
         stream.feed_eof()
@@ -71,6 +71,7 @@ async def test_reads_the_jpeg_by_its_content_length_not_by_the_boundary() -> Non
     "stream",
     [
         pytest.param(b"", id="empty"),
+        pytest.param(_part()[:6], id="in-boundary"),
         pytest.param(_part()[:20], id="in-headers"),
         pytest.param(_part()[:-1], id="in-jpeg"),
     ],
@@ -79,22 +80,6 @@ async def test_reads_the_jpeg_by_its_content_length_not_by_the_boundary() -> Non
 async def test_a_stream_that_ends_mid_part_raises_eof(stream: bytes) -> None:
     with pytest.raises(EOFError):
         await read_part(_stream(stream))
-
-
-@pytest.mark.parametrize(
-    "head",
-    [
-        pytest.param(b"Content-Length: four\r\n", id="non-numeric-length"),
-        pytest.param(b"Content-Length 4\r\n", id="malformed-header-line"),
-        pytest.param(b"X-Padding: " + bytes(100) + b"\r\n", id="over-long-line"),
-    ],
-)
-@pytest.mark.asyncio
-async def test_a_malformed_part_raises_a_payload_error(head: bytes) -> None:
-    stream = _stream(b"\r\n--frame\r\n" + head + b"\r\n" + _JPEG, line_limit=64)
-
-    with pytest.raises(aiohttp.ClientPayloadError):
-        await read_part(stream)
 
 
 def test_formats_a_part_with_its_boundary_and_headers() -> None:
@@ -119,7 +104,6 @@ def _status_error(status: int) -> aiohttp.ClientResponseError:
         pytest.param(aiohttp.ClientPayloadError("lost"), id="lost-mid-body"),
         pytest.param(ConnectionRefusedError(), id="refused"),
         pytest.param(TimeoutError(), id="timed-out"),
-        pytest.param(EOFError(), id="ended"),
     ],
 )
 def test_retries_after_an_error_that_can_pass(error: Exception) -> None:

@@ -6,24 +6,14 @@ import http.client
 import io
 import logging
 from collections.abc import Callable
-from typing import Protocol
 
 import aiohttp
-import aiohttp.http_exceptions
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 BOUNDARY = "frame"
 CONTENT_TYPE = f"multipart/x-mixed-replace;boundary={BOUNDARY}"
-
-# A stream that sends nothing for this long is treated as dropped.
-
-
-class _Readable(Protocol):
-    async def readline(self) -> bytes: ...
-
-    async def readexactly(self, n: int) -> bytes: ...
 
 
 @dataclasses.dataclass(frozen=True)
@@ -34,36 +24,22 @@ class CameraStreamPart:
     jpeg: bytes
 
 
-async def read_part(stream: _Readable) -> CameraStreamPart:
-    """Read the next part of `stream`, raising `EOFError` if the stream ends first.
-
-    A part that cannot be framed raises `aiohttp.ClientPayloadError`.
-    """
-    line = await _read_line(stream)
-    while not line.startswith(b"--"):
-        if not line:
-            raise EOFError
-        line = await _read_line(stream)
-    head: list[bytes] = []
-    while (line := await _read_line(stream)) not in {b"\r\n", b"\n"}:
-        if not line:
-            raise EOFError
-        head.append(line)
-    try:
-        message = http.client.parse_headers(io.BytesIO(b"".join(head)))
-        length = int(message.get("Content-Length", ""))
-    except (http.client.HTTPException, ValueError) as error:
-        raise aiohttp.ClientPayloadError(repr(error)) from error
+async def read_part(stream: aiohttp.StreamReader) -> CameraStreamPart:
+    """Read the next part of `stream`, raising `EOFError` if the stream ends first."""
+    await _read_through(stream, f"--{BOUNDARY}\r\n".encode())
+    head = await _read_through(stream, b"\r\n\r\n")
+    message = http.client.parse_headers(io.BytesIO(head))
     headers = {name.lower(): value for name, value in message.items()}
+    length = int(headers["content-length"])
     return CameraStreamPart(headers, await stream.readexactly(length))
 
 
-async def _read_line(stream: _Readable) -> bytes:
-    try:
-        return await stream.readline()
-    # Each stream reader raises its own error for a line over its limit.
-    except (ValueError, aiohttp.http_exceptions.LineTooLong) as error:
-        raise aiohttp.ClientPayloadError(repr(error)) from error
+async def _read_through(stream: aiohttp.StreamReader, separator: bytes) -> bytes:
+    # At the end of the stream, readuntil returns what it has instead of raising.
+    data = await stream.readuntil(separator)
+    if not data.endswith(separator):
+        raise EOFError
+    return data
 
 
 def format_part(part: CameraStreamPart) -> bytes:
@@ -78,10 +54,10 @@ def format_part(part: CameraStreamPart) -> bytes:
 
 
 def is_retryable(error: Exception) -> bool:
-    """Return whether a new connection could succeed after `error`."""
+    """Return whether retrying could succeed after opening failed with `error`."""
     if isinstance(error, aiohttp.InvalidURL | aiohttp.NonHttpUrlClientError):
         return False
-    return isinstance(error, aiohttp.ClientError | OSError | EOFError)
+    return isinstance(error, aiohttp.ClientError | OSError)
 
 
 async def read_stream(uri: str, publish: Callable[[CameraStreamPart], None]) -> None:
@@ -93,10 +69,14 @@ async def read_stream(uri: str, publish: Callable[[CameraStreamPart], None]) -> 
             try:
                 async with session.get(uri, raise_for_status=True) as response:
                     logger.info("Stream connected: %s", uri)
-                    while True:
-                        publish(await read_part(response.content))
+                    try:
+                        while True:
+                            publish(await read_part(response.content))
+                    # Corrupt data must never stop the streamer.
+                    except Exception:
+                        logger.exception("Lost the stream from %s", uri)
             except Exception as error:
                 if not is_retryable(error):
                     raise
-                logger.warning("Lost the stream from %s: %r", uri, error)
+                logger.warning("Could not connect to %s: %r", uri, error)
             await asyncio.sleep(retry_delay_s)
