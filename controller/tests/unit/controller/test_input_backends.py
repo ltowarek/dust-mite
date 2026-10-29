@@ -4,15 +4,13 @@ import pytest
 from pydualsense import pydualsense
 from pydualsense.pydualsense import DSState
 
-from controller.command import Command
+from controller.command import Command, DriveCommand
 from controller.controller import control
 from controller.input_backends import (
     _KEYBOARD_POLL_TIMEOUT_MS,
     DualSenseInputBackend,
     KeyboardInputBackend,
 )
-
-from .test_doubles import CommandSenderSpy
 
 # `curses.getch` returns -1 (ERR) when the poll timeout lapses with no key.
 _CURSES_ERR = -1
@@ -97,20 +95,21 @@ class TestDualSenseInputBackend:
     def test_translates_state_to_command(
         self,
         state_overrides: dict[str, bool | int],
-        expected: tuple[Command, int | None],
+        expected: DriveCommand,
     ) -> None:
         backend = DualSenseInputBackend(_dualsense(**state_overrides))
         assert backend.poll() == expected
 
-    def test_drives_the_control_loop(self) -> None:
+    @pytest.mark.asyncio
+    async def test_drives_the_control_loop(self) -> None:
         ds = pydualsense()
         ds.state = AutoExitDSStateStub(exit_after=1)
         backend = DualSenseInputBackend(ds)
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(backend, sender)
+        await control(backend, published.append)
 
-        assert sender.sent == [(Command.ADVANCE, 50)]
+        assert published == [(Command.ADVANCE, 50)]
 
 
 class HeldKeyWindowStub:
@@ -212,9 +211,7 @@ class TestKeyboardInputBackend:
             ),
         ],
     )
-    def test_translates_key_to_command(
-        self, key: int, expected: tuple[Command, int | None]
-    ) -> None:
+    def test_translates_key_to_command(self, key: int, expected: DriveCommand) -> None:
         backend = KeyboardInputBackend(ScriptedWindowStub([key]))
         assert backend.poll() == expected
 
@@ -266,13 +263,14 @@ class TestKeyboardInputBackend:
 
         assert window.elapsed_ms - hold_ms <= _KEYBOARD_POLL_TIMEOUT_MS
 
-    def test_drives_the_control_loop(self) -> None:
+    @pytest.mark.asyncio
+    async def test_drives_the_control_loop(self) -> None:
         window = ScriptedWindowStub([ord("a"), ord("a"), ord("d"), ord("q")])
-        sender = CommandSenderSpy()
+        published: list[DriveCommand] = []
 
-        control(KeyboardInputBackend(window), sender)
+        await control(KeyboardInputBackend(window), published.append)
 
-        assert sender.sent == [
+        assert published == [
             (Command.TURN_LEFT, 50),
             (Command.TURN_LEFT, 50),
             (Command.TURN_RIGHT, 50),

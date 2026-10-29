@@ -1,5 +1,7 @@
 import curses
+import io
 import logging
+import logging.handlers
 from typing import override
 
 import pytest
@@ -7,7 +9,8 @@ import pytest
 from controller.curses_logging import (
     CursesHandler,
     LogWindow,
-    curses_console_logging,
+    queued_console_logging,
+    queued_log_writer,
 )
 
 
@@ -118,35 +121,36 @@ class TestCursesHandler:
         assert "OSError: terminal is gone" in capsys.readouterr().err
 
 
-class TestCursesConsoleLogging:
+class TestQueuedConsoleLogging:
     def test_raises_when_console_handler_is_not_attached(
-        self, window: WindowSpy, root_logger: logging.Logger
+        self, root_logger: logging.Logger
     ) -> None:
-        """Failing loudly beats silently never swapping in `CursesHandler`."""
+        """Failing loudly beats silently never queueing console output."""
         detached_handler = logging.StreamHandler()
         original_handlers = list(root_logger.handlers)
 
         with (
             pytest.raises(ValueError, match="not attached"),
-            curses_console_logging(window, detached_handler),
+            queued_console_logging(detached_handler),
         ):
             pass
 
         assert root_logger.handlers == original_handlers
 
-    def test_swaps_console_handler_for_a_curses_handler(
-        self, window: WindowSpy, root_logger: logging.Logger
+    def test_swaps_console_handler_for_a_memory_handler(
+        self, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         root_logger.addHandler(console_handler)
 
-        with curses_console_logging(window, console_handler):
+        with queued_console_logging(console_handler):
             assert console_handler not in root_logger.handlers
-            assert any(isinstance(h, CursesHandler) for h in root_logger.handlers)
+            assert any(
+                isinstance(h, logging.handlers.MemoryHandler)
+                for h in root_logger.handlers
+            )
 
-    def test_leaves_other_handlers_untouched(
-        self, window: WindowSpy, root_logger: logging.Logger
-    ) -> None:
+    def test_leaves_other_handlers_untouched(self, root_logger: logging.Logger) -> None:
         """The OpenTelemetry log bridge must keep exporting while curses owns
         the console handler."""
         console_handler = logging.StreamHandler()
@@ -154,11 +158,11 @@ class TestCursesConsoleLogging:
         root_logger.addHandler(console_handler)
         root_logger.addHandler(otel_handler)
 
-        with curses_console_logging(window, console_handler):
+        with queued_console_logging(console_handler):
             assert otel_handler in root_logger.handlers
 
     def test_restores_console_handler_on_exit(
-        self, window: WindowSpy, root_logger: logging.Logger
+        self, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         otel_handler = logging.NullHandler()
@@ -166,13 +170,13 @@ class TestCursesConsoleLogging:
         root_logger.addHandler(otel_handler)
         original_handlers = list(root_logger.handlers)
 
-        with curses_console_logging(window, console_handler):
+        with queued_console_logging(console_handler):
             pass
 
         assert root_logger.handlers == original_handlers
 
     def test_restores_console_handler_on_exception(
-        self, window: WindowSpy, root_logger: logging.Logger
+        self, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         root_logger.addHandler(console_handler)
@@ -181,21 +185,55 @@ class TestCursesConsoleLogging:
 
         with (
             pytest.raises(ValueError, match=error_message),
-            curses_console_logging(window, console_handler),
+            queued_console_logging(console_handler),
         ):
             raise ValueError(error_message)
 
         assert root_logger.handlers == original_handlers
 
-    def test_routes_log_records_through_the_window(
+    def test_writes_records_still_queued_on_exit_to_the_console(
+        self, root_logger: logging.Logger
+    ) -> None:
+        console = io.StringIO()
+        console_handler = logging.StreamHandler(console)
+        root_logger.addHandler(console_handler)
+        logger = logging.getLogger("test-writes-left-over-records")
+        logger.setLevel(logging.DEBUG)
+
+        with queued_console_logging(console_handler):
+            logger.info("left over")
+
+        assert console.getvalue() == "left over\n"
+
+
+class TestQueuedLogWriter:
+    def test_holds_log_records_until_asked_to_write_them(
+        self, window: WindowSpy, root_logger: logging.Logger
+    ) -> None:
+        console_handler = logging.StreamHandler(io.StringIO())
+        root_logger.addHandler(console_handler)
+        logger = logging.getLogger("test-holds-log-records")
+        logger.setLevel(logging.DEBUG)
+
+        with queued_console_logging(console_handler) as records:
+            queued_log_writer(records, window, console_handler.formatter)
+            logger.info("queued message")
+
+        assert window.written == []
+
+    def test_writes_queued_log_records_through_the_window(
         self, window: WindowSpy, root_logger: logging.Logger
     ) -> None:
         console_handler = logging.StreamHandler()
         root_logger.addHandler(console_handler)
-        logger = logging.getLogger("test-routes-through-window")
+        logger = logging.getLogger("test-writes-queued-records")
         logger.setLevel(logging.DEBUG)
 
-        with curses_console_logging(window, console_handler):
+        with queued_console_logging(console_handler) as records:
+            write_queued_logs = queued_log_writer(
+                records, window, console_handler.formatter
+            )
             logger.info("routed message")
+            write_queued_logs()
 
         assert window.written == ["routed message\n"]

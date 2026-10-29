@@ -3,13 +3,15 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from typing import NoReturn
 
 import websockets.asyncio.client
 import websockets.exceptions
 from websockets.asyncio.client import ClientConnection
+from websockets.asyncio.connection import Connection
 from websockets.frames import CloseCode
 
-from .outbox import send_until_closed
+from .outbox import send_json, send_until_closed
 from .subject import Observable
 from .websocket_message import WebSocketMessage
 
@@ -37,7 +39,7 @@ def is_retryable(error: Exception) -> bool:
 
 async def stay_connected(
     uri: str, handler: Callable[[ClientConnection], Awaitable[None]]
-) -> None:
+) -> NoReturn:
     """Await `handler` on a connection to `uri`, again after each retryable loss."""
     retry_delay_s = 1.0
     while True:
@@ -53,16 +55,27 @@ async def stay_connected(
         await asyncio.sleep(retry_delay_s)
 
 
+async def send_until_lost[M](
+    uri: str,
+    connection: ClientConnection,
+    send: Callable[[Connection, M], Awaitable[None]],
+    *sources: Observable[M],
+) -> str | None:
+    """Send to `connection` until it closes; return the reason of a deliberate close."""
+    logger.info("Connected to %s", uri)
+    await send_until_closed(connection, send, *sources)
+    reason = deliberate_close_reason(connection.close_code, connection.close_reason)
+    if reason is None:
+        logger.warning("Lost the connection to %s", uri)
+    return reason
+
+
 async def forward(uri: str, messages: Observable[WebSocketMessage]) -> None:
     """Send each message published on `messages` to `uri` until cancelled."""
 
-    async def send_until_lost(connection: ClientConnection) -> None:
-        logger.info("Connected to %s", uri)
-        await send_until_closed(connection, messages)
-        reason = deliberate_close_reason(connection.close_code, connection.close_reason)
-        if reason is None:
-            logger.warning("Lost the connection to %s", uri)
-        else:
+    async def send_until_closed_by_peer(connection: ClientConnection) -> None:
+        reason = await send_until_lost(uri, connection, send_json, messages)
+        if reason is not None:
             logger.warning("%s closed the connection: %s", uri, reason)
 
-    await stay_connected(uri, send_until_lost)
+    await stay_connected(uri, send_until_closed_by_peer)
