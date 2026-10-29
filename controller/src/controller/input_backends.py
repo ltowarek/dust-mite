@@ -7,7 +7,7 @@ from typing import Protocol, Self
 
 from pydualsense import pydualsense
 
-from .command import Command
+from .command import Command, DriveCommand
 
 
 class InputBackendName(StrEnum):
@@ -20,7 +20,7 @@ class InputBackendName(StrEnum):
 class InputBackend(Protocol):
     """Source of driving commands, polled once per control loop iteration."""
 
-    def poll(self) -> tuple[Command, int | None] | None:
+    def poll(self) -> DriveCommand | None:
         """Return the current command and value, or `None` to exit the control loop."""
         ...
 
@@ -61,13 +61,13 @@ class DualSenseInputBackend:
         """Disconnect from the DualSense controller."""
         self._ds.close()
 
-    def poll(self) -> tuple[Command, int | None] | None:
+    def poll(self) -> DriveCommand | None:
         """Return the current command/value, or `None` if the PS button was pressed."""
         if self._ds.state.ps:
             return None
         return self._read_state()
 
-    def _read_state(self) -> tuple[Command, int | None]:
+    def _read_state(self) -> DriveCommand:
         ds = self._ds
         analog_dead_zone = self._analog_dead_zone
         command = Command.BRAKE
@@ -157,7 +157,7 @@ class KeyboardInputBackend:
         self._window = window
         self._window.timeout(poll_timeout_ms)
 
-    def poll(self) -> tuple[Command, int | None] | None:
+    def poll(self) -> DriveCommand | None:
         """Return the current command and value, or `None` if 'q' was pressed."""
         key = self._window.getch()
         if key == _KEYBOARD_EXIT_KEY:

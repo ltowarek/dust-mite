@@ -20,10 +20,9 @@ import websockets.sync.client
 import websockets.sync.connection
 from websockets.frames import Close
 
-from controller.command import Command
-from controller.senders import WebSocketCommandSender
-from controller.streamer import StreamerEndpoints, StreamerSettings, serve_streamer
+from controller.streamer import StreamerEndpoints, serve_streamer
 
+from .conftest import local_streamer_settings
 from .test_doubles import (
     CAR_TRACEPARENT,
     CLEAR_DISTANCE_CM,
@@ -56,18 +55,7 @@ def _streamer(
     control: CarEndpointSpy,
     process_camera_frame: Callable[[bytes], bytes] | None = None,
 ) -> Iterator[StreamerEndpoints]:
-    settings = dataclasses.replace(
-        StreamerSettings.from_env(
-            {
-                "STREAM_CLIENT_URI": camera.uri,
-                "TELEMETRY_CLIENT_URI": telemetry.uri,
-                "DRIVE_CLIENT_URI": control.uri,
-                "STREAMER_CAMERA_PORT": "0",
-            }
-        ),
-        listen_host="127.0.0.1",
-        websocket_port=0,
-    )
+    settings = local_streamer_settings(camera, telemetry, control)
     processor = (
         {} if process_camera_frame is None else {"process": process_camera_frame}
     )
@@ -249,17 +237,6 @@ def test_closes_a_connection_to_an_unknown_path(streamer: StreamerEndpoints) -> 
         pytest.raises(websockets.exceptions.ConnectionClosedError),
     ):
         client.recv(timeout=WAIT_TIMEOUT_S)
-
-
-def test_the_controller_cli_drives_through_the_streamer(
-    streamer: StreamerEndpoints, car_control: CarEndpointSpy
-) -> None:
-    turn_left = 4
-    with websockets.sync.client.connect(streamer.drive, proxy=None) as connection:
-        WebSocketCommandSender(connection).send(Command.TURN_LEFT, _SPEED)
-        wait_for(lambda: bool(car_control.received))
-
-    assert car_control.received[0]["command"] == turn_left
 
 
 def test_streams_telemetry(streamer: StreamerEndpoints) -> None:

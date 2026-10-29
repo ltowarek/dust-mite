@@ -31,7 +31,7 @@ from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, format_part, read_stream
 from .observability import ObservabilitySettings, configure_observability
-from .outbox import Outbox, send_until_closed
+from .outbox import Outbox, send_json, send_until_closed
 from .reconnecting_connection import forward, stay_connected
 from .subject import Observable, RefCountFeed, Subject
 from .tracing import extract_trace_context, inject_trace_context
@@ -65,7 +65,9 @@ async def server_handler(
 
     try:
         if path == TELEMETRY_PATH:
-            await send_until_closed(websocket, telemetry, arbiter.collision_state)
+            await send_until_closed(
+                websocket, send_json, telemetry, arbiter.collision_state
+            )
         elif path == DRIVE_PATH:
             await _serve_driver(arbiter, websocket)
         else:

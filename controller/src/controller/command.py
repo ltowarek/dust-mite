@@ -13,3 +13,7 @@ class Command(Enum):
     TURN_RIGHT = 5
     LOOK_HORIZONTALLY = 6
     LOOK_VERTICALLY = 7
+
+
+# A Drive command: the command and its value, if it takes one.
+type DriveCommand = tuple[Command, int | None]

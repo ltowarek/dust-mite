@@ -3,7 +3,9 @@
 import contextlib
 import curses
 import logging
-from collections.abc import Generator
+import logging.handlers
+import sys
+from collections.abc import Callable, Generator
 from typing import Protocol, override
 
 
@@ -63,27 +65,43 @@ class CursesHandler(logging.Handler):
 
 
 @contextlib.contextmanager
-def curses_console_logging(
-    window: LogWindow, console_handler: logging.Handler
-) -> Generator[None, None, None]:
-    """Route console output through `window` for the duration of the block.
+def queued_console_logging(
+    console_handler: logging.Handler,
+) -> Generator[logging.handlers.MemoryHandler, None, None]:
+    """Buffer console output for the block; write what is left to the console on exit.
 
-    Swaps `console_handler` out for a `CursesHandler` on the root logger,
+    Swaps `console_handler` out for a `MemoryHandler` on the root logger,
     leaving every other handler (e.g. the OpenTelemetry log bridge)
-    untouched, and restores `console_handler` on exit.
+    untouched, and yields it.
     """
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)
     if console_handler not in original_handlers:
         msg = "console_handler is not attached to the root logger"
         raise ValueError(msg)
-    curses_handler = CursesHandler(window)
-    curses_handler.setFormatter(console_handler.formatter)
+    # Never flushes on its own, so records are written only by whoever flushes it.
+    buffer = logging.handlers.MemoryHandler(
+        capacity=sys.maxsize, flushLevel=logging.CRITICAL + 1
+    )
     root_logger.handlers = [
-        curses_handler if handler is console_handler else handler
+        buffer if handler is console_handler else handler
         for handler in original_handlers
     ]
     try:
-        yield
+        yield buffer
     finally:
         root_logger.handlers = original_handlers
+        buffer.setTarget(console_handler)
+        buffer.close()
+
+
+def queued_log_writer(
+    buffer: logging.handlers.MemoryHandler,
+    window: LogWindow,
+    formatter: logging.Formatter | None,
+) -> Callable[[], None]:
+    """Return a function that writes the records in `buffer` to `window`."""
+    handler = CursesHandler(window)
+    handler.setFormatter(formatter)
+    buffer.setTarget(handler)
+    return buffer.flush
