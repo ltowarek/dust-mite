@@ -36,9 +36,9 @@ from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
 from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
 from .observability import ObservabilitySettings, configure_observability
-from .outbox import send_json, send_until_closed, subscribe_all
+from .outbox import Broadcast, send_json, send_until_closed
 from .reconnecting_connection import forward, stay_connected
-from .subject import Observable, Subject
+from .subject import Observable
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
 from .websocket_message import WebSocketMessage
@@ -48,6 +48,18 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
+
+
+def _subscribe_all[M](
+    sources: tuple[Observable[M], ...], put: Callable[[int, M], None]
+) -> contextlib.ExitStack:
+    """Subscribe `put` to each source, by its slot; unsubscribe all on any failure."""
+    with contextlib.ExitStack() as subscriptions:
+        for slot, source in enumerate(sources):
+            subscriptions.enter_context(
+                source.subscription(functools.partial(put, slot))
+            )
+        return subscriptions.pop_all()
 
 
 class _ThreadedOutbox[M]:
@@ -60,7 +72,7 @@ class _ThreadedOutbox[M]:
         self._pending: dict[int, M] = {}
 
     def __enter__(self) -> Self:
-        self._subscriptions = subscribe_all(self._sources, self._put)
+        self._subscriptions = _subscribe_all(self._sources, self._put)
         return self
 
     def __exit__(
@@ -90,7 +102,7 @@ DRIVE_PATH = "/drive"
 
 @tracer.start_as_current_span("streamer.server_handler", kind=trace.SpanKind.SERVER)
 async def server_handler(
-    telemetry: Observable[WebSocketMessage],
+    telemetry: Broadcast[WebSocketMessage],
     arbiter: CommandArbiter,
     websocket: websockets.asyncio.server.ServerConnection,
 ) -> None:
@@ -120,7 +132,7 @@ async def _serve_driver(
     arbiter: CommandArbiter, websocket: websockets.asyncio.server.ServerConnection
 ) -> None:
     try:
-        with arbiter.claim() as submit:
+        async with arbiter.claim() as submit:
             async for message in websocket:
                 submit(json.loads(message))
     except DriverAlreadyConnectedError as e:
@@ -276,13 +288,13 @@ async def serve_streamer(
     settings: StreamerSettings, process: CameraFrameProcessor = process_camera_frame
 ) -> AsyncIterator[StreamerEndpoints]:
     """Serve the Streamer endpoints while the context is open; port 0 binds any."""
-    commands: Subject[WebSocketMessage] = Subject()
+    commands: Broadcast[WebSocketMessage] = Broadcast()
     camera = CarFeed(
         functools.partial(MjpegClient, settings.camera_uri),
         functools.partial(relay_camera_part, process=process),
     )
     async with asyncio.TaskGroup() as tasks:
-        telemetry: Subject[WebSocketMessage] = Subject()
+        telemetry: Broadcast[WebSocketMessage] = Broadcast()
         telemetry_task = tasks.create_task(
             _publish_telemetry(settings.telemetry_uri, telemetry)
         )
@@ -312,7 +324,7 @@ async def serve_streamer(
             telemetry_task.cancel()
 
 
-async def _publish_telemetry(uri: str, telemetry: Subject[WebSocketMessage]) -> None:
+async def _publish_telemetry(uri: str, telemetry: Broadcast[WebSocketMessage]) -> None:
     async def publish_all(connection: ClientConnection) -> None:
         async for message in connection:
             try:

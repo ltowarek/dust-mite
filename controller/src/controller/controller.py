@@ -19,9 +19,9 @@ from .input_backends import (
     KeyboardInputBackend,
 )
 from .observability import ObservabilitySettings, configure_observability
+from .outbox import Broadcast
 from .reconnecting_connection import send_until_lost, stay_connected
 from .senders import send_command
-from .subject import Observable, Subject
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -92,7 +92,7 @@ async def drive(
 
     Raises `DriveConnectionClosedError` if the streamer closes deliberately.
     """
-    commands: Subject[DriveCommand] = Subject()
+    commands: Broadcast[DriveCommand] = Broadcast()
     async with asyncio.TaskGroup() as tasks:
         reader = tasks.create_task(
             control(input_backend, commands.publish, between_polls)
@@ -108,7 +108,7 @@ async def drive(
 
 
 async def _send_until_closed_deliberately(
-    uri: str, commands: Observable[DriveCommand]
+    uri: str, commands: Broadcast[DriveCommand]
 ) -> DriveConnectionClosedError:
     async def send_until_refused(connection: ClientConnection) -> None:
         reason = await send_until_lost(uri, connection, send_command, commands)

@@ -11,8 +11,7 @@ from websockets.asyncio.client import ClientConnection
 from websockets.asyncio.connection import Connection
 from websockets.frames import CloseCode
 
-from .outbox import send_json, send_until_closed
-from .subject import Observable
+from .outbox import Broadcast, send_json, send_until_closed
 from .websocket_message import WebSocketMessage
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,7 @@ async def send_until_lost[M](
     uri: str,
     connection: ClientConnection,
     send: Callable[[Connection, M], Awaitable[None]],
-    *sources: Observable[M],
+    *sources: Broadcast[M],
 ) -> str | None:
     """Send to `connection` until it closes; return the reason of a deliberate close."""
     logger.info("Connected to %s", uri)
@@ -70,7 +69,7 @@ async def send_until_lost[M](
     return reason
 
 
-async def forward(uri: str, messages: Observable[WebSocketMessage]) -> None:
+async def forward(uri: str, messages: Broadcast[WebSocketMessage]) -> None:
     """Send each message published on `messages` to `uri` until cancelled."""
 
     async def send_until_closed_by_peer(connection: ClientConnection) -> None:
