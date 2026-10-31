@@ -20,7 +20,7 @@ from .input_backends import (
     KeyboardInputBackend,
 )
 from .observability import ObservabilitySettings, configure_observability
-from .outbox import Broadcast, Inbox
+from .outbox import Broadcast
 from .reconnecting_connection import send_until_lost, stay_connected
 from .senders import send_command
 
@@ -59,7 +59,7 @@ def _configure_console_logging() -> logging.Handler:
 
 
 async def autorepeat(
-    readings: Inbox[DriveCommand], publish: Callable[[DriveCommand], None]
+    readings: asyncio.Queue[DriveCommand], publish: Callable[[DriveCommand], None]
 ) -> NoReturn:
     """Publish the Drive commands `transition` returns for each reading and tick."""
     loop = asyncio.get_running_loop()
@@ -68,7 +68,7 @@ async def autorepeat(
         event: Event
         try:
             async with asyncio.timeout_at(resend_due(state)):
-                event = await anext(readings)
+                event = await readings.get()
         except TimeoutError:
             event = Tick()
         state, commands = transition(state, event, loop.time())
@@ -82,11 +82,11 @@ async def drive(input_backend: InputBackend, drive_uri: str) -> None:
 
     Raises `DriveConnectionClosedError` if the streamer closes deliberately.
     """
-    readings: Broadcast[DriveCommand] = Broadcast()
+    readings: asyncio.Queue[DriveCommand] = asyncio.Queue()
     commands: Broadcast[DriveCommand] = Broadcast()
-    async with Inbox(readings) as every_reading, asyncio.TaskGroup() as tasks:
-        reader = tasks.create_task(input_backend.read(readings.publish))
-        sender = tasks.create_task(autorepeat(every_reading, commands.publish))
+    async with asyncio.TaskGroup() as tasks:
+        reader = tasks.create_task(input_backend.read(readings.put_nowait))
+        sender = tasks.create_task(autorepeat(readings, commands.publish))
         watcher = tasks.create_task(
             _send_until_closed_deliberately(drive_uri, commands)
         )
