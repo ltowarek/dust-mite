@@ -66,6 +66,19 @@ _Avoid_: Telemetry packet, telemetry sample
 **Collision-monitor message**:
 The WebSocket message that tells a client whether the collision monitor is blocking forward motion.
 
+### Driver input
+
+**Input reading**:
+The Drive command the Driver's input asks for at one moment; a brake when no control is held.
+_Avoid_: Reading (on its own), sample, poll result
+
+**Autorepeat**:
+The timing of the Driver's Drive commands: a held control's Drive command at once and then repeatedly while it is held, a brake once when every control is released, and nothing while Parked.
+_Avoid_: Auto-repeat, send policy, resend loop
+
+**Parked**:
+The Driver's state while no control is held, so it sends no Drive commands.
+
 ### Camera
 
 **Camera frame**:
