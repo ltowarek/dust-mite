@@ -74,17 +74,17 @@ class DualSenseInputBackend:
         loop = asyncio.get_running_loop()
         ps_pressed = asyncio.Event()
 
-        # Both run on pydualsense's report thread, after the whole report is written.
         def on_change(*_: object) -> None:
-            reading = command_from_dualsense(self._ds.state, self._analog_dead_zone)
-            loop.call_soon_threadsafe(publish, reading)
-
-        def on_ps(*_: object) -> None:
-            if self._ds.state.ps:
+            # Runs on pydualsense's report thread, after the whole report is written.
+            state = self._ds.state
+            if state.ps:
                 loop.call_soon_threadsafe(ps_pressed.set)
+            else:
+                reading = command_from_dualsense(state, self._analog_dead_zone)
+                loop.call_soon_threadsafe(publish, reading)
 
         ds = self._ds
-        changes = (
+        events = (
             ds.dpad_up,
             ds.dpad_down,
             ds.dpad_left,
@@ -92,15 +92,14 @@ class DualSenseInputBackend:
             ds.left_joystick_changed,
             ds.right_joystick_changed,
             ds.r2_changed,
+            ds.ps_pressed,
         )
-        for event in changes:
+        for event in events:
             event.subscribe(on_change)
-        ds.ps_pressed.subscribe(on_ps)
         try:
             await ps_pressed.wait()
         finally:
-            ds.ps_pressed.unsubscribe(on_ps)
-            for event in changes:
+            for event in events:
                 event.unsubscribe(on_change)
 
 
