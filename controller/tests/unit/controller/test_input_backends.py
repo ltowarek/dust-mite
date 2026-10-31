@@ -34,9 +34,6 @@ def _dualsense_state(**state_overrides: bool | int) -> DSState:
 
 
 class TestCommandFromDualSense:
-    def test_ps_button_quits(self) -> None:
-        assert command_from_dualsense(_dualsense_state(ps=True)) is None
-
     @pytest.mark.parametrize(
         ("state_overrides", "expected"),
         [
@@ -129,6 +126,22 @@ class TestDualSenseInputBackend:
         await asyncio.wait([reading], timeout=wait_s)
 
         assert reading.done()
+
+    @pytest.mark.asyncio
+    async def test_ps_release_does_not_end_the_read(self) -> None:
+        wait_s = 0.1
+        ds = pydualsense()
+        ds.state = _dualsense_state()
+        reading = await _start_reading(ds, [])
+
+        await _report(ds, "ps_pressed")
+        await asyncio.wait([reading], timeout=wait_s)
+        ended_on_release = reading.done()
+        ds.state.ps = True
+        await _report(ds, "ps_pressed")
+        await reading
+
+        assert not ended_on_release
 
     @pytest.mark.asyncio
     async def test_publishes_nothing_in_the_placeholder_state(self) -> None:
@@ -251,9 +264,6 @@ class TestCommandFromKey:
     )
     def test_translates_key_to_command(self, key: int, expected: DriveCommand) -> None:
         assert command_from_key(key) == expected
-
-    def test_exit_key_quits(self) -> None:
-        assert command_from_key(ord("q")) is None
 
     @pytest.mark.parametrize(
         "key",

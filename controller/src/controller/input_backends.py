@@ -74,19 +74,17 @@ class DualSenseInputBackend:
         loop = asyncio.get_running_loop()
         ps_pressed = asyncio.Event()
 
-        def take(reading: DriveCommand | None) -> None:
-            if reading is None:
-                ps_pressed.set()
-            else:
-                publish(reading)
-
+        # Both run on pydualsense's report thread, after the whole report is written.
         def on_change(*_: object) -> None:
-            # Runs on pydualsense's report thread, after the whole report is written.
             reading = command_from_dualsense(self._ds.state, self._analog_dead_zone)
-            loop.call_soon_threadsafe(take, reading)
+            loop.call_soon_threadsafe(publish, reading)
+
+        def on_ps(*_: object) -> None:
+            if self._ds.state.ps:
+                loop.call_soon_threadsafe(ps_pressed.set)
 
         ds = self._ds
-        events = (
+        changes = (
             ds.dpad_up,
             ds.dpad_down,
             ds.dpad_left,
@@ -94,27 +92,20 @@ class DualSenseInputBackend:
             ds.left_joystick_changed,
             ds.right_joystick_changed,
             ds.r2_changed,
-            ds.ps_pressed,
         )
-        for event in events:
+        for event in changes:
             event.subscribe(on_change)
+        ds.ps_pressed.subscribe(on_ps)
         try:
             await ps_pressed.wait()
         finally:
-            for event in events:
+            ds.ps_pressed.unsubscribe(on_ps)
+            for event in changes:
                 event.unsubscribe(on_change)
 
 
-def command_from_dualsense(
-    state: DSState, analog_dead_zone: int = 5
-) -> DriveCommand | None:
-    """Return the command and value `state` asks for, or `None` to quit."""
-    if state.ps:
-        return None
-    return _held_command(state, analog_dead_zone)
-
-
-def _held_command(state: DSState, analog_dead_zone: int) -> DriveCommand:
+def command_from_dualsense(state: DSState, analog_dead_zone: int = 5) -> DriveCommand:
+    """Return the command and value `state` asks for."""
     command = Command.BRAKE
     value = None
 
@@ -211,13 +202,11 @@ class KeyboardInputBackend:
         while True:
             self._write_queued_logs()
             key = await asyncio.to_thread(self._window.getch)
-            if (reading := command_from_key(key)) is None:
+            if key == _KEYBOARD_EXIT_KEY:
                 return
-            publish(reading)
+            publish(command_from_key(key))
 
 
-def command_from_key(key: int) -> DriveCommand | None:
-    """Return the command and value `key` asks for, or `None` to quit."""
-    if key == _KEYBOARD_EXIT_KEY:
-        return None
+def command_from_key(key: int) -> DriveCommand:
+    """Return the command and value `key` asks for."""
     return _KEYBOARD_BINDINGS.get(key, (Command.BRAKE, None))
