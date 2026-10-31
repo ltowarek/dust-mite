@@ -147,6 +147,20 @@ class TestDualSenseInputBackend:
         assert not ended_on_release
 
     @pytest.mark.asyncio
+    async def test_ps_release_publishes_the_held_input_reading(self) -> None:
+        ds = pydualsense()
+        ds.state = _dualsense_state(DpadUp=True)
+        published: list[DriveCommand] = []
+        read_task = await _start_reading(ds, published)
+
+        await _report(ds, "ps_pressed")
+        ds.state.ps = True
+        await _report(ds, "ps_pressed")
+        await read_task
+
+        assert published == [(Command.ADVANCE, 50)]
+
+    @pytest.mark.asyncio
     async def test_publishes_nothing_before_the_first_change_event(self) -> None:
         ds = pydualsense()
         ds.state = DSState()
