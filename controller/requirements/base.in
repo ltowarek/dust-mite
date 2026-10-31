@@ -1,5 +1,6 @@
 pydualsense
 websockets
+aiohttp
 numpy
 opencv-python-headless
 opentelemetry-api
@@ -9,4 +10,3 @@ opentelemetry-proto
 opentelemetry-instrumentation-logging
 opentelemetry-semantic-conventions
 requests
-urllib3

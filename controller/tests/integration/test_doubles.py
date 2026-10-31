@@ -12,7 +12,7 @@ import http.client
 import json
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, override
 
@@ -137,23 +137,23 @@ def car_endpoint_spy(
         yield endpoint
 
 
-def _refusal_counter(refusals: int) -> Callable[[], bool]:
-    """Return whether to refuse the next request: true for the first `refusals`."""
+def _first(count: int) -> Callable[[], bool]:
+    """Return a check that is true for its first `count` calls, then false."""
     lock = threading.Lock()
-    left = refusals
+    left = count
 
-    def refuse() -> bool:
+    def check() -> bool:
         nonlocal left
         with lock:
             left -= 1
             return left >= 0
 
-    return refuse
+    return check
 
 
 def handshake_refusals(refusals: int, status: http.HTTPStatus) -> ProcessRequest:
     """Answer the first `refusals` handshakes with `status` instead of accepting."""
-    refuse = _refusal_counter(refusals)
+    refuse = _first(refusals)
 
     def respond(
         connection: websockets.sync.server.ServerConnection,
@@ -232,6 +232,11 @@ def camera_frame() -> bytes:
     return bytes(cv2.imencode(".jpg", image)[1].tobytes())
 
 
+def _endless_camera_frames() -> Iterator[bytes]:
+    while True:
+        yield camera_frame()
+
+
 def _mjpeg_part(jpeg: bytes) -> bytes:
     return (
         b"\r\n--frame\r\nContent-Type: image/jpeg\r\n"
@@ -243,14 +248,16 @@ def _mjpeg_part(jpeg: bytes) -> bytes:
 
 @contextlib.contextmanager
 def car_camera_stub(
-    refusals: int = 0, *, stalled: bool = False
+    refusals: int = 0,
+    *,
+    stalled: bool = False,
+    camera_frames: Callable[[], Iterable[bytes]] = _endless_camera_frames,
+    corrupted: int = 0,
 ) -> Iterator[CarEndpointSpy]:
-    """The car's Camera endpoint: answers `refusals` requests as busy, then streams.
-
-    A `stalled` endpoint sends no parts until the client hangs up.
-    """
+    """The car's Camera endpoint: refuses, corrupts, then streams `camera_frames`."""
     endpoint: CarEndpointSpy
-    refuse = _refusal_counter(refusals)
+    refuse = _first(refusals)
+    corrupt = _first(corrupted)
 
     class CameraHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -264,13 +271,13 @@ def car_camera_stub(
                 endpoint.connected(),
                 contextlib.suppress(BrokenPipeError, ConnectionResetError),
             ):
-                if stalled:
-                    self.rfile.read(1)
-                    return
-                while True:
-                    self.wfile.write(_mjpeg_part(camera_frame()))
+                if corrupt():
+                    self.wfile.write(b"\r\n--frame\r\nContent-Length: four\r\n\r\n")
+                for jpeg in [] if stalled else camera_frames():
+                    self.wfile.write(_mjpeg_part(jpeg))
                     self.wfile.flush()
                     time.sleep(FEED_INTERVAL_S)
+                self.rfile.read(1)
 
         @override
         def log_message(self, *args: object) -> None:

@@ -6,6 +6,7 @@ import contextlib
 import dataclasses
 import http
 import http.client
+import itertools
 import json
 import socket
 import threading
@@ -29,6 +30,7 @@ from .test_doubles import (
     CarEndpointSpy,
     MjpegPart,
     busy_refusals,
+    camera_frame,
     car_camera_stub,
     car_control_spy,
     car_feed_stub,
@@ -332,6 +334,40 @@ def test_the_last_viewer_leaving_a_stalled_camera_stream_releases_the_car(
         assert camera.open_connections == 0
 
 
+def test_a_viewer_receives_a_camera_frame_while_the_car_stalls_before_the_next(
+    telemetry_feed: CarEndpointSpy, car_control: CarEndpointSpy
+) -> None:
+    with (
+        car_camera_stub(camera_frames=lambda: [camera_frame()]) as camera,
+        _streamer(camera, telemetry_feed, car_control) as streamer,
+    ):
+        assert _first_part(streamer.camera).jpeg[:2] == b"\xff\xd8"
+
+
+def test_a_viewer_receives_camera_frames_after_a_corrupt_part_from_the_car(
+    telemetry_feed: CarEndpointSpy, car_control: CarEndpointSpy
+) -> None:
+    with (
+        car_camera_stub(corrupted=1) as camera,
+        _streamer(camera, telemetry_feed, car_control) as streamer,
+    ):
+        assert _first_part(streamer.camera).jpeg[:2] == b"\xff\xd8"
+
+
+def test_forwards_drive_commands_after_a_corrupt_part_from_the_car(
+    telemetry_feed: CarEndpointSpy, car_control: CarEndpointSpy
+) -> None:
+    with (
+        car_camera_stub(corrupted=1) as camera,
+        _streamer(camera, telemetry_feed, car_control) as streamer,
+        websockets.sync.client.connect(streamer.drive, proxy=None) as driver,
+    ):
+        _first_part(streamer.camera)
+        _send_command(driver, _ADVANCE)
+
+        assert wait_for(lambda: bool(car_control.received))
+
+
 def test_viewers_that_come_and_go_share_one_car_connection(
     streamer: StreamerEndpoints, camera_feed: CarEndpointSpy
 ) -> None:
@@ -395,6 +431,71 @@ def test_a_viewer_that_stops_reading_does_not_stall_another(
             read_mjpeg_part(viewer.response)
 
         assert _parts_within(viewer, reading_window_s) >= min_parts_in_window
+
+
+def test_forwards_drive_commands_promptly_while_a_slow_processor_is_busy(
+    camera_feed: CarEndpointSpy,
+    telemetry_feed: CarEndpointSpy,
+    car_control: CarEndpointSpy,
+) -> None:
+    processing_s = 4.0
+    promptly_s = 1.0
+    busy = threading.Event()
+
+    def slow_processor_spy(jpeg: bytes) -> bytes:
+        busy.set()
+        time.sleep(processing_s)
+        return jpeg
+
+    with (
+        _streamer(
+            camera_feed,
+            telemetry_feed,
+            car_control,
+            process_camera_frame=slow_processor_spy,
+        ) as streamer,
+        _viewer(streamer.camera),
+        websockets.sync.client.connect(streamer.drive, proxy=None) as driver,
+    ):
+        if not wait_for(lambda: car_control.open_connections == 1):
+            pytest.fail("The streamer never connected to the car's Drive endpoint")
+        if not busy.wait(WAIT_TIMEOUT_S):
+            pytest.fail("The processor never started on a Camera frame")
+        sent = time.monotonic()
+        _send_command(driver, _ADVANCE)
+        wait_for(lambda: bool(car_control.received))
+
+        assert time.monotonic() - sent < promptly_s
+
+
+def test_viewers_skip_stale_camera_frames_while_a_slow_processor_is_busy(
+    telemetry_feed: CarEndpointSpy, car_control: CarEndpointSpy
+) -> None:
+    # Several Camera frames arrive from the car while one is processed.
+    processing_s = 0.3
+
+    def numbered_camera_frames() -> Iterator[bytes]:
+        for number in itertools.count():
+            yield number.to_bytes(4)
+
+    def slow_processor_stub(jpeg: bytes) -> bytes:
+        time.sleep(processing_s)
+        return jpeg
+
+    with (
+        car_camera_stub(camera_frames=numbered_camera_frames) as camera,
+        _streamer(
+            camera,
+            telemetry_feed,
+            car_control,
+            process_camera_frame=slow_processor_stub,
+        ) as streamer,
+        _viewer(streamer.camera) as viewer,
+    ):
+        first = int.from_bytes(read_mjpeg_part(viewer.response).jpeg)
+        second = int.from_bytes(read_mjpeg_part(viewer.response).jpeg)
+
+    assert second - first > 1
 
 
 def test_drops_drive_commands_sent_while_the_cars_drive_endpoint_is_down(

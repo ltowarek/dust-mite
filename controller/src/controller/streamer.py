@@ -8,16 +8,12 @@ import http
 import json
 import logging
 import os
-import select
-import socket
-import threading
 from collections.abc import AsyncIterator, Callable, Mapping
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from types import TracebackType
-from typing import Any, Self, cast, override
+from typing import Any, Self
 
 import websockets.asyncio.server
 import websockets.exceptions
+from aiohttp import web
 from opentelemetry import trace
 from opentelemetry.semconv.attributes.client_attributes import CLIENT_ADDRESS
 from opentelemetry.semconv.attributes.http_attributes import (
@@ -30,15 +26,13 @@ from opentelemetry.semconv.attributes.url_attributes import URL_PATH
 from websockets.asyncio.client import ClientConnection
 from websockets.frames import CloseCode
 
-from .car import CarFeed
 from .collision_monitor import CollisionMonitor
 from .command_arbiter import CommandArbiter, DriverAlreadyConnectedError
 from .metrics import record_telemetry_received, record_viewer_camera_frame_sent
-from .mjpeg import CONTENT_TYPE, CameraStreamPart, MjpegClient, format_part
+from .mjpeg import CONTENT_TYPE, CameraStreamPart, format_part, read_stream
 from .observability import ObservabilitySettings, configure_observability
-from .outbox import Broadcast, send_json, send_until_closed
+from .outbox import Broadcast, Outbox, RefCountFeed, send_json, send_until_closed
 from .reconnecting_connection import forward, stay_connected
-from .subject import Observable
 from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
 from .websocket_message import WebSocketMessage
@@ -48,52 +42,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
-
-
-def _subscribe_all[M](
-    sources: tuple[Observable[M], ...], put: Callable[[int, M], None]
-) -> contextlib.ExitStack:
-    """Subscribe `put` to each source, by its slot; unsubscribe all on any failure."""
-    with contextlib.ExitStack() as subscriptions:
-        for slot, source in enumerate(sources):
-            subscriptions.enter_context(
-                source.subscription(functools.partial(put, slot))
-            )
-        return subscriptions.pop_all()
-
-
-class _ThreadedOutbox[M]:
-    """An `Outbox` for Viewer threads, whose sources publish from other threads."""
-
-    def __init__(self, *sources: Observable[M]) -> None:
-        self._sources = sources
-        self._subscriptions = contextlib.ExitStack()
-        self._condition = threading.Condition()
-        self._pending: dict[int, M] = {}
-
-    def __enter__(self) -> Self:
-        self._subscriptions = _subscribe_all(self._sources, self._put)
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        exc_traceback: TracebackType | None,
-    ) -> None:
-        self._subscriptions.close()
-
-    def take(self, timeout: float) -> list[M]:
-        with self._condition:
-            self._condition.wait_for(lambda: self._pending, timeout)
-            messages = list(self._pending.values())
-            self._pending.clear()
-            return messages
-
-    def _put(self, slot: int, message: M) -> None:
-        with self._condition:
-            self._pending[slot] = message
-            self._condition.notify()
 
 
 TELEMETRY_PATH = "/telemetry"
@@ -144,73 +92,40 @@ DEFAULT_CAMERA_PORT = 8766
 DEFAULT_WEBSOCKET_PORT = 8765
 
 
-class CameraServer(ThreadingHTTPServer):
-    """Serves the processed Camera stream to viewers as MJPEG on `CAMERA_PATH`."""
-
-    def __init__(
-        self,
-        address: tuple[str, int],
-        camera: CarFeed[CameraStreamPart],
-    ) -> None:
-        """Initialize the object; it reads `camera` only while a viewer watches."""
-        super().__init__(address, _ViewerHandler)
-        self.camera = camera
-
-
-class _ViewerHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        if self.path != CAMERA_PATH:
-            self.send_error(http.HTTPStatus.NOT_FOUND)
-            return
-        _serve_viewer(self, cast("CameraServer", self.server).camera)
-
-    @override
-    def log_message(self, *args: object) -> None:
-        """Log through the module logger, not stderr."""
-        logger.debug("Viewer %s: %s", self.client_address[0], args)
-
-
 @tracer.start_as_current_span(f"GET {CAMERA_PATH}", kind=trace.SpanKind.SERVER)
-def _serve_viewer(
-    viewer: BaseHTTPRequestHandler, camera: CarFeed[CameraStreamPart]
-) -> None:
+async def _serve_viewer(
+    camera: RefCountFeed[CameraStreamPart], request: web.Request
+) -> web.StreamResponse:
+    client_address = request.remote or ""
     span = trace.get_current_span()
     span.set_attribute(HTTP_REQUEST_METHOD, HttpRequestMethodValues.GET.value)
     span.set_attribute(URL_PATH, CAMERA_PATH)
-    span.set_attribute(CLIENT_ADDRESS, viewer.client_address[0])
-    viewer.send_response(http.HTTPStatus.OK)
-    viewer.send_header("Content-Type", CONTENT_TYPE)
-    viewer.send_header("Cache-Control", "no-store")
-    viewer.end_headers()
+    span.set_attribute(CLIENT_ADDRESS, client_address)
+    response = web.StreamResponse(
+        headers={"Content-Type": CONTENT_TYPE, "Cache-Control": "no-store"}
+    )
+    await response.prepare(request)
     span.set_attribute(HTTP_RESPONSE_STATUS_CODE, http.HTTPStatus.OK)
-    # How long an idle Viewer waits for a Camera frame before checking it left.
-    poll_s = 0.2
-    with (
-        _ThreadedOutbox(camera) as outbox,
-        contextlib.suppress(BrokenPipeError, ConnectionResetError),
-    ):
-        while not _viewer_left(viewer.connection):
-            for part in outbox.take(timeout=poll_s):
-                _send_part(viewer, part)
+    # A departing Viewer cancels this handler, even while no Camera frame flows.
+    with contextlib.suppress(ConnectionResetError):
+        async with camera.outbox() as outbox:
+            async for part in outbox:
+                await _send_part(response, part, client_address)
+    return response
 
 
-def _viewer_left(connection: socket.socket) -> bool:
-    """Whether the viewer closed its connection; it sends nothing after its request."""
-    readable, _, _ = select.select([connection], [], [], 0)
-    return bool(readable) and not connection.recv(1, socket.MSG_PEEK)
-
-
-def _send_part(viewer: BaseHTTPRequestHandler, part: CameraStreamPart) -> None:
+async def _send_part(
+    response: web.StreamResponse, part: CameraStreamPart, client_address: str
+) -> None:
     with tracer.start_as_current_span(
         "streamer.send_camera_frame",
         context=extract_trace_context(part.headers),
         kind=trace.SpanKind.PRODUCER,
     ) as span:
-        span.set_attribute(CLIENT_ADDRESS, viewer.client_address[0])
-        viewer.wfile.write(
+        span.set_attribute(CLIENT_ADDRESS, client_address)
+        await response.write(
             format_part(CameraStreamPart(inject_trace_context({}), part.jpeg))
         )
-        viewer.wfile.flush()
     record_viewer_camera_frame_sent()
 
 
@@ -228,6 +143,24 @@ def relay_camera_part(
     ) as span:
         span.set_attribute(NETWORK_PROTOCOL_NAME, "http")
         return CameraStreamPart(inject_trace_context({}), process(part.jpeg))
+
+
+async def _relay_camera(
+    uri: str,
+    process: CameraFrameProcessor,
+    publish: Callable[[CameraStreamPart], None],
+) -> None:
+    """Publish each Camera stream part from `uri`, processed, skipping stale ones."""
+    unprocessed: Broadcast[CameraStreamPart] = Broadcast()
+    async with Outbox(unprocessed) as newest, asyncio.TaskGroup() as tasks:
+        tasks.create_task(read_stream(uri, unprocessed.publish))
+        async for part in newest:
+            try:
+                relayed = await asyncio.to_thread(relay_camera_part, part, process)
+            except Exception:
+                logger.exception("Dropping an unreadable Camera frame")
+            else:
+                publish(relayed)
 
 
 def relay_telemetry_message(raw: str | bytes) -> WebSocketMessage:
@@ -289,11 +222,11 @@ async def serve_streamer(
 ) -> AsyncIterator[StreamerEndpoints]:
     """Serve the Streamer endpoints while the context is open; port 0 binds any."""
     commands: Broadcast[WebSocketMessage] = Broadcast()
-    camera = CarFeed(
-        functools.partial(MjpegClient, settings.camera_uri),
-        functools.partial(relay_camera_part, process=process),
-    )
     async with asyncio.TaskGroup() as tasks:
+        camera = RefCountFeed(
+            functools.partial(_relay_camera, settings.camera_uri, process)
+        )
+        camera_task = tasks.create_task(camera.supervise())
         telemetry: Broadcast[WebSocketMessage] = Broadcast()
         telemetry_task = tasks.create_task(
             _publish_telemetry(settings.telemetry_uri, telemetry)
@@ -307,7 +240,7 @@ async def serve_streamer(
                     handler, settings.listen_host, settings.websocket_port
                 ) as websocket_server,
                 _serve_camera(
-                    CameraServer((settings.listen_host, settings.camera_port), camera)
+                    settings.listen_host, settings.camera_port, camera
                 ) as camera_url,
             ):
                 websocket_host, websocket_port = websocket_server.sockets[
@@ -322,6 +255,7 @@ async def serve_streamer(
         finally:
             car_drive_task.cancel()
             telemetry_task.cancel()
+            camera_task.cancel()
 
 
 async def _publish_telemetry(uri: str, telemetry: Broadcast[WebSocketMessage]) -> None:
@@ -338,21 +272,24 @@ async def _publish_telemetry(uri: str, telemetry: Broadcast[WebSocketMessage]) -
 
 
 @contextlib.asynccontextmanager
-async def _serve_camera(server: CameraServer) -> AsyncIterator[str]:
-    """Run `server` on its own thread beside the event loop; yield its Camera URL."""
-    thread = threading.Thread(target=server.serve_forever)
-    thread.start()
-    host, port = server.server_address[:2]
+async def _serve_camera(
+    host: str, port: int, camera: RefCountFeed[CameraStreamPart]
+) -> AsyncIterator[str]:
+    """Serve the processed Camera stream on `CAMERA_PATH`; yield its URL."""
+    app = web.Application()
+    app.router.add_get(CAMERA_PATH, functools.partial(_serve_viewer, camera))
+    # Viewer responses never end, so stopping cancels them; 0 would wait forever.
+    cancel_viewers_after_s = 0.1
+    runner = web.AppRunner(
+        app, handler_cancellation=True, shutdown_timeout=cancel_viewers_after_s
+    )
+    await runner.setup()
     try:
-        yield f"http://{host!s}:{port}{CAMERA_PATH}"
+        await web.TCPSite(runner, host, port).start()
+        bound_host, bound_port = runner.addresses[0][:2]
+        yield f"http://{bound_host}:{bound_port}{CAMERA_PATH}"
     finally:
-        await asyncio.to_thread(_stop_camera_server, server, thread)
-
-
-def _stop_camera_server(server: CameraServer, thread: threading.Thread) -> None:
-    server.shutdown()
-    thread.join()
-    server.server_close()
+        await runner.cleanup()
 
 
 async def _serve_until_cancelled(settings: StreamerSettings) -> None:

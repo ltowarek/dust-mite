@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
+from collections.abc import AsyncIterator, Callable
 
 import pytest
 
-from controller.outbox import Broadcast, Inbox, Outbox
+from controller.outbox import Broadcast, Inbox, Outbox, RefCountFeed
 
 
 @pytest.mark.asyncio
@@ -86,3 +88,115 @@ async def test_a_closed_outbox_cannot_be_reopened() -> None:
     with pytest.raises(RuntimeError):
         async with outbox:
             pass
+
+
+class _ReadSpy:
+    """A feed's `read` that records how many start, run at once and end."""
+
+    def __init__(self, *, closing_s: float = 0.0) -> None:
+        self.started = 0
+        self.running = 0
+        self.most_running = 0
+        self.ended = asyncio.Event()
+        self._closing_s = closing_s
+
+    async def __call__(self, _publish: Callable[[str], None]) -> None:
+        self.started += 1
+        self.running += 1
+        self.most_running = max(self.most_running, self.running)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await asyncio.sleep(self._closing_s)
+            self.running -= 1
+            self.ended.set()
+
+
+@contextlib.asynccontextmanager
+async def _supervised(feed: RefCountFeed[str]) -> AsyncIterator[None]:
+    supervisor = asyncio.create_task(feed.supervise())
+    try:
+        yield
+    finally:
+        supervisor.cancel()
+        await asyncio.wait([supervisor])
+
+
+async def _settle() -> None:
+    await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_outboxes_share_one_read() -> None:
+    read = _ReadSpy()
+    feed = RefCountFeed(read)
+    async with _supervised(feed), feed.outbox(), feed.outbox():
+        await _settle()
+
+    assert read.most_running == 1
+
+
+@pytest.mark.asyncio
+async def test_the_read_ends_after_the_last_outbox_closes() -> None:
+    read = _ReadSpy()
+    feed = RefCountFeed(read)
+    async with _supervised(feed):
+        async with feed.outbox():
+            await _settle()
+        await asyncio.wait_for(read.ended.wait(), timeout=1)
+
+        assert read.running == 0
+
+
+@pytest.mark.asyncio
+async def test_a_new_read_waits_for_the_previous_one_to_end() -> None:
+    read = _ReadSpy(closing_s=0.05)
+    feed = RefCountFeed(read)
+    async with _supervised(feed):
+        async with feed.outbox():
+            await _settle()
+        await _settle()
+        async with feed.outbox():
+            await asyncio.sleep(0.1)
+
+    assert read.most_running == 1
+
+
+@pytest.mark.asyncio
+async def test_an_outbox_reopened_at_once_keeps_the_read() -> None:
+    read = _ReadSpy()
+    feed = RefCountFeed(read)
+    async with _supervised(feed):
+        async with feed.outbox():
+            await _settle()
+        async with feed.outbox():
+            await _settle()
+
+    assert read.started == 1
+
+
+@pytest.mark.asyncio
+async def test_an_outbox_receives_what_the_read_publishes() -> None:
+    async def read_stub(publish: Callable[[str], None]) -> None:
+        publish("frame")
+        await asyncio.Event().wait()
+
+    feed = RefCountFeed(read_stub)
+    async with _supervised(feed), feed.outbox() as outbox:
+        received = await anext(outbox)
+
+    assert received == "frame"
+
+
+@pytest.mark.asyncio
+async def test_an_error_from_the_read_stops_the_supervisor() -> None:
+    async def read_stub(_publish: Callable[[str], None]) -> None:
+        raise ValueError
+
+    feed = RefCountFeed(read_stub)
+    supervisor = asyncio.create_task(feed.supervise())
+    with pytest.raises(ExceptionGroup) as raised:
+        async with feed.outbox():
+            await supervisor
+
+    assert raised.group_contains(ValueError)
