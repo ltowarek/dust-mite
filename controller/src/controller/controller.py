@@ -10,7 +10,7 @@ from typing import NoReturn, Self
 
 from websockets.asyncio.client import ClientConnection
 
-from .autorepeat import Driving, Event, Parked, SendState, Tick, transition
+from .autorepeat import Event, Parked, SendState, Tick, resend_due, transition
 from .command import DriveCommand
 from .curses_logging import queued_console_logging, queued_log_writer
 from .input_backends import (
@@ -65,10 +65,9 @@ async def autorepeat(
     loop = asyncio.get_running_loop()
     state: SendState = Parked()
     while True:
-        resend_at = state.resend_at if isinstance(state, Driving) else None
         event: Event
         try:
-            async with asyncio.timeout_at(resend_at):
+            async with asyncio.timeout_at(resend_due(state)):
                 event = await anext(readings)
         except TimeoutError:
             event = Tick()

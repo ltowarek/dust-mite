@@ -52,3 +52,14 @@ def transition(
                     return Driving(reading, resend_at), []
         case _:
             assert_never(state)
+
+
+def resend_due(state: SendState) -> float | None:
+    """Return when the next resend is due, or `None` if none is."""
+    match state:
+        case Driving(resend_at=resend_at):
+            return resend_at
+        case Parked():
+            return None
+        case _:
+            assert_never(state)

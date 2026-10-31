@@ -4,7 +4,15 @@ import dataclasses
 
 import pytest
 
-from controller.autorepeat import Driving, Event, Parked, SendState, Tick, transition
+from controller.autorepeat import (
+    Driving,
+    Event,
+    Parked,
+    SendState,
+    Tick,
+    resend_due,
+    transition,
+)
 from controller.command import Command, DriveCommand
 
 _ADVANCE: DriveCommand = (Command.ADVANCE, 50)
@@ -92,3 +100,14 @@ def test_moves_to(case: Transition) -> None:
     next_state, _ = transition(case.state, case.event, case.now)
 
     assert next_state == case.next_state
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        pytest.param(Parked(), None, id="parked"),
+        pytest.param(Driving(_ADVANCE, resend_at=0.1), 0.1, id="driving"),
+    ],
+)
+def test_resend_due(state: SendState, expected: float | None) -> None:
+    assert resend_due(state) == expected
