@@ -104,6 +104,21 @@ class TestSampler:
 
         assert export_calls
 
+    def test_stop_exports_the_window_still_open(self) -> None:
+        export_calls = []
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=100,
+            export_fn=lambda _time_unix_nano: export_calls.append(1),
+        )
+
+        sampler.start()
+        sampler.stop()
+
+        assert export_calls == [1]
+
     def test_start_is_idempotent(self) -> None:
         aggregator = Aggregator()
         registry = ActiveSpanRegistry()
