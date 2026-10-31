@@ -8,6 +8,8 @@ import http
 import json
 import logging
 import os
+import signal
+import weakref
 from collections.abc import AsyncIterator, Callable, Mapping
 from typing import Any, Self
 
@@ -92,6 +94,10 @@ DEFAULT_CAMERA_PORT = 8766
 DEFAULT_WEBSOCKET_PORT = 8765
 
 
+# Each open Viewer's Outbox, for shutdown to end.
+_viewers = web.AppKey("viewers", weakref.WeakSet[Outbox[CameraStreamPart]])
+
+
 @tracer.start_as_current_span(f"GET {CAMERA_PATH}", kind=trace.SpanKind.SERVER)
 async def _serve_viewer(
     camera: RefCountFeed[CameraStreamPart], request: web.Request
@@ -109,8 +115,12 @@ async def _serve_viewer(
     # A departing Viewer cancels this handler, even while no Camera frame flows.
     with contextlib.suppress(ConnectionResetError):
         async with camera.outbox() as outbox:
-            async for part in outbox:
-                await _send_part(response, part, client_address)
+            request.app[_viewers].add(outbox)
+            try:
+                async for part in outbox:
+                    await _send_part(response, part, client_address)
+            finally:
+                request.app[_viewers].discard(outbox)
     return response
 
 
@@ -277,8 +287,10 @@ async def _serve_camera(
 ) -> AsyncIterator[str]:
     """Serve the processed Camera stream on `CAMERA_PATH`; yield its URL."""
     app = web.Application()
+    app[_viewers] = weakref.WeakSet()
     app.router.add_get(CAMERA_PATH, functools.partial(_serve_viewer, camera))
-    # Viewer responses never end, so stopping cancels them; 0 would wait forever.
+    app.on_shutdown.append(_end_viewer_responses)
+    # Cancels Viewers stuck in a write; 0 would wait forever.
     cancel_viewers_after_s = 0.1
     runner = web.AppRunner(
         app, handler_cancellation=True, shutdown_timeout=cancel_viewers_after_s
@@ -292,21 +304,28 @@ async def _serve_camera(
         await runner.cleanup()
 
 
-async def _serve_until_cancelled(settings: StreamerSettings) -> None:
+async def _end_viewer_responses(app: web.Application) -> None:
+    viewers = app[_viewers]
+    for outbox in set(viewers):
+        outbox.close()
+
+
+async def _serve_until_signalled(settings: StreamerSettings) -> None:
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for signal_number in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(signal_number, stop.set)
     async with serve_streamer(settings):
         logger.info("Starting server")
-        await asyncio.Event().wait()
+        await stop.wait()
+        logger.info("Shutting down server")
 
 
 def main() -> None:
     """Run the main entry point."""
     settings = StreamerSettings.from_env(os.environ)
     configure_observability("dust-mite-streamer", settings.observability)
-    try:
-        asyncio.run(_serve_until_cancelled(settings))
-    except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
-    logger.info("Shutting down server")
+    asyncio.run(_serve_until_signalled(settings))
 
 
 if __name__ == "__main__":

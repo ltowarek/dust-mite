@@ -90,6 +90,16 @@ async def test_a_closed_outbox_cannot_be_reopened() -> None:
             pass
 
 
+@pytest.mark.asyncio
+async def test_closing_an_outbox_ends_it_after_its_messages() -> None:
+    frames = Broadcast[str]()
+    async with Outbox(frames) as outbox:
+        frames.publish("last")
+        outbox.close()
+
+        assert [message async for message in outbox] == ["last"]
+
+
 class _ReadSpy:
     """A feed's `read` that records how many start, run at once and end."""
 

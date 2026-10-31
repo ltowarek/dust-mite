@@ -71,8 +71,7 @@ class _Subscription[M](abc.ABC):
         """Stop receiving from the sources."""
         for source in self._sources:
             source.remove(self)
-        self._closed = True
-        self._ready.set()
+        self.close()
 
     def __aiter__(self) -> Self:
         """Iterate over the kept messages."""
@@ -86,6 +85,11 @@ class _Subscription[M](abc.ABC):
             self._ready.clear()
             await self._ready.wait()
         return self._take()
+
+    def close(self) -> None:
+        """End iteration after the messages already received."""
+        self._closed = True
+        self._ready.set()
 
     def put(self, source: Broadcast[M], message: M) -> None:
         """Keep `message`, published on `source`."""

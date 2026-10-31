@@ -168,6 +168,13 @@ def _receive_collision_state(
             return bool(message["stopping"])
 
 
+def _receive_until_closed(websocket: websockets.sync.connection.Connection) -> None:
+    deadline = time.monotonic() + WAIT_TIMEOUT_S
+    with contextlib.suppress(websockets.exceptions.ConnectionClosed):
+        while True:
+            websocket.recv(timeout=deadline - time.monotonic())
+
+
 def _send_command(
     websocket: websockets.sync.connection.Connection, command: int
 ) -> None:
@@ -605,3 +612,60 @@ def test_keeps_retrying_while_the_cars_drive_endpoint_refuses_the_handshake(
         _send_command(driver, _ADVANCE)
 
         assert wait_for(lambda: bool(control.received))
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [pytest.param("drive", id="drive"), pytest.param("telemetry", id="telemetry")],
+)
+def test_stopping_closes_websocket_clients_with_going_away(
+    camera_feed: CarEndpointSpy,
+    telemetry_feed: CarEndpointSpy,
+    car_control: CarEndpointSpy,
+    endpoint: str,
+) -> None:
+    going_away = 1001
+    with _streamer(camera_feed, telemetry_feed, car_control) as streamer:
+        client = websockets.sync.client.connect(getattr(streamer, endpoint), proxy=None)
+    with client:
+        _receive_until_closed(client)
+
+    assert client.close_code == going_away
+
+
+def test_stopping_ends_viewer_responses(
+    camera_feed: CarEndpointSpy,
+    telemetry_feed: CarEndpointSpy,
+    car_control: CarEndpointSpy,
+) -> None:
+    with contextlib.ExitStack() as viewers:
+        with _streamer(camera_feed, telemetry_feed, car_control) as streamer:
+            viewer = viewers.enter_context(_viewer(streamer.camera))
+            read_mjpeg_part(viewer.response)
+        viewer.response.read()
+
+        assert viewer.response.isclosed()
+
+
+@pytest.mark.parametrize(
+    "car_endpoint",
+    [
+        pytest.param("camera_feed", id="camera"),
+        pytest.param("telemetry_feed", id="telemetry"),
+        pytest.param("car_control", id="drive"),
+    ],
+)
+def test_stopping_closes_the_connections_to_the_car(
+    request: pytest.FixtureRequest,
+    camera_feed: CarEndpointSpy,
+    telemetry_feed: CarEndpointSpy,
+    car_control: CarEndpointSpy,
+    car_endpoint: str,
+) -> None:
+    car: CarEndpointSpy = request.getfixturevalue(car_endpoint)
+    with contextlib.ExitStack() as viewers:
+        with _streamer(camera_feed, telemetry_feed, car_control) as streamer:
+            viewers.enter_context(_viewer(streamer.camera))
+            wait_for(lambda: car.open_connections == 1)
+
+        assert wait_for(lambda: car.open_connections == 0)
