@@ -7,14 +7,14 @@ from pydualsense.pydualsense import DSState
 
 from controller.command import Command, DriveCommand
 from controller.input_backends import (
-    _KEYBOARD_POLL_TIMEOUT_MS,
+    _KEYBOARD_READ_TIMEOUT_MS,
     DualSenseInputBackend,
     KeyboardInputBackend,
     command_from_dualsense,
     command_from_key,
 )
 
-# `curses.getch` returns -1 (ERR) when the poll timeout lapses with no key.
+# `curses.getch` returns -1 (ERR) when the read timeout lapses with no key.
 _CURSES_ERR = -1
 
 
@@ -67,16 +67,19 @@ class TestCommandFromDualSense:
         state_overrides: dict[str, bool | int],
         expected: DriveCommand,
     ) -> None:
-        assert command_from_dualsense(_dualsense_state(**state_overrides)) == expected
+        dead_zone = 5
+        state = _dualsense_state(**state_overrides)
+
+        assert command_from_dualsense(state, dead_zone) == expected
 
 
 async def _start_reading(
     ds: pydualsense, published: list[DriveCommand]
 ) -> asyncio.Task[None]:
     """Start reading `ds` and return once its change events are subscribed."""
-    reading = asyncio.create_task(DualSenseInputBackend(ds).read(published.append))
+    read_task = asyncio.create_task(DualSenseInputBackend(ds).read(published.append))
     await asyncio.sleep(0)
-    return reading
+    return read_task
 
 
 async def _report(ds: pydualsense, event_name: str) -> None:
@@ -104,13 +107,13 @@ class TestDualSenseInputBackend:
         ds = pydualsense()
         ds.state = _dualsense_state()
         published: list[DriveCommand] = []
-        reading = await _start_reading(ds, published)
+        read_task = await _start_reading(ds, published)
 
         ds.state.DpadUp = True
         await _report(ds, event_name)
         ds.state.ps = True
         await _report(ds, "ps_pressed")
-        await reading
+        await read_task
 
         assert published == [(Command.ADVANCE, 50)]
 
@@ -119,41 +122,40 @@ class TestDualSenseInputBackend:
         wait_s = 1.0
         ds = pydualsense()
         ds.state = _dualsense_state()
-        reading = await _start_reading(ds, [])
+        read_task = await _start_reading(ds, [])
 
         ds.state.ps = True
         await _report(ds, "ps_pressed")
-        await asyncio.wait([reading], timeout=wait_s)
+        await asyncio.wait([read_task], timeout=wait_s)
 
-        assert reading.done()
+        assert read_task.done()
 
     @pytest.mark.asyncio
     async def test_ps_release_does_not_end_the_read(self) -> None:
         wait_s = 0.1
         ds = pydualsense()
         ds.state = _dualsense_state()
-        reading = await _start_reading(ds, [])
+        read_task = await _start_reading(ds, [])
 
         await _report(ds, "ps_pressed")
-        await asyncio.wait([reading], timeout=wait_s)
-        ended_on_release = reading.done()
+        await asyncio.wait([read_task], timeout=wait_s)
+        ended_on_release = read_task.done()
         ds.state.ps = True
         await _report(ds, "ps_pressed")
-        await reading
+        await read_task
 
         assert not ended_on_release
 
     @pytest.mark.asyncio
-    async def test_publishes_nothing_in_the_placeholder_state(self) -> None:
-        """Before its first report, pydualsense's sticks read as TURN_RIGHT 100."""
+    async def test_publishes_nothing_before_the_first_change_event(self) -> None:
         ds = pydualsense()
         ds.state = DSState()
         published: list[DriveCommand] = []
-        reading = await _start_reading(ds, published)
+        read_task = await _start_reading(ds, published)
 
         ds.state.ps = True
         await _report(ds, "ps_pressed")
-        await reading
+        await read_task
 
         assert published == []
 
@@ -164,7 +166,7 @@ class HeldKeyWindowStub:
     A terminal delivers a held key as a single keydown, then nothing until
     the host's initial repeat delay elapses, then repeats at a steady
     interval. This reproduces that arrival pattern against a virtual clock
-    driven by the poll timeout the backend installs, so the tests model the
+    driven by the read timeout the backend installs, so the tests model the
     real timing without spending real time.
     """
 
@@ -202,7 +204,7 @@ class HeldKeyWindowStub:
         return self._now_ms
 
     def timeout(self, delay: int, /) -> None:
-        """Record the poll timeout the backend installs."""
+        """Record the read timeout the backend installs."""
         self._timeout_ms = delay
 
     def getch(self) -> int:
@@ -228,7 +230,7 @@ class ScriptedWindowStub:
         self._keys = list(keys)
 
     def timeout(self, delay: int, /) -> None:
-        """Accept the poll timeout the backend installs and ignore it."""
+        """Accept the read timeout the backend installs and ignore it."""
 
     def getch(self) -> int:
         """Return the next scripted key, or `curses` ERR once exhausted."""
@@ -293,11 +295,11 @@ class TestKeyboardInputBackend:
         """The pre-fix behavior, kept as the counter-example to the invariant."""
         window = HeldKeyWindowStub(ord("a"), repeat_delay_ms=500)
 
-        commands = _read_commands(KeyboardInputBackend(window, poll_timeout_ms=50))
+        commands = _read_commands(KeyboardInputBackend(window, read_timeout_ms=50))
 
         assert commands.count(Command.BRAKE) > 1
 
-    def test_release_brakes_within_the_poll_timeout(self) -> None:
+    def test_release_brakes_within_the_read_timeout(self) -> None:
         hold_ms = 1000
         window = HeldKeyWindowStub(ord("a"), hold_ms=hold_ms)
         braked_at_ms: list[int] = []
@@ -308,7 +310,7 @@ class TestKeyboardInputBackend:
 
         asyncio.run(KeyboardInputBackend(window).read(record_brake))
 
-        assert braked_at_ms[0] - hold_ms <= _KEYBOARD_POLL_TIMEOUT_MS
+        assert braked_at_ms[0] - hold_ms <= _KEYBOARD_READ_TIMEOUT_MS
 
     @pytest.mark.asyncio
     async def test_publishes_each_reading_until_q(self) -> None:

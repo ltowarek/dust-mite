@@ -103,7 +103,7 @@ class DualSenseInputBackend:
                 event.unsubscribe(on_change)
 
 
-def command_from_dualsense(state: DSState, analog_dead_zone: int = 5) -> DriveCommand:
+def command_from_dualsense(state: DSState, analog_dead_zone: int) -> DriveCommand:
     """Return the command and value `state` asks for."""
     command = Command.BRAKE
     value = None
@@ -159,7 +159,7 @@ _KEYBOARD_EXIT_KEY = ord("q")
 # a tap holds its command for this long before BRAKE follows. Shortening it
 # below the host's repeat delay brings the stutter back; the way to a finer
 # minimum is to lower that delay (`xset r rate`) and this timeout together.
-_KEYBOARD_POLL_TIMEOUT_MS = 600
+_KEYBOARD_READ_TIMEOUT_MS = 600
 
 
 class _InputWindow(Protocol):
@@ -176,10 +176,10 @@ class _InputWindow(Protocol):
 
 
 class KeyboardInputBackend:
-    """Poll a terminal keyboard for the current command and value.
+    """Read a terminal keyboard for the current command and value.
 
     Uses a timed-out `curses` read, so a key that isn't held down (or isn't
-    repeated by the terminal's key repeat within the poll timeout) reads
+    repeated by the terminal's key repeat within the read timeout) reads
     back as `BRAKE`, mirroring the DualSense analog sticks'
     spring-back-to-center behavior. The timeout also bounds how long the
     exit key takes to register.
@@ -189,12 +189,12 @@ class KeyboardInputBackend:
         self,
         window: _InputWindow,
         write_queued_logs: Callable[[], None] = lambda: None,
-        poll_timeout_ms: int = _KEYBOARD_POLL_TIMEOUT_MS,
+        read_timeout_ms: int = _KEYBOARD_READ_TIMEOUT_MS,
     ) -> None:
         """Initialize the object; `write_queued_logs` runs between key reads."""
         self._window = window
         self._write_queued_logs = write_queued_logs
-        self._window.timeout(poll_timeout_ms)
+        self._window.timeout(read_timeout_ms)
 
     async def read(self, publish: Callable[[DriveCommand], None]) -> None:
         """Publish each key's reading until 'q' is pressed."""

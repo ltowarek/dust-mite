@@ -62,7 +62,7 @@ class HeldThenReleased:
     held_at: float
     arrivals: list[tuple[float, Command]]
 
-    def held(self) -> list[float]:
+    def held_arrivals(self) -> list[float]:
         return [at for at, command in self.arrivals if command is not Command.BRAKE]
 
 
@@ -111,7 +111,7 @@ async def _hold_then_release(
 def test_sends_a_held_command_at_once(held_then_released: HeldThenReleased) -> None:
     # Well before the first resend.
     at_once_s = 0.1
-    first_s = held_then_released.held()[0] - held_then_released.held_at
+    first_s = held_then_released.held_arrivals()[0] - held_then_released.held_at
 
     assert first_s < at_once_s
 
@@ -120,14 +120,14 @@ def test_resends_a_held_command(held_then_released: HeldThenReleased) -> None:
     # The 0.5 s hold spans about five sends.
     fewest = 3
 
-    assert len(held_then_released.held()) >= fewest
+    assert len(held_then_released.held_arrivals()) >= fewest
 
 
 def test_resends_a_held_command_about_every_100_ms(
     held_then_released: HeldThenReleased,
 ) -> None:
     shortest_s, longest_s = 0.05, 0.15
-    held = held_then_released.held()
+    held = held_then_released.held_arrivals()
     gaps_s = [later - earlier for earlier, later in itertools.pairwise(held)]
 
     assert all(shortest_s < gap_s < longest_s for gap_s in gaps_s)
