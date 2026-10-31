@@ -6,12 +6,7 @@ from typing import override
 
 import pytest
 
-from controller.command import Command, DriveCommand
-from controller.controller import (
-    ControllerSettings,
-    _configure_console_logging,
-    control,
-)
+from controller.controller import ControllerSettings, _configure_console_logging
 from controller.curses_logging import (
     LogWindow,
     queued_console_logging,
@@ -28,41 +23,6 @@ class TestConfigureConsoleLogging:
 
         assert handler in root_logger.handlers
         assert isinstance(handler, logging.StreamHandler)
-
-
-class InputBackendStub:
-    def __init__(self, results: list[DriveCommand | None]) -> None:
-        self._results = iter(results)
-
-    def poll(self) -> DriveCommand | None:
-        return next(self._results)
-
-
-class TestControl:
-    @pytest.mark.asyncio
-    async def test_exits_immediately_when_backend_returns_none(self) -> None:
-        input_backend = InputBackendStub([None])
-        published: list[DriveCommand] = []
-
-        await control(input_backend, published.append)
-
-        assert published == []
-
-    @pytest.mark.asyncio
-    async def test_publishes_every_reading(self) -> None:
-        """Repeats and BRAKEs pass through; the send policy filters them."""
-        readings: list[DriveCommand] = [
-            (Command.ADVANCE, 50),
-            (Command.ADVANCE, 50),
-            (Command.BRAKE, None),
-            (Command.BRAKE, None),
-        ]
-        input_backend = InputBackendStub([*readings, None])
-        published: list[DriveCommand] = []
-
-        await control(input_backend, published.append)
-
-        assert published == readings
 
 
 class LoggingKeyboardWindowSpy(LogWindow):
@@ -118,29 +78,26 @@ class TestCursesLogging:
         logger = logging.getLogger("test-curses-logging")
         logger.setLevel(logging.DEBUG)
         window = LoggingKeyboardWindowSpy([ord("a"), ord("q")], logger)
-        published: list[DriveCommand] = []
         with queued_console_logging(console_handler) as records:
-            asyncio.run(
-                control(
-                    KeyboardInputBackend(window),
-                    published.append,
-                    queued_log_writer(records, window, console_handler.formatter),
-                )
+            write_queued_logs = queued_log_writer(
+                records, window, console_handler.formatter
             )
+            backend = KeyboardInputBackend(window, write_queued_logs)
+            asyncio.run(backend.read(lambda _: None))
         return window
 
-    def test_writes_nothing_to_the_window_while_a_poll_reads(
+    def test_writes_nothing_to_the_window_while_a_key_read_is_in_progress(
         self, window: LoggingKeyboardWindowSpy
     ) -> None:
         assert window.writes_during_reads == 0
 
-    def test_writes_records_logged_from_another_thread_between_polls(
+    def test_writes_records_logged_from_another_thread_between_key_reads(
         self, window: LoggingKeyboardWindowSpy
     ) -> None:
         assert "read 1\n" in window.written
 
     @pytest.mark.usefixtures("window")
-    def test_writes_a_record_logged_after_the_last_poll_to_the_console(
+    def test_writes_a_record_logged_after_the_last_key_read_to_the_console(
         self, console: io.StringIO
     ) -> None:
         assert "read 2\n" in console.getvalue()

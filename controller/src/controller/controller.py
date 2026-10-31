@@ -58,23 +58,6 @@ def _configure_console_logging() -> logging.Handler:
     return handler
 
 
-async def control(
-    input_backend: InputBackend,
-    publish: Callable[[DriveCommand], None],
-    between_polls: Callable[[], None] = lambda: None,
-) -> None:
-    """Publish each poll's reading until the input ends.
-
-    `between_polls` runs before each poll, which runs in a worker thread.
-    """
-    while True:
-        between_polls()
-        reading = await asyncio.to_thread(input_backend.poll)
-        if reading is None:
-            break
-        publish(reading)
-
-
 async def apply_send_policy(
     readings: Inbox[DriveCommand], publish: Callable[[DriveCommand], None]
 ) -> NoReturn:
@@ -95,11 +78,7 @@ async def apply_send_policy(
             publish((command, value))
 
 
-async def drive(
-    input_backend: InputBackend,
-    drive_uri: str,
-    between_polls: Callable[[], None] = lambda: None,
-) -> None:
+async def drive(input_backend: InputBackend, drive_uri: str) -> None:
     """Drive the car through the streamer at `drive_uri` until the input ends.
 
     Raises `DriveConnectionClosedError` if the streamer closes deliberately.
@@ -107,9 +86,7 @@ async def drive(
     readings: Broadcast[DriveCommand] = Broadcast()
     commands: Broadcast[DriveCommand] = Broadcast()
     async with Inbox(readings) as every_reading, asyncio.TaskGroup() as tasks:
-        reader = tasks.create_task(
-            control(input_backend, readings.publish, between_polls)
-        )
+        reader = tasks.create_task(input_backend.read(readings.publish))
         sender = tasks.create_task(apply_send_policy(every_reading, commands.publish))
         watcher = tasks.create_task(
             _send_until_closed_deliberately(drive_uri, commands)
@@ -149,13 +126,8 @@ def main() -> None:
                 write_queued_logs = queued_log_writer(
                     records, window, console_handler.formatter
                 )
-                asyncio.run(
-                    drive(
-                        KeyboardInputBackend(window),
-                        settings.drive_uri,
-                        write_queued_logs,
-                    )
-                )
+                backend = KeyboardInputBackend(window, write_queued_logs)
+                asyncio.run(drive(backend, settings.drive_uri))
 
             with queued_console_logging(console_handler) as records:
                 curses.wrapper(run)

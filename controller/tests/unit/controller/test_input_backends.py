@@ -1,3 +1,4 @@
+import asyncio
 import curses
 import time
 
@@ -6,7 +7,6 @@ from pydualsense import pydualsense
 from pydualsense.pydualsense import DSState
 
 from controller.command import Command, DriveCommand
-from controller.controller import control
 from controller.input_backends import (
     _KEYBOARD_POLL_TIMEOUT_MS,
     DualSenseInputBackend,
@@ -37,9 +37,9 @@ def _dualsense_state(**state_overrides: bool | int) -> DSState:
 class AutoExitDSStateStub:
     """Stands in for `DSState`: dpad-up held, `.ps` truthy after `exit_after` reads.
 
-    `DualSenseInputBackend.poll` reads `.ps` exactly once per call, so this
-    drives `control()` through exactly `exit_after` sent commands before the
-    PS button "exit" condition trips. Every other input the backend reads is
+    `DualSenseInputBackend` reads `.ps` exactly once per reading, so its read
+    publishes exactly `exit_after` readings before the PS button "exit"
+    condition trips. Every other input the backend reads is
     at rest.
     """
 
@@ -102,27 +102,26 @@ class TestCommandFromDualSense:
 
 
 class TestDualSenseInputBackend:
-    def test_polls_no_faster_than_every_16_ms(self) -> None:
+    @pytest.mark.asyncio
+    async def test_polls_no_faster_than_every_16_ms(self) -> None:
         polls = 5
         ds = pydualsense()
         ds.state = AutoExitDSStateStub(exit_after=polls)
-        backend = DualSenseInputBackend(ds)
+        published: list[DriveCommand] = []
 
         started = time.monotonic()
-        for _ in range(polls):
-            backend.poll()
+        await DualSenseInputBackend(ds).read(published.append)
         elapsed_s = time.monotonic() - started
 
         assert elapsed_s >= polls * 0.016
 
     @pytest.mark.asyncio
-    async def test_drives_the_control_loop(self) -> None:
+    async def test_publishes_each_reading_until_ps(self) -> None:
         ds = pydualsense()
         ds.state = AutoExitDSStateStub(exit_after=1)
-        backend = DualSenseInputBackend(ds)
         published: list[DriveCommand] = []
 
-        await control(backend, published.append)
+        await DualSenseInputBackend(ds).read(published.append)
 
         assert published == [(Command.ADVANCE, 50)]
 
@@ -144,11 +143,13 @@ class HeldKeyWindowStub:
         repeat_delay_ms: int = 500,
         repeat_interval_ms: int = 30,
         hold_ms: int = 2000,
+        reads: int = 20,
     ) -> None:
         self._arrivals = self._arrival_times(
             repeat_delay_ms, repeat_interval_ms, hold_ms
         )
         self._key = key
+        self._reads_left = reads
         self._now_ms = 0
         self._timeout_ms = 0
 
@@ -173,7 +174,13 @@ class HeldKeyWindowStub:
         self._timeout_ms = delay
 
     def getch(self) -> int:
-        """Return the next key to arrive within the timeout, else `curses` ERR."""
+        """Return the next key to arrive within the timeout, else `curses` ERR.
+
+        Once `reads` keys have been read, return the exit key.
+        """
+        if self._reads_left == 0:
+            return ord("q")
+        self._reads_left -= 1
         deadline = self._now_ms + self._timeout_ms
         if self._arrivals and self._arrivals[0] <= deadline:
             self._now_ms = self._arrivals.pop(0)
@@ -196,13 +203,10 @@ class ScriptedWindowStub:
         return self._keys.pop(0) if self._keys else _CURSES_ERR
 
 
-def _drive(backend: KeyboardInputBackend, polls: int) -> list[Command]:
-    """Poll `backend` `polls` times and return the commands it emitted."""
+def _read_commands(backend: KeyboardInputBackend) -> list[Command]:
+    """Read `backend` until it quits and return the commands it published."""
     commands: list[Command] = []
-    for _ in range(polls):
-        result = backend.poll()
-        assert result is not None
-        commands.append(result[0])
+    asyncio.run(backend.read(lambda reading: commands.append(reading[0])))
     return commands
 
 
@@ -250,7 +254,7 @@ class TestKeyboardInputBackend:
     ) -> None:
         window = HeldKeyWindowStub(ord("a"), repeat_delay_ms=repeat_delay_ms)
 
-        commands = _drive(KeyboardInputBackend(window), polls=20)
+        commands = _read_commands(KeyboardInputBackend(window))
 
         assert Command.BRAKE not in commands
 
@@ -260,29 +264,29 @@ class TestKeyboardInputBackend:
         """The pre-fix behavior, kept as the counter-example to the invariant."""
         window = HeldKeyWindowStub(ord("a"), repeat_delay_ms=500)
 
-        commands = _drive(KeyboardInputBackend(window, poll_timeout_ms=50), polls=20)
+        commands = _read_commands(KeyboardInputBackend(window, poll_timeout_ms=50))
 
         assert commands.count(Command.BRAKE) > 1
 
     def test_release_brakes_within_the_poll_timeout(self) -> None:
         hold_ms = 1000
         window = HeldKeyWindowStub(ord("a"), hold_ms=hold_ms)
-        backend = KeyboardInputBackend(window)
+        braked_at_ms: list[int] = []
 
-        while True:
-            result = backend.poll()
-            assert result is not None
-            if result[0] is Command.BRAKE:
-                break
+        def record_brake(reading: DriveCommand) -> None:
+            if reading[0] is Command.BRAKE:
+                braked_at_ms.append(window.elapsed_ms)
 
-        assert window.elapsed_ms - hold_ms <= _KEYBOARD_POLL_TIMEOUT_MS
+        asyncio.run(KeyboardInputBackend(window).read(record_brake))
+
+        assert braked_at_ms[0] - hold_ms <= _KEYBOARD_POLL_TIMEOUT_MS
 
     @pytest.mark.asyncio
-    async def test_drives_the_control_loop(self) -> None:
+    async def test_publishes_each_reading_until_q(self) -> None:
         window = ScriptedWindowStub([ord("a"), ord("a"), ord("d"), ord("q")])
         published: list[DriveCommand] = []
 
-        await control(KeyboardInputBackend(window), published.append)
+        await KeyboardInputBackend(window).read(published.append)
 
         assert published == [
             (Command.TURN_LEFT, 50),

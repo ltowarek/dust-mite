@@ -1,7 +1,9 @@
 """Input backends: sources of driving commands for the gamepad CLI."""
 
+import asyncio
 import curses
 import time
+from collections.abc import Callable
 from enum import StrEnum
 from types import TracebackType
 from typing import Protocol, Self
@@ -20,10 +22,10 @@ class InputBackendName(StrEnum):
 
 
 class InputBackend(Protocol):
-    """Source of driving commands, polled once per control loop iteration."""
+    """Source of the Driver's readings: the Drive command each input asks for."""
 
-    def poll(self) -> DriveCommand | None:
-        """Return the current command and value, or `None` to exit the control loop."""
+    async def read(self, publish: Callable[[DriveCommand], None]) -> None:
+        """Publish each reading until the Driver quits."""
         ...
 
 
@@ -63,8 +65,12 @@ class DualSenseInputBackend:
         """Disconnect from the DualSense controller."""
         self._ds.close()
 
-    def poll(self) -> DriveCommand | None:
-        """Return the current command/value, or `None` if the PS button was pressed."""
+    async def read(self, publish: Callable[[DriveCommand], None]) -> None:
+        """Publish each reading until the PS button is pressed."""
+        while (reading := await asyncio.to_thread(self._poll)) is not None:
+            publish(reading)
+
+    def _poll(self) -> DriveCommand | None:
         # pydualsense reads reports on its own thread; this paces reading its state.
         poll_interval_s = 0.016
         time.sleep(poll_interval_s)
@@ -162,15 +168,24 @@ class KeyboardInputBackend:
     """
 
     def __init__(
-        self, window: _InputWindow, poll_timeout_ms: int = _KEYBOARD_POLL_TIMEOUT_MS
+        self,
+        window: _InputWindow,
+        write_queued_logs: Callable[[], None] = lambda: None,
+        poll_timeout_ms: int = _KEYBOARD_POLL_TIMEOUT_MS,
     ) -> None:
-        """Initialize the object."""
+        """Initialize the object; `write_queued_logs` runs between key reads."""
         self._window = window
+        self._write_queued_logs = write_queued_logs
         self._window.timeout(poll_timeout_ms)
 
-    def poll(self) -> DriveCommand | None:
-        """Return the current command and value, or `None` if 'q' was pressed."""
-        return command_from_key(self._window.getch())
+    async def read(self, publish: Callable[[DriveCommand], None]) -> None:
+        """Publish each key's reading until 'q' is pressed."""
+        while True:
+            self._write_queued_logs()
+            key = await asyncio.to_thread(self._window.getch)
+            if (reading := command_from_key(key)) is None:
+                return
+            publish(reading)
 
 
 def command_from_key(key: int) -> DriveCommand | None:

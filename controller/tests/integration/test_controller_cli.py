@@ -6,7 +6,6 @@ import dataclasses
 import itertools
 import logging
 import socket
-import threading
 import time
 import urllib.parse
 from collections.abc import Callable
@@ -27,23 +26,25 @@ _SPEED = 50
 
 
 class HeldInputStub:
-    """Input backend returning the Drive command the test holds, until told to quit."""
+    """Input backend publishing each Drive command the test holds, until quit."""
 
     def __init__(self) -> None:
         self._held: DriveCommand = (Command.BRAKE, None)
-        self._quit = threading.Event()
+        self._publish: Callable[[DriveCommand], None] | None = None
+        self._quit = asyncio.Event()
 
     def hold(self, command: Command, value: int | None) -> None:
         self._held = (command, value)
+        if self._publish is not None:
+            self._publish(self._held)
 
     def quit(self) -> None:
         self._quit.set()
 
-    def poll(self) -> DriveCommand | None:
-        poll_interval_s = 0.05
-        if self._quit.wait(poll_interval_s):
-            return None
-        return self._held
+    async def read(self, publish: Callable[[DriveCommand], None]) -> None:
+        self._publish = publish
+        publish(self._held)
+        await self._quit.wait()
 
 
 async def _eventually(condition: Callable[[], bool]) -> bool:
@@ -108,7 +109,7 @@ async def _hold_then_release(
 
 
 def test_sends_a_held_command_at_once(held_then_released: HeldThenReleased) -> None:
-    # Within the stub's own 50 ms poll, well before the first resend.
+    # Well before the first resend.
     at_once_s = 0.1
     first_s = held_then_released.held()[0] - held_then_released.held_at
 
