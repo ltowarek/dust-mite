@@ -6,11 +6,11 @@ import dataclasses
 import logging
 import os
 from collections.abc import Callable, Mapping
-from typing import Self
+from typing import NoReturn, Self
 
 from websockets.asyncio.client import ClientConnection
 
-from .command import Command, DriveCommand
+from .command import DriveCommand
 from .curses_logging import queued_console_logging, queued_log_writer
 from .input_backends import (
     DualSenseInputBackend,
@@ -19,8 +19,9 @@ from .input_backends import (
     KeyboardInputBackend,
 )
 from .observability import ObservabilitySettings, configure_observability
-from .outbox import Broadcast
+from .outbox import Broadcast, Inbox
 from .reconnecting_connection import send_until_lost, stay_connected
+from .send_policy import Driving, Event, Parked, SendState, Tick, transition
 from .senders import send_command
 
 logger = logging.getLogger(__name__)
@@ -62,25 +63,36 @@ async def control(
     publish: Callable[[DriveCommand], None],
     between_polls: Callable[[], None] = lambda: None,
 ) -> None:
-    """Read input in a loop and publish Drive commands.
+    """Publish each poll's reading until the input ends.
 
-    Every command except a repeated BRAKE is published on each poll, so a
-    held command keeps the car's drive-command watchdog from braking.
     `between_polls` runs before each poll, which runs in a worker thread.
     """
-    last_command = Command.BRAKE
-
     while True:
         between_polls()
-        result = await asyncio.to_thread(input_backend.poll)
-        if result is None:
+        reading = await asyncio.to_thread(input_backend.poll)
+        if reading is None:
             break
-        command, value = result
+        publish(reading)
 
-        if command != Command.BRAKE or last_command != Command.BRAKE:
+
+async def apply_send_policy(
+    readings: Inbox[DriveCommand], publish: Callable[[DriveCommand], None]
+) -> NoReturn:
+    """Publish Drive commands for each reading, timed by the send policy."""
+    loop = asyncio.get_running_loop()
+    state: SendState = Parked()
+    while True:
+        resend_at = state.resend_at if isinstance(state, Driving) else None
+        event: Event
+        try:
+            async with asyncio.timeout_at(resend_at):
+                event = await anext(readings)
+        except TimeoutError:
+            event = Tick()
+        state, commands = transition(state, event, loop.time())
+        for command, value in commands:
             logger.debug("Sending command with value: %s - %s", command.name, value)
-            publish(result)
-        last_command = command
+            publish((command, value))
 
 
 async def drive(
@@ -92,16 +104,19 @@ async def drive(
 
     Raises `DriveConnectionClosedError` if the streamer closes deliberately.
     """
+    readings: Broadcast[DriveCommand] = Broadcast()
     commands: Broadcast[DriveCommand] = Broadcast()
-    async with asyncio.TaskGroup() as tasks:
+    async with Inbox(readings) as every_reading, asyncio.TaskGroup() as tasks:
         reader = tasks.create_task(
-            control(input_backend, commands.publish, between_polls)
+            control(input_backend, readings.publish, between_polls)
         )
+        sender = tasks.create_task(apply_send_policy(every_reading, commands.publish))
         watcher = tasks.create_task(
             _send_until_closed_deliberately(drive_uri, commands)
         )
         await asyncio.wait([reader, watcher], return_when=asyncio.FIRST_COMPLETED)
         reader.cancel()
+        sender.cancel()
         watcher.cancel()
     if not watcher.cancelled():
         raise watcher.result()
