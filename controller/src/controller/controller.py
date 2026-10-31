@@ -75,7 +75,7 @@ async def control(
         publish(reading)
 
 
-async def pace(
+async def apply_send_policy(
     readings: Inbox[DriveCommand], publish: Callable[[DriveCommand], None]
 ) -> NoReturn:
     """Publish Drive commands for each reading, timed by the send policy."""
@@ -110,7 +110,7 @@ async def drive(
         reader = tasks.create_task(
             control(input_backend, readings.publish, between_polls)
         )
-        sender = tasks.create_task(pace(every_reading, commands.publish))
+        sender = tasks.create_task(apply_send_policy(every_reading, commands.publish))
         watcher = tasks.create_task(
             _send_until_closed_deliberately(drive_uri, commands)
         )
