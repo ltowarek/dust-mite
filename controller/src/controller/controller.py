@@ -113,6 +113,11 @@ async def _send_until_closed_deliberately(
         return closed
 
 
+async def _drive_with_dualsense(drive_uri: str) -> None:
+    async with DualSenseInputBackend() as backend:
+        await drive(backend, drive_uri)
+
+
 def main() -> None:
     """Run the main entry point."""
     settings = ControllerSettings.from_env(os.environ)
@@ -132,8 +137,7 @@ def main() -> None:
             with queued_console_logging(console_handler) as records:
                 curses.wrapper(run)
         else:
-            with DualSenseInputBackend() as backend:
-                asyncio.run(drive(backend, settings.drive_uri))
+            asyncio.run(_drive_with_dualsense(settings.drive_uri))
     except DriveConnectionClosedError as e:
         message = f"The streamer closed the drive connection: {e}"
         raise SystemExit(message) from None

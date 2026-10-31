@@ -2,7 +2,6 @@
 
 import asyncio
 import curses
-import time
 from collections.abc import Callable
 from enum import StrEnum
 from types import TracebackType
@@ -37,11 +36,11 @@ def interpolate(
 
 
 class DualSenseInputBackend:
-    """Poll a DualSense controller for the current command and value.
+    """Publish a DualSense controller's readings as it reports changes.
 
-    Use as a context manager: connects to the controller on entry, closes
-    on exit. Constructs its own `pydualsense` handle unless one is given
-    (for tests).
+    Use as an async context manager: connects to the controller on entry,
+    closes on exit. Constructs its own `pydualsense` handle unless one is
+    given (for tests).
     """
 
     def __init__(
@@ -51,30 +50,59 @@ class DualSenseInputBackend:
         self._ds = ds if ds is not None else pydualsense()
         self._analog_dead_zone = analog_dead_zone
 
-    def __enter__(self) -> Self:
+    async def __aenter__(self) -> Self:
         """Connect to the DualSense controller."""
-        self._ds.init()
+        await asyncio.to_thread(self._ds.init)
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
         exc_traceback: TracebackType | None,
     ) -> None:
-        """Disconnect from the DualSense controller."""
-        self._ds.close()
+        """Disconnect, stopping the report thread before the event loop closes."""
+        await asyncio.to_thread(self._ds.close)
 
     async def read(self, publish: Callable[[DriveCommand], None]) -> None:
-        """Publish each reading until the PS button is pressed."""
-        while (reading := await asyncio.to_thread(self._poll)) is not None:
-            publish(reading)
+        """Publish the reading of each change the controller reports, until PS.
 
-    def _poll(self) -> DriveCommand | None:
-        # pydualsense reads reports on its own thread; this paces reading its state.
-        poll_interval_s = 0.016
-        time.sleep(poll_interval_s)
-        return command_from_dualsense(self._ds.state, self._analog_dead_zone)
+        Nothing is published before the first change: until pydualsense
+        parses its first report, which fires no events, `state` is a
+        placeholder that reads as TURN_RIGHT 100.
+        """
+        loop = asyncio.get_running_loop()
+        ps_pressed = asyncio.Event()
+
+        def take(reading: DriveCommand | None) -> None:
+            if reading is None:
+                ps_pressed.set()
+            else:
+                publish(reading)
+
+        def on_change(*_: object) -> None:
+            # Runs on pydualsense's report thread, after the whole report is written.
+            reading = command_from_dualsense(self._ds.state, self._analog_dead_zone)
+            loop.call_soon_threadsafe(take, reading)
+
+        ds = self._ds
+        events = (
+            ds.dpad_up,
+            ds.dpad_down,
+            ds.dpad_left,
+            ds.dpad_right,
+            ds.left_joystick_changed,
+            ds.right_joystick_changed,
+            ds.r2_changed,
+            ds.ps_pressed,
+        )
+        for event in events:
+            event.subscribe(on_change)
+        try:
+            await ps_pressed.wait()
+        finally:
+            for event in events:
+                event.unsubscribe(on_change)
 
 
 def command_from_dualsense(

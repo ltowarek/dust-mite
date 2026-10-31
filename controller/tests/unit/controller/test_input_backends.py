@@ -1,6 +1,5 @@
 import asyncio
 import curses
-import time
 
 import pytest
 from pydualsense import pydualsense
@@ -32,33 +31,6 @@ def _dualsense_state(**state_overrides: bool | int) -> DSState:
     for name, value in state_overrides.items():
         setattr(state, name, value)
     return state
-
-
-class AutoExitDSStateStub:
-    """Stands in for `DSState`: dpad-up held, `.ps` truthy after `exit_after` reads.
-
-    `DualSenseInputBackend` reads `.ps` exactly once per reading, so its read
-    publishes exactly `exit_after` readings before the PS button "exit"
-    condition trips. Every other input the backend reads is
-    at rest.
-    """
-
-    def __init__(self, exit_after: int) -> None:
-        self.DpadUp = True
-        self.DpadRight = False
-        self.DpadDown = False
-        self.DpadLeft = False
-        self.LX = 0
-        self.RX = 0
-        self.RY = 0
-        self.R2 = 0
-        self._exit_after = exit_after
-        self._ps_reads = 0
-
-    @property
-    def ps(self) -> bool:
-        self._ps_reads += 1
-        return self._ps_reads > self._exit_after
 
 
 class TestCommandFromDualSense:
@@ -101,29 +73,76 @@ class TestCommandFromDualSense:
         assert command_from_dualsense(_dualsense_state(**state_overrides)) == expected
 
 
+async def _start_reading(
+    ds: pydualsense, published: list[DriveCommand]
+) -> asyncio.Task[None]:
+    """Start reading `ds` and return once its change events are subscribed."""
+    reading = asyncio.create_task(DualSenseInputBackend(ds).read(published.append))
+    await asyncio.sleep(0)
+    return reading
+
+
+async def _report(ds: pydualsense, event_name: str) -> None:
+    """Fire `ds`'s change event `event_name` from a thread, as pydualsense does."""
+    await asyncio.to_thread(getattr(ds, event_name))
+
+
 class TestDualSenseInputBackend:
+    @pytest.mark.parametrize(
+        "event_name",
+        [
+            "dpad_up",
+            "dpad_down",
+            "dpad_left",
+            "dpad_right",
+            "left_joystick_changed",
+            "right_joystick_changed",
+            "r2_changed",
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_polls_no_faster_than_every_16_ms(self) -> None:
-        polls = 5
+    async def test_publishes_the_reading_of_a_change_event(
+        self, event_name: str
+    ) -> None:
         ds = pydualsense()
-        ds.state = AutoExitDSStateStub(exit_after=polls)
+        ds.state = _dualsense_state()
         published: list[DriveCommand] = []
+        reading = await _start_reading(ds, published)
 
-        started = time.monotonic()
-        await DualSenseInputBackend(ds).read(published.append)
-        elapsed_s = time.monotonic() - started
-
-        assert elapsed_s >= polls * 0.016
-
-    @pytest.mark.asyncio
-    async def test_publishes_each_reading_until_ps(self) -> None:
-        ds = pydualsense()
-        ds.state = AutoExitDSStateStub(exit_after=1)
-        published: list[DriveCommand] = []
-
-        await DualSenseInputBackend(ds).read(published.append)
+        ds.state.DpadUp = True
+        await _report(ds, event_name)
+        ds.state.ps = True
+        await _report(ds, "ps_pressed")
+        await reading
 
         assert published == [(Command.ADVANCE, 50)]
+
+    @pytest.mark.asyncio
+    async def test_ps_ends_the_read(self) -> None:
+        wait_s = 1.0
+        ds = pydualsense()
+        ds.state = _dualsense_state()
+        reading = await _start_reading(ds, [])
+
+        ds.state.ps = True
+        await _report(ds, "ps_pressed")
+        await asyncio.wait([reading], timeout=wait_s)
+
+        assert reading.done()
+
+    @pytest.mark.asyncio
+    async def test_publishes_nothing_in_the_placeholder_state(self) -> None:
+        """Before its first report, pydualsense's sticks read as TURN_RIGHT 100."""
+        ds = pydualsense()
+        ds.state = DSState()
+        published: list[DriveCommand] = []
+        reading = await _start_reading(ds, published)
+
+        ds.state.ps = True
+        await _report(ds, "ps_pressed")
+        await reading
+
+        assert published == []
 
 
 class HeldKeyWindowStub:
