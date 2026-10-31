@@ -37,7 +37,7 @@ def transition(
     match state:
         case Parked():
             match event:
-                # A reading of BRAKE means nothing is held.
+                # An input reading of BRAKE means nothing is held.
                 case Tick() | (Command.BRAKE, _):
                     return state, []
                 case reading:

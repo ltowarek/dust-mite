@@ -61,7 +61,7 @@ def _configure_console_logging() -> logging.Handler:
 async def autorepeat(
     readings: asyncio.Queue[DriveCommand], publish: Callable[[DriveCommand], None]
 ) -> NoReturn:
-    """Publish the Drive commands `transition` returns for each reading and tick."""
+    """Publish the Drive commands `transition` returns per input reading and tick."""
     loop = asyncio.get_running_loop()
     state: SendState = Parked()
     while True:

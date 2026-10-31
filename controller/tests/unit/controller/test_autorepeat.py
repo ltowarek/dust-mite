@@ -67,7 +67,7 @@ _TRANSITIONS = [
             Driving(_ADVANCE, resend_at=0.1),
             [],
         ),
-        id="same_reading_while_driving",
+        id="same_input_reading_while_driving",
     ),
     pytest.param(
         Transition(

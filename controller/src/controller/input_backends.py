@@ -21,10 +21,10 @@ class InputBackendName(StrEnum):
 
 
 class InputBackend(Protocol):
-    """Source of the Driver's readings: the Drive command each input asks for."""
+    """Source of the Driver's input readings."""
 
     async def read(self, publish: Callable[[DriveCommand], None]) -> None:
-        """Publish each reading until the Driver quits."""
+        """Publish each input reading until the Driver quits."""
         ...
 
 
@@ -36,7 +36,7 @@ def interpolate(
 
 
 class DualSenseInputBackend:
-    """Publish a DualSense controller's readings as it reports changes.
+    """Publish a DualSense controller's input readings as it reports changes.
 
     Use as an async context manager: connects to the controller on entry,
     closes on exit. Constructs its own `pydualsense` handle unless one is
@@ -65,7 +65,7 @@ class DualSenseInputBackend:
         await asyncio.to_thread(self._ds.close)
 
     async def read(self, publish: Callable[[DriveCommand], None]) -> None:
-        """Publish the reading of each change the controller reports, until PS.
+        """Publish the input reading of each change the controller reports, until PS.
 
         Nothing is published before the first change: until pydualsense
         parses its first report, which fires no events, `state` is a
@@ -197,7 +197,7 @@ class KeyboardInputBackend:
         self._window.timeout(read_timeout_ms)
 
     async def read(self, publish: Callable[[DriveCommand], None]) -> None:
-        """Publish each key's reading until 'q' is pressed."""
+        """Publish each key's input reading until 'q' is pressed."""
         while True:
             self._write_queued_logs()
             key = await asyncio.to_thread(self._window.getch)

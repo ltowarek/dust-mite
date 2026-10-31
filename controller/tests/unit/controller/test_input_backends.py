@@ -22,7 +22,7 @@ def _dualsense_state(**state_overrides: bool | int) -> DSState:
     """Build a `DSState` at rest, with the given fields set."""
     state = DSState()
     # DSState()'s raw LX/RX/RY/LY default (128) is an unpopulated
-    # placeholder, not a real reading: `readInput()` normalizes a real
+    # placeholder, not a value from a report: `readInput()` normalizes a real
     # report to `raw_byte - 128`, so 0 is what an at-rest stick reads as.
     state.LX = 0
     state.RX = 0
@@ -101,7 +101,7 @@ class TestDualSenseInputBackend:
         ],
     )
     @pytest.mark.asyncio
-    async def test_publishes_the_reading_of_a_change_event(
+    async def test_publishes_the_input_reading_of_a_change_event(
         self, event_name: str
     ) -> None:
         ds = pydualsense()
@@ -327,7 +327,7 @@ class TestKeyboardInputBackend:
         assert braked_at_ms[0] - hold_ms <= _KEYBOARD_READ_TIMEOUT_MS
 
     @pytest.mark.asyncio
-    async def test_publishes_each_reading_until_q(self) -> None:
+    async def test_publishes_each_input_reading_until_q(self) -> None:
         window = ScriptedWindowStub([ord("a"), ord("a"), ord("d"), ord("q")])
         published: list[DriveCommand] = []
 
