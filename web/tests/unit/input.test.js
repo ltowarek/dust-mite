@@ -66,7 +66,7 @@ describe("HeldKeyStack", () => {
 
     stack.press("KeyW");
     stack.press("KeyA");
-    stack.press("KeyW"); // e.g. a duplicate press event, not host auto-repeat (callers filter that)
+    stack.press("KeyW"); // e.g. a duplicate press event, not host key repeat (callers filter that)
     stack.release("KeyW");
 
     // KeyW's original position is gone, so KeyA (still held) should surface.

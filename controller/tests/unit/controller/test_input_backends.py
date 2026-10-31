@@ -146,7 +146,7 @@ class TestDualSenseInputBackend:
 
 
 class HeldKeyWindowStub:
-    """Stub `curses.window` replaying one key held down under auto-repeat.
+    """Stub `curses.window` replaying one key held down under key repeat.
 
     A terminal delivers a held key as a single keydown, then nothing until
     the host's initial repeat delay elapses, then repeats at a steady

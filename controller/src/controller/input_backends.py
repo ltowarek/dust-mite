@@ -161,7 +161,7 @@ _KEYBOARD_BINDINGS: dict[int, tuple[Command, int]] = {
 _KEYBOARD_EXIT_KEY = ord("q")
 
 # Must exceed the host's initial key-repeat delay (500 ms on Ubuntu). A held
-# key delivers one keydown, then nothing until auto-repeat starts; a timeout
+# key delivers one keydown, then nothing until key repeat starts; a timeout
 # shorter than that gap reads the silence as a released key and emits BRAKE,
 # so the car stutters for the whole delay before the repeats sustain it.
 #
@@ -189,10 +189,10 @@ class KeyboardInputBackend:
     """Poll a terminal keyboard for the current command and value.
 
     Uses a timed-out `curses` read, so a key that isn't held down (or isn't
-    being auto-repeated by the terminal within the poll timeout) reads back
-    as `BRAKE`, mirroring the DualSense analog sticks' spring-back-to-center
-    behavior. The timeout also bounds how long the exit key takes to
-    register.
+    repeated by the terminal's key repeat within the poll timeout) reads
+    back as `BRAKE`, mirroring the DualSense analog sticks'
+    spring-back-to-center behavior. The timeout also bounds how long the
+    exit key takes to register.
     """
 
     def __init__(
