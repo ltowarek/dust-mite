@@ -1,6 +1,7 @@
 """When the CLI sends Drive commands: the timing of the web page's drive controller."""
 
 import dataclasses
+from typing import assert_never
 
 from .command import Command, DriveCommand
 
@@ -33,16 +34,21 @@ def transition(
     """Return the state after `event` at `now`, and the Drive commands to send."""
     # Well under the car's drive-command watchdog.
     resend_interval_s = 0.1
-    if isinstance(event, Tick):
-        if isinstance(state, Parked):
-            return state, []
-        return Driving(state.command, now + resend_interval_s), [state.command]
-    # A reading of BRAKE means nothing is held.
-    held = event[0] is not Command.BRAKE
-    if isinstance(state, Parked):
-        if not held:
-            return state, []
-        return Driving(event, now + resend_interval_s), [event]
-    if not held:
-        return Parked(), [(Command.BRAKE, None)]
-    return Driving(event, state.resend_at), []
+    match state:
+        case Parked():
+            match event:
+                # A reading of BRAKE means nothing is held.
+                case Tick() | (Command.BRAKE, _):
+                    return state, []
+                case reading:
+                    return Driving(reading, now + resend_interval_s), [reading]
+        case Driving(command=held, resend_at=resend_at):
+            match event:
+                case Tick():
+                    return Driving(held, now + resend_interval_s), [held]
+                case (Command.BRAKE, _):
+                    return Parked(), [(Command.BRAKE, None)]
+                case reading:
+                    return Driving(reading, resend_at), []
+        case _:
+            assert_never(state)
