@@ -1,11 +1,11 @@
-"""Guards the CLI's Drive command send policy, which mirrors the web page's."""
+"""Guards the CLI's Drive command autorepeat, which mirrors the web page's."""
 
 import dataclasses
 
 import pytest
 
+from controller.autorepeat import Driving, Event, Parked, SendState, Tick, transition
 from controller.command import Command, DriveCommand
-from controller.send_policy import Driving, Event, Parked, SendState, Tick, transition
 
 _ADVANCE: DriveCommand = (Command.ADVANCE, 50)
 _BRAKE: DriveCommand = (Command.BRAKE, None)

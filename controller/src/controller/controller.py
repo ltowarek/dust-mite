@@ -10,6 +10,7 @@ from typing import NoReturn, Self
 
 from websockets.asyncio.client import ClientConnection
 
+from .autorepeat import Driving, Event, Parked, SendState, Tick, transition
 from .command import DriveCommand
 from .curses_logging import queued_console_logging, queued_log_writer
 from .input_backends import (
@@ -21,7 +22,6 @@ from .input_backends import (
 from .observability import ObservabilitySettings, configure_observability
 from .outbox import Broadcast, Inbox
 from .reconnecting_connection import send_until_lost, stay_connected
-from .send_policy import Driving, Event, Parked, SendState, Tick, transition
 from .senders import send_command
 
 logger = logging.getLogger(__name__)
@@ -58,10 +58,10 @@ def _configure_console_logging() -> logging.Handler:
     return handler
 
 
-async def apply_send_policy(
+async def autorepeat(
     readings: Inbox[DriveCommand], publish: Callable[[DriveCommand], None]
 ) -> NoReturn:
-    """Publish Drive commands for each reading, timed by the send policy."""
+    """Publish the Drive commands `transition` returns for each reading and tick."""
     loop = asyncio.get_running_loop()
     state: SendState = Parked()
     while True:
@@ -87,7 +87,7 @@ async def drive(input_backend: InputBackend, drive_uri: str) -> None:
     commands: Broadcast[DriveCommand] = Broadcast()
     async with Inbox(readings) as every_reading, asyncio.TaskGroup() as tasks:
         reader = tasks.create_task(input_backend.read(readings.publish))
-        sender = tasks.create_task(apply_send_policy(every_reading, commands.publish))
+        sender = tasks.create_task(autorepeat(every_reading, commands.publish))
         watcher = tasks.create_task(
             _send_until_closed_deliberately(drive_uri, commands)
         )
