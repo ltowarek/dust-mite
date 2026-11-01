@@ -109,8 +109,37 @@ jobs:
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         ./scripts/run_shfmt.sh --diff
 
+  zizmor:
+    needs: build-docker
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Run zizmor
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./scripts/run_zizmor.sh --format=github
+
   ci-status-infrastructure:
-    needs: [build-docker, actionlint, shellcheck, shfmt]
+    needs: [build-docker, actionlint, shellcheck, shfmt, zizmor]
     if: always() && github.event.pull_request.draft != true
     permissions: {}
     runs-on: ubuntu-latest
