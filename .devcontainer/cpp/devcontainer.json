@@ -6,13 +6,11 @@
     "service": "cpp",
     "workspaceFolder": "/workspaces/dust-mite",
     "mounts": [
-        "source=claude-code-config,target=/home/vscode/.claude,type=volume",
         "source=cpp-ccache-devcontainer,target=/home/vscode/.ccache,type=volume",
         "source=cpp-build-devcontainer,target=/home/vscode/build,type=volume"
     ],
     "containerEnv": {
-        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/car/scripts/pre-commit.sh",
-        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/car/scripts/pre-commit.sh"
     },
     "customizations": {
         "vscode": {

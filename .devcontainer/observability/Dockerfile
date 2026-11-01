@@ -26,7 +26,3 @@ ENV PATH="/home/$USERNAME/venv/bin:$PATH"
 COPY --chown=$USERNAME:$USERNAME ./observability/requirements/ /tmp/requirements/
 RUN pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements/dev.txt \
     && rm -rf /tmp/requirements/
-
-RUN mkdir -p /home/$USERNAME/.claude
-RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc

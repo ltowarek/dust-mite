@@ -3,12 +3,6 @@
     "dockerComposeFile": "docker-compose.yml",
     "service": "app",
     "workspaceFolder": "/workspaces/dust-mite",
-    "mounts": [
-        "source=claude-code-config,target=/home/vscode/.claude,type=volume"
-    ],
-    "containerEnv": {
-        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
-    },
     "customizations": {
         "vscode": {
             "extensions": [

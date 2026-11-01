@@ -96,9 +96,6 @@ RUN userdel -r ubuntu \
 ENV IDF_CCACHE_ENABLE=1
 ENV CCACHE_DIR=/home/${USERNAME}/.ccache
 
-RUN mkdir -p /home/$USERNAME/.claude && \
-    chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
-
 RUN mkdir -p /home/$USERNAME/.ccache && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.ccache
 
@@ -112,6 +109,3 @@ USER $USERNAME
 
 RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread
 RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> $HOME/.bashrc
-
-RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
