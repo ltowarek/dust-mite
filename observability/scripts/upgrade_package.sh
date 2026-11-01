@@ -2,4 +2,4 @@
 
 set -e
 
-pip-compile-multi --upgrade-package $1
+pip-compile-multi --upgrade-package "$1"

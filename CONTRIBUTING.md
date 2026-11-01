@@ -10,7 +10,7 @@ This repository is an experimental platform, and contributions that improve tech
 - Preserve existing style and tooling unless a change explicitly updates them.
 - Follow classical TDD: prefer real collaborators in tests. Where a real collaborator is impractical, use a hand-written stub, spy, or fake as described in [Test doubles](#test-doubles). Never use mocks or monkeypatching.
 - Take a test's expected values from outside the code under test: a literal, or a named constant from a library or a standard. Never import an expected value from the code under test.
-- Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
+- Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`, `# shellcheck …`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
 - A suppression is acceptable only when the finding cannot be fixed because the code must match an interface outside the repository, such as a C extension's signature or a server that must bind to all interfaces. In that case, suppress the single rule on the single line and state the reason after it, for example `# noqa: S104 - the streamer must accept connections from all interfaces`, and list the suppression in the pull request description.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
 
@@ -1070,7 +1070,7 @@ When adding new documentation images:
 
 ## Infrastructure
 
-The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block.
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity.
 
 Open the repository root in the `Infrastructure` devcontainer and run the checks from the repository root:
 
@@ -1086,7 +1086,7 @@ The script runs every infrastructure check, and each check also has its own scri
 
 The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each finding on the offending line of the pull request.
 
-The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION` and `SHELLCHECK_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks. The problem matcher in [.github/actionlint-matcher.json](.github/actionlint-matcher.json) is a copy of the one that actionlint publishes; replace it with the new release's copy when updating actionlint.
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION` and `SHELLCHECK_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks. The problem matcher in [.github/actionlint-matcher.json](.github/actionlint-matcher.json) is a copy of the one that actionlint publishes; replace it with the new release's copy when updating actionlint. ShellCheck publishes no problem matcher, so [.github/shellcheck-matcher.json](.github/shellcheck-matcher.json) is maintained in this repository and matches ShellCheck's `gcc` output format; check that it still matches when updating ShellCheck.
 
 ## CI/CD
 

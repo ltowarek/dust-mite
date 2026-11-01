@@ -7,6 +7,8 @@ trap 'STATUS=1' ERR
 
 echo 'run_actionlint.sh'
 "$SCRIPTPATH/run_actionlint.sh"
+echo 'run_shellcheck.sh'
+"$SCRIPTPATH/run_shellcheck.sh"
 
 trap - ERR
 
