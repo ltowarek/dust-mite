@@ -79,8 +79,38 @@ jobs:
         echo "::add-matcher::.github/shellcheck-matcher.json"
         ./scripts/run_shellcheck.sh -f gcc
 
+  shfmt:
+    needs: build-docker
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ needs.build-docker.outputs.image }}
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Run shfmt
+      run: |
+        # The checkout is owned by the runner user, not the container's root.
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        ./scripts/run_shfmt.sh --diff
+
   ci-status-infrastructure:
-    needs: [build-docker, actionlint, shellcheck]
+    needs: [build-docker, actionlint, shellcheck, shfmt]
     if: always() && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
