@@ -1,0 +1,12 @@
+services:
+  infrastructure:
+    build:
+      context: ../..
+      dockerfile: .devcontainer/infrastructure/Dockerfile
+      args:
+        USER_UID: "${USER_UID:-1050}"
+        USER_GID: "${USER_GID:-1050}"
+    user: "${USER_UID:-1050}:${USER_GID:-1050}"
+    volumes:
+      - ../..:/workspaces/dust-mite:cached
+    command: sleep infinity
