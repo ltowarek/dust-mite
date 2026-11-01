@@ -14,25 +14,10 @@ jobs:
       contents: read
       packages: write
 
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v4
-      with:
-        registry: ghcr.io
-        username: ${{ github.repository_owner }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Build and push
-      uses: docker/build-push-action@v7
-      with:
-        tags: ghcr.io/ltowarek/dust-mite-js-devcontainer
-        file: ./.devcontainer/js/Dockerfile
-        push: true
+    uses: ./.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/js/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-js-devcontainer
 
   run-checks:
     needs: build-docker

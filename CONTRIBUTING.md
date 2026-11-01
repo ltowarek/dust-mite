@@ -1083,6 +1083,9 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
   - Runs firmware build for [car/](car/) and build-only checks for each component test app
+- [devcontainer-image.yml](.github/workflows/devcontainer-image.yml)
+  - Reusable workflow that the three workflows above call to build and publish their devcontainer image
+  - Takes the Dockerfile path and the image name as input
 - [docker.yml](.github/workflows/docker.yml)
   - Triggers on pull requests and pushes to `main`
   - Builds production images for all three components in parallel
