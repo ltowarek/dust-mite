@@ -112,6 +112,7 @@ jobs:
   ci-status-infrastructure:
     needs: [build-docker, actionlint, shellcheck, shfmt]
     if: always() && github.event.pull_request.draft != true
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed

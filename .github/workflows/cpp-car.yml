@@ -292,6 +292,7 @@ jobs:
   ci-status-cpp-car:
     needs: [build-docker, build, clang-format, clang-tidy, ubsan, coverage]
     if: always() && github.event.pull_request.draft != true
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed
