@@ -9,6 +9,8 @@ echo 'run_actionlint.sh'
 "$SCRIPTPATH/run_actionlint.sh"
 echo 'run_shellcheck.sh'
 "$SCRIPTPATH/run_shellcheck.sh"
+echo 'run_shfmt.sh'
+"$SCRIPTPATH/run_shfmt.sh" --diff
 
 trap - ERR
 
