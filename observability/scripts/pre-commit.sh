@@ -7,7 +7,7 @@ if [[ -z "${VIRTUAL_ENV}" ]]; then
     fi
     VIRTUAL_ENV=./venv
 fi
-source $VIRTUAL_ENV/bin/activate
+source "$VIRTUAL_ENV/bin/activate"
 
 OUTPUT=$(./scripts/run_checks.sh 2>&1)
 STATUS=$?

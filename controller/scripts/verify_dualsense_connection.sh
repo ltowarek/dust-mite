@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DEVICE="$($(dirname "$0")/find_dualsense.sh)"
+DEVICE="$("$(dirname "$0")/find_dualsense.sh")"
 
 if [ -n "$DEVICE" ]; then
 	echo "DualSense connected"
