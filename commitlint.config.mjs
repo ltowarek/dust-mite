@@ -4,7 +4,15 @@ export default {
     'scope-enum': [
       2,
       'always',
-      ['car', 'controller', 'web', 'observability', 'devcontainer', 'deps'],
+      [
+        'car',
+        'controller',
+        'web',
+        'observability',
+        'devcontainer',
+        'deps',
+        'deps-dev',
+      ],
     ],
   },
 };

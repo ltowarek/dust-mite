@@ -1135,7 +1135,7 @@ Types:
 
 Scopes:
 
-- The scope is one of `car`, `controller`, `web`, `observability`, `devcontainer` or `deps`.
+- The scope is one of `car`, `controller`, `web`, `observability`, `devcontainer`, `deps` or `deps-dev`. Dependabot sets `deps` or `deps-dev` on its dependency bumps.
 - Omit the scope for a change that spans several areas.
 
 Description:
