@@ -1112,7 +1112,7 @@ After adding a workflow or editing a `uses:` line, regenerate the lockfile and c
 ./scripts/lock_github_actions.sh
 ```
 
-The script installs the extension at the version that CI uses and passes its arguments to `gh actions-lock`. It runs on the host, because it needs an authenticated `gh`. A partial tag such as `v4` is narrowed to the full tag on the same commit, such as `v4.4.0`.
+The script installs the extension at the version that CI uses and passes its arguments to `gh actions-lock`. It runs on the host, because it needs an authenticated `gh`. A partial tag, such as `v4`, is narrowed to the full tag on the same commit.
 
 The `ci-status-actions-lock` check runs the script with `--verify`. It fails when a workflow uses an action that the lockfile does not pin, or when a locked commit cannot be traced to the action's upstream repository. To run the same check locally:
 
