@@ -18,7 +18,7 @@ import pytest
 import websockets.exceptions
 import websockets.sync.client
 import websockets.sync.connection
-from websockets.frames import Close
+from websockets.frames import Close, CloseCode
 
 from controller.streamer import StreamerEndpoints, serve_streamer
 
@@ -223,7 +223,6 @@ def test_forwards_drive_commands_to_the_car(
 def test_refuses_a_second_driver(
     streamer: StreamerEndpoints, car_control: CarEndpointSpy
 ) -> None:
-    try_again_later = 1013
     with websockets.sync.client.connect(streamer.drive, proxy=None) as first:
         _send_command(first, _ADVANCE)
         wait_for(lambda: bool(car_control.received))
@@ -234,7 +233,9 @@ def test_refuses_a_second_driver(
         ):
             second.recv(timeout=WAIT_TIMEOUT_S)
 
-    assert closed.value.rcvd == Close(try_again_later, "another driver is connected")
+    assert closed.value.rcvd == Close(
+        CloseCode.TRY_AGAIN_LATER, "another driver is connected"
+    )
 
 
 def test_closes_a_connection_to_an_unknown_path(streamer: StreamerEndpoints) -> None:
@@ -624,13 +625,12 @@ def test_stopping_closes_websocket_clients_with_going_away(
     car_control: CarEndpointSpy,
     endpoint: str,
 ) -> None:
-    going_away = 1001
     with _streamer(camera_feed, telemetry_feed, car_control) as streamer:
         client = websockets.sync.client.connect(getattr(streamer, endpoint), proxy=None)
     with client:
         _receive_until_closed(client)
 
-    assert client.close_code == going_away
+    assert client.close_code == CloseCode.GOING_AWAY
 
 
 def test_stopping_ends_viewer_responses(
