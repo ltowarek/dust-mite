@@ -14,7 +14,10 @@ if [[ -z "${QEMU_PROG_PATH}" ]]; then
     exit 1
 fi
 QEMU_SHARE_DIR="$(dirname "$(dirname "$QEMU_PROG_PATH")")/share/qemu"
-[[ -d "$QEMU_SHARE_DIR" ]] || { echo "QEMU share dir not found: $QEMU_SHARE_DIR" >&2; exit 1; }
+[[ -d "$QEMU_SHARE_DIR" ]] || {
+    echo "QEMU share dir not found: $QEMU_SHARE_DIR" >&2
+    exit 1
+}
 
 test_exit=0
 "$SCRIPT_DIR/run_qemu_tests.sh" "$COMPONENT_DIR" "$PYTEST_PATTERN" \
