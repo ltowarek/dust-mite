@@ -2,7 +2,6 @@ FROM debian:bookworm
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
-    curl \
     git \
     graphviz \
     imagemagick \
@@ -17,8 +16,5 @@ ARG USER_GID=$USER_UID
 
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME
-
-COPY scripts/install-gh.sh /tmp/install-gh.sh
-RUN chmod +x /tmp/install-gh.sh && /tmp/install-gh.sh
 
 USER $USERNAME

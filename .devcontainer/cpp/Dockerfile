@@ -102,9 +102,6 @@ RUN mkdir -p /home/$USERNAME/.ccache && \
 RUN mkdir -p /home/$USERNAME/build && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/build
 
-COPY scripts/install-gh.sh /tmp/install-gh.sh
-RUN chmod +x /tmp/install-gh.sh && /tmp/install-gh.sh
-
 USER $USERNAME
 
 RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread
