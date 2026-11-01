@@ -1099,6 +1099,9 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
 - [actions-lock.yml](.github/workflows/actions-lock.yml)
   - Triggers on pull requests and pushes to `main`
   - Verifies the actions lockfile as the `ci-status-actions-lock` check, as described in [Actions lockfile](#actions-lockfile)
+- [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
+  - Triggers on pull requests opened by Dependabot
+  - Enables auto-merge as described in [Dependency updates](#dependency-updates)
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
 
@@ -1121,6 +1124,20 @@ The `ci-status-actions-lock` check runs the script with `--verify`. It fails whe
 ```
 
 The verification reports one expected warning: the container image of the CI jobs is chosen at runtime, so the lockfile cannot check it. The warning does not fail verification and must not be suppressed; [ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md) explains why.
+
+### Dependency updates
+
+[Dependabot](.github/dependabot.yml) checks the following ecosystems weekly and opens a pull request for each outdated dependency:
+
+| Ecosystem | Covers | Pull request title prefix |
+|---|---|---|
+| `docker` | Base images of the C++ devcontainer and the car production image; an `espressif/idf` bump updates both in one pull request | `build(deps)` |
+| `npm` | The root [package.json](package.json) | `build(deps)` or `build(deps-dev)` |
+| `github-actions` | Every action in [.github/workflows/](.github/workflows/), one pull request per action | `ci(deps)` |
+
+Every ecosystem has a cooldown of 7 days: Dependabot proposes a release only after it has been public for 7 days, so that a compromised release can be detected first. A pull request that updates an action also regenerates the action's entry in the [actions lockfile](#actions-lockfile).
+
+[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all three ecosystems, for every update type including major versions. The required `ci-status-*` checks of the `main` ruleset gate the merge, so a pull request with a failing check stays open.
 
 ### Production images
 
