@@ -1,0 +1,58 @@
+name: Infrastructure
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches:
+      - main
+
+jobs:
+  build-docker:
+    if: github.event.pull_request.draft != true
+    permissions:
+      contents: read
+      packages: write
+
+    uses: ./.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/infrastructure/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-infrastructure-devcontainer
+
+  actionlint:
+    needs: build-docker
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ needs.build-docker.outputs.image }}
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Run actionlint
+      run: |
+        echo "::add-matcher::.github/actionlint-matcher.json"
+        ./scripts/run_actionlint.sh -color
+
+  ci-status-infrastructure:
+    needs: [build-docker, actionlint]
+    if: always() && github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fail if any needed job did not succeed
+      if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+      run: exit 1
