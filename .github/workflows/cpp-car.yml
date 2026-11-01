@@ -83,7 +83,7 @@ jobs:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
         SDKCONFIG_DEFAULTS: ${{ matrix.sdkconfig_overlay && format('sdkconfig.defaults;{0}', matrix.sdkconfig_overlay) || '' }}
       run: |
-        source $IDF_PATH/export.sh
+        source "$IDF_PATH/export.sh"
         idf.py build
       working-directory: ${{ matrix.path }}
 

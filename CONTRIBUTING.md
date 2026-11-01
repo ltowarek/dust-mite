@@ -78,6 +78,7 @@ Available environments:
 - [.devcontainer/js/](.devcontainer/js/) for [web/](web/) frontend work (bundler, linter, formatter, local dev server)
 - [.devcontainer/observability/](.devcontainer/observability/) for [observability/](observability/) work (datasource/pipeline config, synthetic and real-data pipeline tests)
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
+- [.devcontainer/infrastructure/](.devcontainer/infrastructure/) for GitHub Actions workflows and repository-level scripts (see [Infrastructure](#infrastructure))
 
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
 
@@ -107,11 +108,11 @@ Container-internal ports (`python:8765`, `python:8766`, `js:5173`) are unchanged
    - For [python.code-workspace](python.code-workspace), [cpp.code-workspace](cpp.code-workspace), [js.code-workspace](js.code-workspace), or [observability.code-workspace](observability.code-workspace):
      1. Run `File: Open Workspace from File...`.
      2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work, [js.code-workspace](js.code-workspace) for [web/](web/) work, or [observability.code-workspace](observability.code-workspace) for [observability/](observability/) work.
-   - For docs work: no additional action is required; continue with the repository root opened in step 1.
+   - For docs or infrastructure work: no additional action is required; continue with the repository root opened in step 1.
 5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `devices:` entries in:
    - [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml)
    - [.devcontainer/cpp/docker-compose.yml](.devcontainer/cpp/docker-compose.yml)
-6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, `JavaScript`, `Observability`, or `Docs`).
+6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, `JavaScript`, `Observability`, `Docs`, or `Infrastructure`).
 
 The container image includes project dependencies and VS Code extensions required for that stack. On first open, the devcontainer installs the controller package into the virtual environment via `postCreateCommand`.
 
@@ -1067,6 +1068,26 @@ When adding new documentation images:
    ./scripts/apply_logo.sh <path_to_logo.svg> <path_to_image.jpg>
    ```
 
+## Infrastructure
+
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block.
+
+Open the repository root in the `Infrastructure` devcontainer and run the checks from the repository root:
+
+```bash
+./scripts/run_infrastructure_checks.sh
+```
+
+The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If checks fail, apply automatic fixes:
+
+```bash
+./scripts/fix_infrastructure_checks.sh
+```
+
+The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each finding on the offending line of the pull request.
+
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION` and `SHELLCHECK_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks. The problem matcher in [.github/actionlint-matcher.json](.github/actionlint-matcher.json) is a copy of the one that actionlint publishes; replace it with the new release's copy when updating actionlint.
+
 ## CI/CD
 
 GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/).
@@ -1083,8 +1104,12 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
   - Runs firmware build for [car/](car/) and build-only checks for each component test app
+- [infrastructure.yml](.github/workflows/infrastructure.yml)
+  - Triggers on pull requests and pushes to `main`
+  - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
+  - Runs the infrastructure checks in container as the `ci-status-infrastructure` check, as described in [Infrastructure](#infrastructure)
 - [devcontainer-image.yml](.github/workflows/devcontainer-image.yml)
-  - Reusable workflow that the three workflows above call to build and publish their devcontainer image
+  - Reusable workflow that the four workflows above call to build and publish their devcontainer image
   - Takes the Dockerfile path and the image name as input and outputs the pushed image by digest; every container job in the calling workflow runs in that image ([ADR 0004](docs/adr/0004-ci-jobs-pin-devcontainer-image-by-digest.md))
   - Tags each image `sha-<short SHA>` of the commit it is built from, which on a pull request is the test merge commit
   - Reads a layer cache from each package's `buildcache` tag on every run and writes it only on pushes to `main`
@@ -1131,7 +1156,7 @@ The verification reports one expected warning: the container image of the CI job
 
 | Ecosystem | Covers | Pull request title prefix |
 |---|---|---|
-| `docker` | Base images of the C++ devcontainer and the car production image; an `espressif/idf` bump updates both in one pull request | `build(deps)` |
+| `docker` | Base images of the C++ and infrastructure devcontainers and the car production image; an `espressif/idf` bump updates both in one pull request | `build(deps)` |
 | `npm` | The root [package.json](package.json) | `build(deps)` or `build(deps-dev)` |
 | `github-actions` | Every action in [.github/workflows/](.github/workflows/), one pull request per action | `ci(deps)` |
 
