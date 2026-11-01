@@ -6,6 +6,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     curl \
     git \
     locales \
+    python3-venv \
     xz-utils
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
@@ -22,6 +23,13 @@ RUN curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${SHEL
 ARG SHFMT_VERSION=3.14.1
 RUN curl -fsSL -o /usr/local/bin/shfmt "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
     && chmod +x /usr/local/bin/shfmt
+
+# Debian's Python is externally managed (PEP 668), so zizmor gets its own venv.
+ENV PATH="/opt/zizmor/bin:$PATH"
+COPY .devcontainer/infrastructure/requirements.txt /tmp/requirements.txt
+RUN python3 -m venv /opt/zizmor \
+    && /opt/zizmor/bin/pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
 
 ARG USERNAME=vscode
 ARG USER_UID=1050
