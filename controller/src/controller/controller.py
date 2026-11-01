@@ -6,11 +6,12 @@ import dataclasses
 import logging
 import os
 from collections.abc import Callable, Mapping
-from typing import Self
+from typing import NoReturn, Self
 
 from websockets.asyncio.client import ClientConnection
 
-from .command import Command, DriveCommand
+from .autorepeat import Event, Parked, SendState, Tick, resend_due, transition
+from .command import DriveCommand
 from .curses_logging import queued_console_logging, queued_log_writer
 from .input_backends import (
     DualSenseInputBackend,
@@ -57,51 +58,41 @@ def _configure_console_logging() -> logging.Handler:
     return handler
 
 
-async def control(
-    input_backend: InputBackend,
-    publish: Callable[[DriveCommand], None],
-    between_polls: Callable[[], None] = lambda: None,
-) -> None:
-    """Read input in a loop and publish Drive commands.
-
-    Every command except a repeated BRAKE is published on each poll, so a
-    held command keeps the car's drive-command watchdog from braking.
-    `between_polls` runs before each poll, which runs in a worker thread.
-    """
-    last_command = Command.BRAKE
-
+async def autorepeat(
+    readings: asyncio.Queue[DriveCommand], publish: Callable[[DriveCommand], None]
+) -> NoReturn:
+    """Publish the Drive commands `transition` returns per input reading and tick."""
+    loop = asyncio.get_running_loop()
+    state: SendState = Parked()
     while True:
-        between_polls()
-        result = await asyncio.to_thread(input_backend.poll)
-        if result is None:
-            break
-        command, value = result
-
-        if command != Command.BRAKE or last_command != Command.BRAKE:
+        event: Event
+        try:
+            async with asyncio.timeout_at(resend_due(state)):
+                event = await readings.get()
+        except TimeoutError:
+            event = Tick()
+        state, commands = transition(state, event, loop.time())
+        for command, value in commands:
             logger.debug("Sending command with value: %s - %s", command.name, value)
-            publish(result)
-        last_command = command
+            publish((command, value))
 
 
-async def drive(
-    input_backend: InputBackend,
-    drive_uri: str,
-    between_polls: Callable[[], None] = lambda: None,
-) -> None:
+async def drive(input_backend: InputBackend, drive_uri: str) -> None:
     """Drive the car through the streamer at `drive_uri` until the input ends.
 
     Raises `DriveConnectionClosedError` if the streamer closes deliberately.
     """
+    readings: asyncio.Queue[DriveCommand] = asyncio.Queue()
     commands: Broadcast[DriveCommand] = Broadcast()
     async with asyncio.TaskGroup() as tasks:
-        reader = tasks.create_task(
-            control(input_backend, commands.publish, between_polls)
-        )
+        reader = tasks.create_task(input_backend.read(readings.put_nowait))
+        sender = tasks.create_task(autorepeat(readings, commands.publish))
         watcher = tasks.create_task(
             _send_until_closed_deliberately(drive_uri, commands)
         )
         await asyncio.wait([reader, watcher], return_when=asyncio.FIRST_COMPLETED)
         reader.cancel()
+        sender.cancel()
         watcher.cancel()
     if not watcher.cancelled():
         raise watcher.result()
@@ -130,23 +121,22 @@ def main() -> None:
     try:
         if settings.input_backend is InputBackendName.KEYBOARD:
 
-            def run(window: curses.window) -> None:
+            def run_keyboard(window: curses.window) -> None:
                 write_queued_logs = queued_log_writer(
                     records, window, console_handler.formatter
                 )
-                asyncio.run(
-                    drive(
-                        KeyboardInputBackend(window),
-                        settings.drive_uri,
-                        write_queued_logs,
-                    )
-                )
+                backend = KeyboardInputBackend(window, write_queued_logs)
+                asyncio.run(drive(backend, settings.drive_uri))
 
             with queued_console_logging(console_handler) as records:
-                curses.wrapper(run)
+                curses.wrapper(run_keyboard)
         else:
-            with DualSenseInputBackend() as backend:
-                asyncio.run(drive(backend, settings.drive_uri))
+
+            async def run_dualsense() -> None:
+                async with DualSenseInputBackend() as backend:
+                    await drive(backend, settings.drive_uri)
+
+            asyncio.run(run_dualsense())
     except DriveConnectionClosedError as e:
         message = f"The streamer closed the drive connection: {e}"
         raise SystemExit(message) from None
