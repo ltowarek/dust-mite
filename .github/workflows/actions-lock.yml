@@ -23,5 +23,5 @@ jobs:
 
     - name: Verify lockfile
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./scripts/lock_github_actions.sh --verify
