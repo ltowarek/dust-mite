@@ -53,7 +53,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      image: ${{ needs.build-docker.outputs.image }}
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      image: ${{ needs.build-docker.outputs.image }}
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -136,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      image: ${{ needs.build-docker.outputs.image }}
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -190,7 +190,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      image: ${{ needs.build-docker.outputs.image }}
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -244,7 +244,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      image: ${{ needs.build-docker.outputs.image }}
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}

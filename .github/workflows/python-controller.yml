@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ltowarek/dust-mite-python-devcontainer
+      image: ${{ needs.build-docker.outputs.image }}
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}

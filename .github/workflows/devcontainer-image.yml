@@ -11,10 +11,17 @@ on:
         description: Image name without a tag, such as ghcr.io/owner/name
         required: true
         type: string
+    outputs:
+      image:
+        description: The pushed image, referenced by digest
+        value: ${{ jobs.build.outputs.image }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    outputs:
+      image: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
 
     steps:
     - name: Set up Docker Buildx
@@ -27,9 +34,18 @@ jobs:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v6
+      with:
+        images: ${{ inputs.image }}
+        tags: type=sha
+
     - name: Build and push
+      id: build
       uses: docker/build-push-action@v7
       with:
-        tags: ${{ inputs.image }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
         file: ${{ inputs.file }}
         push: true
