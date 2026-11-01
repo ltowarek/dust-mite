@@ -1070,7 +1070,7 @@ When adding new documentation images:
 
 ## Infrastructure
 
-The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity.
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise.
 
 Open the repository root in the `Infrastructure` devcontainer and run the checks from the repository root:
 
@@ -1078,15 +1078,15 @@ Open the repository root in the `Infrastructure` devcontainer and run the checks
 ./scripts/run_infrastructure_checks.sh
 ```
 
-The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If checks fail, apply automatic fixes:
+The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If checks fail, apply automatic fixes, which reformat the shell scripts with shfmt:
 
 ```bash
 ./scripts/fix_infrastructure_checks.sh
 ```
 
-The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each finding on the offending line of the pull request.
+The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint and ShellCheck finding on the offending line of the pull request. The shfmt job shows the required changes as a diff in its log instead.
 
-The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION` and `SHELLCHECK_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks. The problem matcher in [.github/actionlint-matcher.json](.github/actionlint-matcher.json) is a copy of the one that actionlint publishes; replace it with the new release's copy when updating actionlint. ShellCheck publishes no problem matcher, so [.github/shellcheck-matcher.json](.github/shellcheck-matcher.json) is maintained in this repository and matches ShellCheck's `gcc` output format; check that it still matches when updating ShellCheck.
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks. The problem matcher in [.github/actionlint-matcher.json](.github/actionlint-matcher.json) is a copy of the one that actionlint publishes; replace it with the new release's copy when updating actionlint. ShellCheck publishes no problem matcher, so [.github/shellcheck-matcher.json](.github/shellcheck-matcher.json) is maintained in this repository and matches ShellCheck's `gcc` output format; check that it still matches when updating ShellCheck.
 
 ## CI/CD
 
