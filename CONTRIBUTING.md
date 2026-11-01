@@ -1121,12 +1121,12 @@ Types:
 
 | Type | Use for |
 |---|---|
-| `feat` | Behaviour that a Driver, a Viewer or someone running the stack can notice. |
+| `feat` | Behavior that a Driver, a Viewer or someone running the stack can notice. |
 | `fix` | A bug fix. |
-| `perf` | A faster implementation with unchanged behaviour. |
-| `refactor` | A code change that neither fixes a bug nor changes behaviour. |
+| `perf` | A faster implementation with unchanged behavior. |
+| `refactor` | A code change that neither fixes a bug nor changes behavior. |
 | `test` | Tests only. |
-| `docs` | Documentation only, including agent guidance such as [AGENTS.md](AGENTS.md) and skills. |
+| `docs` | Documentation only, including agent guidance such as [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md) and skills. |
 | `build` | The build system, Dockerfiles or dependencies. |
 | `ci` | CI workflows. |
 | `style` | Formatting only. |
@@ -1135,7 +1135,7 @@ Types:
 
 Scopes:
 
-- The scope is one of `car`, `controller`, `web`, `observability`, `devcontainer`, `deps` or `deps-dev`. Dependabot sets `deps` or `deps-dev` on its dependency bumps.
+- The scope is one of the values in the `scope-enum` rule of [commitlint.config.mjs](commitlint.config.mjs). Dependabot sets `deps` or `deps-dev` on its dependency bumps.
 - Omit the scope for a change that spans several areas.
 
 Description:
