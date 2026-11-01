@@ -1087,6 +1087,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Reusable workflow that the three workflows above call to build and publish their devcontainer image
   - Takes the Dockerfile path and the image name as input and outputs the pushed image by digest; every container job in the calling workflow runs in that image ([ADR 0004](docs/adr/0004-ci-jobs-pin-devcontainer-image-by-digest.md))
   - Tags each image `sha-<short SHA>` of the commit it is built from, which on a pull request is the test merge commit
+  - Reads a layer cache from each package's `buildcache` tag on every run and writes it only on pushes to `main`
 - [docker.yml](.github/workflows/docker.yml)
   - Triggers on pull requests and pushes to `main`
   - Builds production images for all three components in parallel

@@ -20,6 +20,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      BUILDCACHE: type=registry,ref=${{ inputs.image }}:buildcache
+
     outputs:
       image: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
 
@@ -49,3 +52,5 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         file: ${{ inputs.file }}
         push: true
+        cache-from: ${{ env.BUILDCACHE }}
+        cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0},mode=max', env.BUILDCACHE) || '' }}
