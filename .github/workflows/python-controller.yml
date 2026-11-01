@@ -64,7 +64,7 @@ jobs:
       run: ./scripts/run_tests.sh
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5.5.5
+      uses: codecov/codecov-action@v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: controller/coverage.xml
@@ -73,7 +73,7 @@ jobs:
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
-      uses: codecov/codecov-action@v5.5.5
+      uses: codecov/codecov-action@v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: controller/results.xml
