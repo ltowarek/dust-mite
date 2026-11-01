@@ -41,8 +41,6 @@ ENV_MAP[VITE_WS_URL]=${VITE_WS_URL:-ws://localhost:8765}
 ENV_MAP[VITE_CAMERA_URL]=${VITE_CAMERA_URL:-http://localhost:8766/camera}
 ENV_MAP[VITE_OTLP_ENDPOINT]=${VITE_OTLP_ENDPOINT:-http://localhost:4318}
 
-ENV_MAP[GH_TOKEN]=${GH_TOKEN:-}
-
 ENV_MAP[USER_UID]=$(id -u)
 ENV_MAP[USER_GID]=$(id -g)
 

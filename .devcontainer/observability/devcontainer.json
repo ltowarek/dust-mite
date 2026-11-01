@@ -5,16 +5,12 @@
     ],
     "service": "observability",
     "workspaceFolder": "/workspaces/dust-mite",
-    "mounts": [
-        "source=claude-code-config,target=/home/vscode/.claude,type=volume"
-    ],
     "remoteEnv": {
         "PATH": "/home/vscode/venv/bin:${containerEnv:PATH}",
         "VIRTUAL_ENV": "/home/vscode/venv"
     },
     "containerEnv": {
-        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/observability/scripts/pre-commit.sh",
-        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/observability/scripts/pre-commit.sh"
     },
     "customizations": {
         "vscode": {
