@@ -23,6 +23,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up Python
       uses: actions/setup-python@v7.1.0
@@ -68,6 +70,7 @@ jobs:
   ci-status-observability:
     needs: [run-checks]
     if: always() && github.event.pull_request.draft != true
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed

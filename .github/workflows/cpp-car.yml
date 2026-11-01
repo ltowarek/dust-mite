@@ -14,7 +14,7 @@ jobs:
       contents: read
       packages: write
 
-    uses: ./.github/workflows/devcontainer-image.yml
+    uses: $/.github/workflows/devcontainer-image.yml
     with:
       file: ./.devcontainer/cpp/Dockerfile
       image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
@@ -53,7 +53,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -68,6 +68,7 @@ jobs:
       uses: actions/checkout@v7.0.1
       with:
         submodules: recursive
+        persist-credentials: false
 
     - name: Cache ccache
       uses: actions/cache@v6.1.0
@@ -109,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -123,6 +124,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Run clang-format
       run: ./scripts/run_clang_format.sh -n --Werror
@@ -136,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -151,6 +154,7 @@ jobs:
       uses: actions/checkout@v7.0.1
       with:
         submodules: recursive
+        persist-credentials: false
 
     - name: Cache ccache
       uses: actions/cache@v6.1.0
@@ -190,7 +194,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -206,6 +210,7 @@ jobs:
       uses: actions/checkout@v7.0.1
       with:
         submodules: recursive
+        persist-credentials: false
 
     - name: Cache ccache
       uses: actions/cache@v6.1.0
@@ -244,7 +249,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -260,6 +265,7 @@ jobs:
       uses: actions/checkout@v7.0.1
       with:
         submodules: recursive
+        persist-credentials: false
 
     - name: Cache ccache
       uses: actions/cache@v6.1.0
@@ -286,6 +292,7 @@ jobs:
   ci-status-cpp-car:
     needs: [build-docker, build, clang-format, clang-tidy, ubsan, coverage]
     if: always() && github.event.pull_request.draft != true
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed
