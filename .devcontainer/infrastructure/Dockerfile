@@ -19,6 +19,10 @@ ARG SHELLCHECK_VERSION=0.11.0
 RUN curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
     | tar -xJ -C /usr/local/bin --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
 
+ARG SHFMT_VERSION=3.14.1
+RUN curl -fsSL -o /usr/local/bin/shfmt "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
+    && chmod +x /usr/local/bin/shfmt
+
 ARG USERNAME=vscode
 ARG USER_UID=1050
 ARG USER_GID=$USER_UID
