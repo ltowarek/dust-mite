@@ -65,12 +65,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.4.0
       with:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5
+      uses: actions/cache@v5.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-${{ matrix.path }}-${{ github.run_id }}
@@ -93,7 +93,7 @@ jobs:
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() && matrix.qemu }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v5.5.5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ${{ matrix.path }}/results.xml
@@ -122,7 +122,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.4.0
 
     - name: Run clang-format
       run: ./scripts/run_clang_format.sh -n --Werror
@@ -148,12 +148,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.4.0
       with:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5
+      uses: actions/cache@v5.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-clang-tidy-${{ github.run_id }}
@@ -203,12 +203,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.4.0
       with:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5
+      uses: actions/cache@v5.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-${{ github.run_id }}
@@ -257,12 +257,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.4.0
       with:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5
+      uses: actions/cache@v5.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-${{ github.run_id }}
@@ -276,7 +276,7 @@ jobs:
       run: ./scripts/run_coverage.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v5.5.5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: car/${{ matrix.component_path }}/coverage.info
