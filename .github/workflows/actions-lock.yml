@@ -8,7 +8,7 @@ on:
       - main
 
 jobs:
-  verify:
+  ci-status-actions-lock:
     if: github.event.pull_request.draft != true
     permissions:
       contents: read
@@ -25,12 +25,3 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: ./scripts/lock_github_actions.sh --verify
-
-  ci-status-actions-lock:
-    needs: [verify]
-    if: always() && github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    steps:
-    - name: Fail if any needed job did not succeed
-      if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-      run: exit 1
