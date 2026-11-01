@@ -4,13 +4,13 @@
 version: 'v0.0.3'
 workflows:
     '.github/workflows/actions-lock.yml':
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
     '.github/workflows/claude.yml':
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'anthropics/claude-code-action@v1.0.266'
     '.github/workflows/cpp-car.yml':
         - 'actions/cache@v5.1.0'
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v5.5.5'
     '.github/workflows/dependabot-auto-merge.yml':
         - 'dependabot/fetch-metadata@v2.5.0'
@@ -20,22 +20,22 @@ workflows:
         - 'docker/metadata-action@v6.2.0'
         - 'docker/setup-buildx-action@v4.4.1'
     '.github/workflows/docker.yml':
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.7.0'
         - 'docker/setup-buildx-action@v4.4.1'
     '.github/workflows/js-web.yml':
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v5.5.5'
     '.github/workflows/observability.yml':
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'actions/setup-python@v5.6.0'
         - 'codecov/codecov-action@v5.5.5'
     '.github/workflows/pr-title.yml':
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v4.4.0'
     '.github/workflows/python-controller.yml':
-        - 'actions/checkout@v6.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v5.5.5'
 dependencies:
     'actions/cache@v5.1.0':
@@ -43,9 +43,9 @@ dependencies:
         commit: 'sha1-caa296126883cff596d87d8935842f9db880ef25'
         owner_id: 44036562
         repo_id: 215566462
-    'actions/checkout@v6.1.0':
-        ref: 'v6.1.0'
-        commit: 'sha1-d23441a48e516b6c34aea4fa41551a30e30af803'
+    'actions/checkout@v7.0.1':
+        ref: 'v7.0.1'
+        commit: 'sha1-3d3c42e5aac5ba805825da76410c181273ba90b1'
         owner_id: 44036562
         repo_id: 197814629
     'actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea':
