@@ -119,6 +119,22 @@ class TestSampler:
 
         assert export_calls == [1]
 
+    def test_stopping_twice_exports_once(self) -> None:
+        export_calls = []
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=100,
+            export_fn=lambda _time_unix_nano: export_calls.append(1),
+        )
+
+        sampler.start()
+        sampler.stop()
+        sampler.stop()
+
+        assert export_calls == [1]
+
     def test_stop_does_not_wait_for_an_export_in_flight(self) -> None:
         held_s = 1.0
         export_started = threading.Event()
