@@ -14,7 +14,7 @@ jobs:
       contents: read
       packages: write
 
-    uses: ./.github/workflows/devcontainer-image.yml
+    uses: $/.github/workflows/devcontainer-image.yml
     with:
       file: ./.devcontainer/python/Dockerfile
       image: ghcr.io/ltowarek/dust-mite-python-devcontainer

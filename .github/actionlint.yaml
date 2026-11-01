@@ -1,0 +1,5 @@
+paths:
+  .github/workflows/{cpp-car,infrastructure,js-web,python-controller}.yml:
+    ignore:
+      # actionlint does not support the $/ self-repository syntax yet: https://github.com/rhysd/actionlint/issues/711
+      - '^reusable workflow call "\$/\.github/workflows/devcontainer-image\.yml" at "uses" is not following the format '
