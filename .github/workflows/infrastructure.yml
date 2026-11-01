@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
