@@ -43,7 +43,7 @@ RUN git init -q /tmp/espressif-qemu \
 # Before taking a later release, add the fix (espressif/qemu#195) to the
 # apptrace branch cloned above.
 # The digest keeps the image fixed even if Docker Hub re-pushes the tag.
-FROM espressif/idf:v6.0.3@sha256:54278f2c01e6e759502e2f04c9103589c17528923426f4d63193490c7a08f555
+FROM espressif/idf:v6.1@sha256:81893c71bb5e570088901f21def8684c25cd2a9020281bd01b843a7655edb18c
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
