@@ -18,7 +18,7 @@ jobs:
       # The main ruleset's required ci-status checks gate the merge, so a bump
       # that breaks the build or the QEMU tests stays open.
       - name: Enable auto-merge
-        if: contains(fromJSON('["docker", "github_actions", "npm_and_yarn"]'), steps.metadata.outputs.package-ecosystem)
+        if: contains(fromJSON('["docker", "github_actions", "npm_and_yarn", "pip"]'), steps.metadata.outputs.package-ecosystem)
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
