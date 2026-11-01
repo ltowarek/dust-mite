@@ -12,8 +12,7 @@ echo 'run_shellcheck.sh'
 
 trap - ERR
 
-if [ $STATUS -ne 0 ]
-then
+if [ $STATUS -ne 0 ]; then
     echo 'fix_infrastructure_checks.sh'
     "$SCRIPTPATH/fix_infrastructure_checks.sh"
 fi
