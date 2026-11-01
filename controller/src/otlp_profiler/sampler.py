@@ -78,9 +78,9 @@ class Sampler:
         if self._thread is None or self._stop_event.is_set():
             return
         self._stop_event.set()
-        self._thread.join()
-        if self._export_thread is not None:
-            self._export_thread.join()
+        self._thread.join(timeout=self._interval_seconds * 10)
+        # An export still in flight may run alongside; the aggregator's lock
+        # gives each sample to one of them.
         self._export_fn(self._window_start_ns)
 
     def _run(self) -> None:

@@ -438,8 +438,8 @@ Exports as real protobuf (not JSON) directly to the collector's OTLP receiver â€
 stack's collector/Pyroscope versions are pinned specifically so `opentelemetry-proto`'s generated
 classes are wire-compatible. Its `sample_type`/`period_type` are both `samples`/`count`, matching
 the ESP32 firmware's own choice, so both languages share one Pyroscope profile type
-(`samples:samples:count:samples:count`) and one `tracesToProfiles` datasource config.
-It exports every 500 ms and, when the process exits, once more for the window still open.
+(`samples:samples:count:samples:count`) and one `tracesToProfiles` datasource config. By default
+it exports every 500 ms and, when the process exits, once more for the window still open.
 
 The sampler filters samples to threads Linux reports as **running** (`R` state) at sample time,
 read from `/proc/<tid>/stat` â€” a thread parked in `socket.recv()` between messages is excluded,
