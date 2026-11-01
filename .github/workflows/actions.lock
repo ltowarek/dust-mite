@@ -9,7 +9,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'anthropics/claude-code-action@v1.0.266'
     '.github/workflows/cpp-car.yml':
-        - 'actions/cache@v5.1.0'
+        - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v5.5.5'
     '.github/workflows/dependabot-auto-merge.yml':
@@ -38,9 +38,9 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v5.5.5'
 dependencies:
-    'actions/cache@v5.1.0':
-        ref: 'v5.1.0'
-        commit: 'sha1-caa296126883cff596d87d8935842f9db880ef25'
+    'actions/cache@v6.1.0':
+        ref: 'v6.1.0'
+        commit: 'sha1-55cc8345863c7cc4c66a329aec7e433d2d1c52a9'
         owner_id: 44036562
         repo_id: 215566462
     'actions/checkout@v7.0.1':

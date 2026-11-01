@@ -70,7 +70,7 @@ jobs:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5.1.0
+      uses: actions/cache@v6.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-${{ matrix.path }}-${{ github.run_id }}
@@ -153,7 +153,7 @@ jobs:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5.1.0
+      uses: actions/cache@v6.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-clang-tidy-${{ github.run_id }}
@@ -208,7 +208,7 @@ jobs:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5.1.0
+      uses: actions/cache@v6.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-${{ github.run_id }}
@@ -262,7 +262,7 @@ jobs:
         submodules: recursive
 
     - name: Cache ccache
-      uses: actions/cache@v5.1.0
+      uses: actions/cache@v6.1.0
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-${{ github.run_id }}
