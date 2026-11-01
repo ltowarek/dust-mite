@@ -1093,6 +1093,9 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Builds production images for all three components in parallel
   - Validates the build on pull requests; publishes to GHCR on push to `main`
   - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
+- [pr-title.yml](.github/workflows/pr-title.yml)
+  - Triggers on pull requests, including title edits
+  - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
 
@@ -1105,6 +1108,47 @@ Production Dockerfiles are located at the root of each component directory and a
 - [web/Dockerfile](web/Dockerfile) — Node.js image with the frontend dependencies installed.
 
 All production images run as user `dustmite` (uid=1040). This is distinct from the `vscode` user (uid=1050) in devcontainer images, making any file ownership cross-contamination immediately visible.
+
+## Pull request titles
+
+Pull request titles follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). `main` accepts only squash merges, and the squash commit title is the pull request title, so the title becomes the commit title on `main`. Commits on a branch are not checked and may use any message; they form the body of the squash commit.
+
+The `ci-status-pr-title` check in [pr-title.yml](.github/workflows/pr-title.yml) runs [commitlint](https://commitlint.js.org/) with [`@commitlint/config-conventional`](https://github.com/conventional-changelog/commitlint/tree/master/%40commitlint/config-conventional) and the scope list from [commitlint.config.mjs](commitlint.config.mjs). The check runs only in CI. To correct a failing title, edit the title; the check runs again without a new push.
+
+A title has the form `type(scope)!: description`, in which the scope and `!` are optional, for example `fix(car): brake when the Drive command times out`.
+
+Types:
+
+| Type | Use for |
+|---|---|
+| `feat` | Behaviour that a Driver, a Viewer or someone running the stack can notice. |
+| `fix` | A bug fix. |
+| `perf` | A faster implementation with unchanged behaviour. |
+| `refactor` | A code change that neither fixes a bug nor changes behaviour. |
+| `test` | Tests only. |
+| `docs` | Documentation only, including agent guidance such as [AGENTS.md](AGENTS.md) and skills. |
+| `build` | The build system, Dockerfiles or dependencies. |
+| `ci` | CI workflows. |
+| `style` | Formatting only. |
+| `chore` | Other maintenance. |
+| `revert` | A revert of an earlier change. |
+
+Scopes:
+
+- The scope is one of `car`, `controller`, `web`, `observability`, `devcontainer` or `deps`.
+- Omit the scope for a change that spans several areas.
+
+Description:
+
+- Start the description with a lowercase letter and do not end it with a full stop. Glossary terms keep their capitals after the first word, for example `feat: show the Telemetry message age`.
+- Keep the whole title within 100 characters.
+
+Breaking changes:
+
+- Add `!` before the colon for a breaking change, for example `feat(car)!: rename the Drive command fields`. Do not use a `BREAKING CHANGE` footer.
+- A change is breaking when it changes the format exchanged between the car, the streamer and the browser (a Drive command, a Telemetry message or an endpoint path), or when it renames or removes an environment variable declared in [scripts/dump_env.sh](scripts/dump_env.sh).
+
+GitHub's Revert button opens a pull request titled `Revert "…"`. Rename it to `revert: …` before merging.
 
 ## Pull request checklist
 
