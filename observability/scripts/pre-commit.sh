@@ -7,6 +7,7 @@ if [[ -z "${VIRTUAL_ENV}" ]]; then
     fi
     VIRTUAL_ENV=./venv
 fi
+# shellcheck source=/dev/null # the venv is created at runtime and untracked
 source "$VIRTUAL_ENV/bin/activate"
 
 OUTPUT=$(./scripts/run_checks.sh 2>&1)
