@@ -61,6 +61,7 @@ class Sampler:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._export_thread: threading.Thread | None = None
+        self._window_start_ns = 0
         self._thread_info: dict[int, tuple[str, int]] = {}
 
     def start(self) -> None:
@@ -73,13 +74,17 @@ class Sampler:
         self._thread.start()
 
     def stop(self) -> None:
-        """Signal the background thread to stop and wait for it to exit."""
+        """Stop sampling, then export the window still open (idempotent)."""
+        if self._thread is None or self._stop_event.is_set():
+            return
         self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=self._interval_seconds * 10)
+        self._thread.join(timeout=self._interval_seconds * 10)
+        # An export still in flight may run alongside; the aggregator's lock
+        # gives each sample to one of them.
+        self._export_fn(self._window_start_ns)
 
     def _run(self) -> None:
-        window_start_ns = time.time_ns()
+        self._window_start_ns = time.time_ns()
         next_export = time.monotonic() + self._export_interval_seconds
         while not self._stop_event.wait(self._interval_seconds):
             self._sample_once()
@@ -93,13 +98,13 @@ class Sampler:
                 if self._export_thread is None or not self._export_thread.is_alive():
                     self._export_thread = threading.Thread(
                         target=self._export_fn,
-                        args=(window_start_ns,),
+                        args=(self._window_start_ns,),
                         name=EXPORT_THREAD_NAME,
                         daemon=True,
                     )
                     self._export_thread.start()
                 next_export = time.monotonic() + self._export_interval_seconds
-                window_start_ns = time.time_ns()
+                self._window_start_ns = time.time_ns()
 
     def _rebuild_thread_info(self) -> None:
         self._thread_info = {

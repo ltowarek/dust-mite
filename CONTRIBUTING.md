@@ -9,6 +9,7 @@ This repository is an experimental platform, and contributions that improve tech
 - Prefer small pull requests over large rewrites.
 - Preserve existing style and tooling unless a change explicitly updates them.
 - Follow classical TDD: prefer real collaborators in tests. Where a real collaborator is impractical, use a hand-written stub, spy, or fake as described in [Test doubles](#test-doubles). Never use mocks or monkeypatching.
+- Take a test's expected values from outside the code under test: a literal, or a named constant from a library or a standard. Never import an expected value from the code under test.
 - Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
 - A suppression is acceptable only when the finding cannot be fixed because the code must match an interface outside the repository, such as a C extension's signature or a server that must bind to all interfaces. In that case, suppress the single rule on the single line and state the reason after it, for example `# noqa: S104 - the streamer must accept connections from all interfaces`, and list the suppression in the pull request description.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
@@ -437,7 +438,8 @@ Exports as real protobuf (not JSON) directly to the collector's OTLP receiver �
 stack's collector/Pyroscope versions are pinned specifically so `opentelemetry-proto`'s generated
 classes are wire-compatible. Its `sample_type`/`period_type` are both `samples`/`count`, matching
 the ESP32 firmware's own choice, so both languages share one Pyroscope profile type
-(`samples:samples:count:samples:count`) and one `tracesToProfiles` datasource config.
+(`samples:samples:count:samples:count`) and one `tracesToProfiles` datasource config. By default
+it exports every 500 ms and, when the process exits, once more for the window still open.
 
 The sampler filters samples to threads Linux reports as **running** (`R` state) at sample time,
 read from `/proc/<tid>/stat` — a thread parked in `socket.recv()` between messages is excluded,

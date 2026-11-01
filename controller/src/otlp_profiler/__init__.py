@@ -4,6 +4,7 @@ Linux-only: on-CPU filtering reads `/proc/<tid>/stat` (see
 `linux_thread_state.py`).
 """
 
+import atexit
 import logging
 
 from opentelemetry import trace
@@ -36,7 +37,8 @@ def configure(
     attribute and tags samples with whichever span is active in the asyncio
     task or thread they ran. Call it once per process, after the global tracer
     provider is set, as with the other signals' configure functions. Returns
-    the running sampler, which samples until its `stop()` is called.
+    the running sampler, which samples until its `stop()` is called or the
+    interpreter exits.
     """
     aggregator = Aggregator()
     span_registry = ActiveSpanRegistry()
@@ -66,4 +68,5 @@ def configure(
         _export,
     )
     sampler.start()
+    atexit.register(sampler.stop)
     return sampler

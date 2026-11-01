@@ -2,4 +2,4 @@
 
 set -e
 
-streamer
+exec streamer

@@ -104,6 +104,61 @@ class TestSampler:
 
         assert export_calls
 
+    def test_stop_exports_the_window_still_open(self) -> None:
+        export_calls = []
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=100,
+            export_fn=lambda _time_unix_nano: export_calls.append(1),
+        )
+
+        sampler.start()
+        sampler.stop()
+
+        assert export_calls == [1]
+
+    def test_stopping_twice_exports_once(self) -> None:
+        export_calls = []
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=100,
+            export_fn=lambda _time_unix_nano: export_calls.append(1),
+        )
+
+        sampler.start()
+        sampler.stop()
+        sampler.stop()
+
+        assert export_calls == [1]
+
+    def test_stop_does_not_wait_for_an_export_in_flight(self) -> None:
+        held_s = 1.0
+        export_started = threading.Event()
+
+        def slow_first_export(_time_unix_nano: int) -> None:
+            if not export_started.is_set():
+                export_started.set()
+                time.sleep(held_s)
+
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=0.05,
+            export_fn=slow_first_export,
+        )
+        sampler.start()
+        export_started.wait(timeout=2)
+
+        stop_started = time.monotonic()
+        sampler.stop()
+
+        assert time.monotonic() - stop_started < held_s / 2
+
     def test_start_is_idempotent(self) -> None:
         aggregator = Aggregator()
         registry = ActiveSpanRegistry()
