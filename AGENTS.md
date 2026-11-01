@@ -69,6 +69,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - Keep comments and docstrings **terse**: one line by default, saying only what the code can't, such as an invariant, a constraint or an ordering rule. A module or test docstring states in one sentence what it guards. Each reason lives in one place: when CONTRIBUTING.md, a docstring or a nearby comment already gives it, add nothing. Write the fact itself, not how it was found ("measured", "confirmed this session"), and leave imports and includes unannotated.
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 - When implementation hits behaviour the spec or ticket does not decide, stop and ask the user; never guess. After the user decides, amend the spec issue and any affected tickets before continuing.
+- Title every pull request as [CONTRIBUTING.md#pull-request-titles](CONTRIBUTING.md#pull-request-titles) describes.
 - Open every pull request as a draft. CI skips draft pull requests and runs when the pull request is marked ready for review.
 - Before running a build/compile command (`idf.py build`/`reconfigure`, `docker compose build`, etc.), check `free -h` for available memory, not just that no other build is already running — background containers idling can hold enough RAM on their own to make the difference. Run one such command at a time; don't queue more until it finishes.
 
