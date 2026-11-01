@@ -59,7 +59,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 ## Working Rules for Agents
 
 - Treat [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) as authoritative.
-- Run all commands inside the appropriate devcontainer, not on the host. See [CONTRIBUTING.md](CONTRIBUTING.md) for available environments.
+- Run all commands inside the appropriate devcontainer, not on the host. See [CONTRIBUTING.md](CONTRIBUTING.md) for available environments. The exception is `gh` and its extensions, including the actions lockfile script, which run on the host, where `gh` is authenticated.
 - For the C++ devcontainer: the image is built from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile). Find the running container with `docker ps` (service name `cpp`) and run commands via `docker exec <name> bash -c "source /opt/esp/idf/export.sh && <command>"`. ESP-IDF lives at `/opt/esp/idf/`; QEMU (`qemu-system-xtensa`) is installed in the container. The linux IDF target is not available. Always build and flash firmware from this devcontainer — never from the host or the headless `cpp` production container.
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes. When adding or removing a metric, update the metrics table in the relevant variant document under [docs/variants/](docs/variants/).
@@ -81,7 +81,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - For car firmware changes, use scripts and build flow under [car/scripts/](car/scripts/) and [CONTRIBUTING.md](CONTRIBUTING.md).
 - For observability changes, use scripts under [observability/scripts/](observability/scripts/). `observability/tests/integration/` (synthetic data) always runs, including in CI; `observability/tests/e2e/` (real data, requires headless stack running) is DUT-gated and on-demand only. See [CONTRIBUTING.md#observability-tests](CONTRIBUTING.md#observability-tests).
 - For repo-wide checks/hooks, use [scripts/](scripts/).
-- For workflow changes, regenerate and verify the actions lockfile on the host, where `gh` is authenticated: see [CONTRIBUTING.md#actions-lockfile](CONTRIBUTING.md#actions-lockfile).
+- For workflow changes, regenerate and verify the actions lockfile: see [CONTRIBUTING.md#actions-lockfile](CONTRIBUTING.md#actions-lockfile).
 - For full-stack E2E tests (requires headless stack running), exec into the `test-runner` container: `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack`. The test-runner starts with the headless stack in standby mode; no separate devcontainer session is needed. These on-demand tests do not run in CI.
 
 ## Starting Devcontainers
