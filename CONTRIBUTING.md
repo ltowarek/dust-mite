@@ -1078,7 +1078,7 @@ Open the repository root in the `Infrastructure` devcontainer and run the checks
 ./scripts/run_infrastructure_checks.sh
 ```
 
-The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If checks fail, apply automatic fixes:
+The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, so a failing run can rewrite files. To apply the fixes without running the checks:
 
 ```bash
 ./scripts/fix_infrastructure_checks.sh
@@ -1156,7 +1156,7 @@ The verification reports one expected warning: the container image of the CI job
 
 | Ecosystem | Covers | Pull request title prefix |
 |---|---|---|
-| `docker` | Base images of the C++ and infrastructure devcontainers and the car production image; an `espressif/idf` bump updates both in one pull request | `build(deps)` |
+| `docker` | Base images of the C++ and infrastructure devcontainers and the car production image; an `espressif/idf` bump updates the C++ devcontainer and the car production image in one pull request | `build(deps)` |
 | `npm` | The root [package.json](package.json) | `build(deps)` or `build(deps-dev)` |
 | `github-actions` | Every action in [.github/workflows/](.github/workflows/), one pull request per action | `ci(deps)` |
 
