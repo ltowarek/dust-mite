@@ -105,7 +105,6 @@ jobs:
 
     - name: Run shfmt
       run: |
-        # The checkout is owned by the runner user, not the container's root.
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         ./scripts/run_shfmt.sh --diff
 
