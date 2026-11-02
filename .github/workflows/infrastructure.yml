@@ -138,8 +138,26 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./scripts/run_zizmor.sh --format=github
 
+  actions-lock:
+    if: github.event.pull_request.draft != true
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Verify lockfile
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./scripts/lock_github_actions.sh --verify
+
   ci-status-infrastructure:
-    needs: [build-docker, actionlint, shellcheck, shfmt, zizmor]
+    needs: [build-docker, actionlint, shellcheck, shfmt, zizmor, actions-lock]
     if: always() && github.event.pull_request.draft != true
     permissions: {}
     runs-on: ubuntu-latest
