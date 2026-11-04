@@ -16,8 +16,7 @@ echo 'run_requirements_checks.sh'
 
 trap - ERR
 
-if [ $STATUS -ne 0 ]
-then
+if [ $STATUS -ne 0 ]; then
     echo 'fix_checks.sh'
     "$SCRIPTPATH/fix_checks.sh"
 fi

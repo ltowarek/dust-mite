@@ -1070,7 +1070,7 @@ When adding new documentation images:
 
 ## Infrastructure
 
-The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity.
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise.
 
 Open the repository root in the `Infrastructure` devcontainer and run the checks from the repository root:
 
@@ -1078,15 +1078,15 @@ Open the repository root in the `Infrastructure` devcontainer and run the checks
 ./scripts/run_infrastructure_checks.sh
 ```
 
-The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, so a failing run can rewrite files. To apply the fixes without running the checks:
+The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt, so a failing run can rewrite files. To apply the fixes without running the checks:
 
 ```bash
 ./scripts/fix_infrastructure_checks.sh
 ```
 
-The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint finding on the offending line of the pull request. The ShellCheck job shows its findings in its log.
+The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint finding on the offending line of the pull request. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log.
 
-The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION` and `SHELLCHECK_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
 
 ## CI/CD
 

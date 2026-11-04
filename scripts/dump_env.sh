@@ -3,7 +3,7 @@
 set -e
 
 # Create or truncate the temp env file so stale values are removed on each run.
-: > .env.tmp
+: >.env.tmp
 
 declare -A ENV_MAP
 
@@ -46,7 +46,7 @@ ENV_MAP[USER_GID]=$(id -g)
 
 # Iterate all env entries by sorted key so .env output is deterministic.
 while IFS= read -r key; do
-	printf '%s=%s\n' "$key" "${ENV_MAP[$key]}" >> .env.tmp
+    printf '%s=%s\n' "$key" "${ENV_MAP[$key]}" >>.env.tmp
 done < <(printf '%s\n' "${!ENV_MAP[@]}" | sort)
 
 mv .env.tmp .env

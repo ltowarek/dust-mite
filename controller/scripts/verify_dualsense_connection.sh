@@ -3,7 +3,7 @@
 DEVICE="$("$(dirname "$0")/find_dualsense.sh")"
 
 if [ -n "$DEVICE" ]; then
-	echo "DualSense connected"
+    echo "DualSense connected"
 else
-	echo "DualSense not connected"
+    echo "DualSense not connected"
 fi

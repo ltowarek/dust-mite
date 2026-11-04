@@ -1,9 +1,9 @@
 #!/bin/bash
 
-pushd ./controller/ > /dev/null || exit
+pushd ./controller/ >/dev/null || exit
 if [[ -z "${VIRTUAL_ENV}" ]]; then
     if [ ! -d "./venv/" ]; then
-        ./scripts/create_venv.sh > /dev/null
+        ./scripts/create_venv.sh >/dev/null
     fi
     VIRTUAL_ENV=./venv
 fi
@@ -14,10 +14,9 @@ OUTPUT=$(./scripts/run_checks.sh 2>&1)
 STATUS=$?
 
 deactivate
-popd > /dev/null || exit
+popd >/dev/null || exit
 
-if [ $STATUS -ne 0 ]
-then
+if [ $STATUS -ne 0 ]; then
     echo "$OUTPUT"
 fi
 
