@@ -1084,7 +1084,7 @@ The script runs every infrastructure check, and each check also has its own scri
 ./scripts/fix_infrastructure_checks.sh
 ```
 
-The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint and ShellCheck finding on the offending line of the pull request. The shfmt job shows the required changes as a diff in its log instead.
+The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint finding on the offending line of the pull request. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log.
 
 The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
 
