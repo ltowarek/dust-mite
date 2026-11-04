@@ -1086,7 +1086,7 @@ The script runs every infrastructure check, and each check also has its own scri
 
 The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each finding on the offending line of the pull request.
 
-The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION` and `SHELLCHECK_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks. The problem matcher in [.github/actionlint-matcher.json](.github/actionlint-matcher.json) is a copy of the one that actionlint publishes; replace it with the new release's copy when updating actionlint.
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION` and `SHELLCHECK_VERSION`. Dependabot does not update them. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
 
 ## CI/CD
 
