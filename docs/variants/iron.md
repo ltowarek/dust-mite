@@ -48,7 +48,7 @@ No variant images are available yet.
 - DualSense is connected directly to Raspberry Pi 2 over Bluetooth.
 - Raspberry Pi 2 processes local controller input and converts commands to the serial control protocol for ESP32-S3.
 - ESP32-S3 executes motor and servo actions and returns sensor packets over serial.
-- Raspberry Pi 2 merges serial sensor data with camera stream data and publishes outbound WebSocket packets for user monitoring.
+- Raspberry Pi 2 merges serial sensor data with camera stream data and publishes outbound WebSocket messages for user monitoring.
 
 ### Components
 

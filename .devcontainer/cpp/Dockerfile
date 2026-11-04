@@ -18,9 +18,12 @@ RUN python3 -m venv /opt/qemu-builder-venv
 ENV PATH="/opt/qemu-builder-venv/bin:$PATH"
 RUN pip install --disable-pip-version-check --no-cache-dir meson==1.7.0 tomli==2.2.1
 
-RUN git clone --depth 1 --branch apptrace \
-        https://github.com/ltowarek/espressif-qemu.git /tmp/espressif-qemu \
+ARG ESPRESSIF_QEMU_COMMIT=ca3bac91db4d4dfc4eb179c39b2eb4908cabb8ec
+RUN git init -q /tmp/espressif-qemu \
     && cd /tmp/espressif-qemu \
+    && git fetch -q --depth 1 https://github.com/ltowarek/espressif-qemu.git \
+           "$ESPRESSIF_QEMU_COMMIT" \
+    && git checkout -q FETCH_HEAD \
     && ./configure --target-list=xtensa-softmmu \
                    --prefix=/opt/espressif-qemu \
                    --without-default-features \
@@ -93,22 +96,13 @@ RUN userdel -r ubuntu \
 ENV IDF_CCACHE_ENABLE=1
 ENV CCACHE_DIR=/home/${USERNAME}/.ccache
 
-RUN mkdir -p /home/$USERNAME/.claude && \
-    chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
-
 RUN mkdir -p /home/$USERNAME/.ccache && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.ccache
 
 RUN mkdir -p /home/$USERNAME/build && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/build
 
-COPY scripts/install-gh.sh /tmp/install-gh.sh
-RUN chmod +x /tmp/install-gh.sh && /tmp/install-gh.sh
-
 USER $USERNAME
 
 RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread
 RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> $HOME/.bashrc
-
-RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc

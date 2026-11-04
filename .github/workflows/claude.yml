@@ -3,7 +3,7 @@
 name: Claude Code
 
 on:
-  issue_comment:
+  issue_comment: # zizmor: ignore[dangerous-triggers] the official example uses it, and the action accepts only users with write access
     types: [created]
   pull_request_review_comment:
     types: [created]
@@ -28,13 +28,14 @@ jobs:
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.266
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 

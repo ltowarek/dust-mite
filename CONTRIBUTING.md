@@ -8,10 +8,34 @@ This repository is an experimental platform, and contributions that improve tech
 - Keep changes focused and easy to review.
 - Prefer small pull requests over large rewrites.
 - Preserve existing style and tooling unless a change explicitly updates them.
-- Follow classical TDD: use real collaborators in tests instead of mocks or stubs.
-- Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
-- A suppression is acceptable only when the finding cannot be fixed because the code must match an interface outside the repository, such as a C extension's signature or a server that must bind to all interfaces. In that case, suppress the single rule on the single line and state the reason after it, for example `# noqa: S104 - the streamer must accept connections from all interfaces`, and list the suppression in the pull request description.
+- Follow classical TDD: prefer real collaborators in tests. Where a real collaborator is impractical, use a hand-written stub, spy, or fake as described in [Test doubles](#test-doubles). Never use mocks or monkeypatching.
+- Take a test's expected values from outside the code under test: a literal, or a named constant from a library or a standard. Never import an expected value from the code under test.
+- Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`, `# shellcheck …`, `# zizmor: ignore[…]`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
+- A suppression is acceptable only when the finding cannot be fixed because the code must match an interface outside the repository, such as a C extension's signature or a server that must bind to all interfaces. In that case, suppress the single rule on the single line and state the reason after it, for example `# noqa: S104 - the streamer must accept connections from all interfaces`, and list the suppression in the pull request description. actionlint has no inline form, so its suppression is a per-file `ignore:` pattern in [.github/actionlint.yaml](.github/actionlint.yaml) that matches only the one error, with the reason in a comment above it.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
+
+## Test doubles
+
+Test doubles follow the taxonomy from Gerard Meszaros, *xUnit Test Patterns*, summarized in Martin Fowler's [Mocks Aren't Stubs](https://martinfowler.com/articles/mocksArentStubs.html):
+
+| Double | What it does |
+|---|---|
+| Dummy | Is passed around but never used. |
+| Stub | Returns canned answers to the calls the test makes. |
+| Spy | A stub that also records how it was used, for the test to check afterwards. |
+| Mock | Is pre-programmed with expectations and verifies them itself. Not used in this repository. |
+| Fake | A working, simplified implementation, such as an in-memory database. |
+
+Rules:
+
+- Name a double after its role, with the role as a suffix: `…Stub`, `…Spy`, `…Fake`, or `…Dummy`. Functions and C++ identifiers use `_stub`, `_spy`, `_fake`, or `_dummy`. A double that both returns canned answers and records calls is a spy.
+- A double may subclass the real type when the interface is untyped or C-backed. Name it by the role it plays.
+- Doubles that only tests use live under `tests/`, not `src/`. Put a double in `src/` only if it is a product feature, such as a car simulator.
+- Doubles shared by several test modules live in a `test_doubles.py` next to those tests, with `__test__ = False` at module level so that pytest does not collect it.
+- Use hand-written doubles only: no `unittest.mock`, `pytest` `monkeypatch`, `vi.mock`, `vi.spyOn`, `vi.stubGlobal`, `vi.stubEnv`, gmock, or CMock. Inject the collaborator, setting, or environment mapping instead.
+- Names from third-party APIs, such as Vitest `vi.useFakeTimers` and OpenTelemetry `InMemoryMetricReader`, are exempt from the naming rule.
+
+These rules are documented only; no linter enforces them.
 
 ## Issue labels
 
@@ -54,6 +78,7 @@ Available environments:
 - [.devcontainer/js/](.devcontainer/js/) for [web/](web/) frontend work (bundler, linter, formatter, local dev server)
 - [.devcontainer/observability/](.devcontainer/observability/) for [observability/](observability/) work (datasource/pipeline config, synthetic and real-data pipeline tests)
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
+- [.devcontainer/infrastructure/](.devcontainer/infrastructure/) for GitHub Actions workflows and repository-level scripts (see [Infrastructure](#infrastructure))
 
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
 
@@ -63,10 +88,11 @@ The Python and JS devcontainers use different host ports than the headless `pyth
 
 | Service | Devcontainer (manual) | Main / headless |
 |---|---|---|
-| Python streamer | `ws://localhost:8766` | `ws://localhost:8765` |
+| Python streamer, WebSocket | `ws://localhost:8767` | `ws://localhost:8765` |
+| Python streamer, Camera stream | `http://localhost:8768/camera` | `http://localhost:8766/camera` |
 | JS dev server | `http://localhost:5174` | `http://localhost:5173` |
 
-Container-internal ports (`python:8765`, `js:5173`) are unchanged. To point a host browser at the Python devcontainer's streamer directly, override `VITE_WS_URL=ws://localhost:8766` — `.env` defaults to `8765` for the headless/byobu workflows. The C++ devcontainer publishes no ports, so it has no conflict.
+Container-internal ports (`python:8765`, `python:8766`, `js:5173`) are unchanged. To point a host browser at the Python devcontainer's streamer directly, override `VITE_WS_URL=ws://localhost:8767` and `VITE_CAMERA_URL=http://localhost:8768/camera` — `.env` defaults to `8765` and `8766` for the headless/byobu workflows. The C++ devcontainer publishes no ports, so it has no conflict.
 
 ### Open the correct workspace in container
 
@@ -82,11 +108,11 @@ Container-internal ports (`python:8765`, `js:5173`) are unchanged. To point a ho
    - For [python.code-workspace](python.code-workspace), [cpp.code-workspace](cpp.code-workspace), [js.code-workspace](js.code-workspace), or [observability.code-workspace](observability.code-workspace):
      1. Run `File: Open Workspace from File...`.
      2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work, [js.code-workspace](js.code-workspace) for [web/](web/) work, or [observability.code-workspace](observability.code-workspace) for [observability/](observability/) work.
-   - For docs work: no additional action is required; continue with the repository root opened in step 1.
+   - For docs or infrastructure work: no additional action is required; continue with the repository root opened in step 1.
 5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `devices:` entries in:
    - [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml)
    - [.devcontainer/cpp/docker-compose.yml](.devcontainer/cpp/docker-compose.yml)
-6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, `JavaScript`, `Observability`, or `Docs`).
+6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, `JavaScript`, `Observability`, `Docs`, or `Infrastructure`).
 
 The container image includes project dependencies and VS Code extensions required for that stack. On first open, the devcontainer installs the controller package into the virtual environment via `postCreateCommand`.
 
@@ -152,15 +178,14 @@ flowchart LR
         GRAF["Grafana\nlocalhost:3000"]
     end
 
-    FW -- "WebSocket + traceparent" --> STR
-    STR -- "WebSocket + traceparent" --> WEB
+    FW -- "MJPEG over HTTP, WebSocket + traceparent" --> STR
+    STR -- "MJPEG over HTTP, WebSocket + traceparent" --> WEB
     FW -- "OTLP/HTTP traces" --> OC
     FW -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP traces" --> OC
     STR -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP profiles (opt-in)" --> OC
     WEB -- "OTLP/HTTP traces" --> OC
-    WEB -- "OTLP/HTTP metrics" --> MIMIR
     OC -- "OTLP/gRPC" --> TEMPO
     OC -- "OTLP/HTTP profiles" --> PYRO
     OC -- "OTLP/HTTP logs" --> LOKI
@@ -181,19 +206,17 @@ The observability stack covers distributed tracing, real-time metrics, continuou
 
 ### Instrumented services
 
-All three services export traces via OTLP/HTTP to the OTel Collector and metrics directly to Mimir:
+All three services export traces via OTLP/HTTP to the OTel Collector; the firmware and the streamer also export metrics directly to Mimir:
 
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
 | ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
-| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://otel-collector:4318`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
-| Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | `VITE_OTLP_METRICS_ENDPOINT` (default `/otlp`), proxied by Vite straight to Mimir |
+| Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces` (default `http://otel-collector:4318/v1/traces`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
+| Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | none |
 
 The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
 
 The firmware's logs endpoint (`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL`) reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
-
-Mimir has no CORS support (no config option to set `Access-Control-Allow-Origin`), so a browser page can't POST metrics to it cross-origin. `web/vite.config.js`'s dev server proxies its own `/otlp` path straight to Mimir, keeping the browser's request same-origin — no CORS header is ever needed. Traces still go through the OTel Collector, whose receiver has CORS enabled, since that path isn't proxied.
 
 ### Metrics
 
@@ -213,15 +236,15 @@ curl -s 'http://localhost:8080/prometheus/api/v1/query?query=dust_mite_task_cpu_
 ### Logs
 
 The Python controller package bridges its existing standard-library `logging` output into OTel
-rather than introducing a separate structured logging vocabulary. `configure_logging(service_name)` in
+rather than introducing a separate structured logging vocabulary. `configure_logging(endpoint, resource)` in
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
-`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. It's
-called from both `controller.py` (gamepad CLI) and `streamer.py` (always-on service) — unlike
-metrics/profiling, which today only reach the streamer. Log records reuse the same shared
-`vcs.*` resource-attribute helpers tracing already uses, and route through the same
-`OTEL_EXPORTER_OTLP_ENDPOINT` collector endpoint as traces (not the metrics bypass-to-Mimir
-pattern). No log-level filtering is added — both entry points already run at `DEBUG`, and
+`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. Both
+`controller.py` (gamepad CLI) and `streamer.py` (always-on service) set it up, with every other
+signal, through `configure_observability`. Log records share the resource tracing uses, and route
+through the same collector as traces, at `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else
+`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs` (not the metrics bypass-to-Mimir pattern). No
+log-level filtering is added — both entry points already run at `DEBUG`, and
 everything already being logged, including `DEBUG`, ships as-is. The handler is constructed with
 `log_code_attributes=True`, which is off by default: without it records reach Loki with no `code.*`
 attributes, so nothing there says which call site produced a line.
@@ -264,7 +287,7 @@ records; the drop is silent and non-blocking by design, not a correctness bug.
 
 ### Cross-service trace propagation
 
-W3C `traceparent` is embedded as a field in every WebSocket JSON packet, linking spans across the firmware → streamer → browser path:
+W3C `traceparent` is embedded as a field in every JSON WebSocket message, linking spans across the firmware → streamer → browser path:
 
 - Firmware: `tracing_inject()` / `tracing_extract()` in [car/components/tracing/tracing.hpp](car/components/tracing/tracing.hpp).
 - Streamer: `inject_trace_context()` / `extract_trace_context()` in [controller/src/controller/tracing.py](controller/src/controller/tracing.py).
@@ -280,7 +303,7 @@ auto span = esp_opentelemetry_tracer()->StartSpan("my.operation");
 span->SetAttribute("key", "value");
 span->End();
 
-// Span linked to a parent extracted from an incoming JSON message
+// Span linked to a parent extracted from an incoming JSON WebSocket message
 auto parent_ctx = tracing_extract(*json_obj);
 opentelemetry::trace::StartSpanOptions opts;
 opts.parent = opentelemetry::trace::GetSpan(parent_ctx)->GetContext();
@@ -300,9 +323,9 @@ def my_function():
     span = trace.get_current_span()
     span.set_attribute("key", "value")
 
-# Span linked to a parent extracted from an incoming WebSocket JSON packet
-packet: dict = json.loads(raw_message)
-parent_ctx = extract_trace_context(packet)  # reads W3C traceparent from the dict
+# Span linked to a parent extracted from an incoming JSON WebSocket message
+message: dict = json.loads(raw_message)
+parent_ctx = extract_trace_context(message)  # reads W3C traceparent from the dict
 with tracer.start_as_current_span("my.operation", context=parent_ctx) as span:
     span.set_attribute("key", "value")
 ```
@@ -310,8 +333,8 @@ with tracer.start_as_current_span("my.operation", context=parent_ctx) as span:
 **Web browser (JavaScript)** — use the module-level `tracer` and `propagation` from `web/src/index.js`:
 
 ```js
-// Span linked to a parent extracted from an incoming WebSocket JSON message
-const carrier = { traceparent: event_data.traceparent, tracestate: event_data.tracestate };
+// Span linked to a parent extracted from an incoming JSON WebSocket message
+const carrier = { traceparent: message.traceparent, tracestate: message.tracestate };
 const parentContext = propagation.extract(context.active(), carrier);
 const span = tracer.startSpan("my.operation", {
     attributes: { "key": "value" },
@@ -361,22 +384,26 @@ To profile a build:
 
 1. Bring up the stack (`./scripts/start_headless.sh`) — it includes `pyroscope` and
    `profiling-symbolizer`.
-2. Build the firmware with the profiling overlay (enables the sampler, the
+2. Build the firmware with the debug overlay (enables the sampler, the
    span→profile task slot, and the symbolizer endpoint; see
-   [car/sdkconfig.defaults.profiling](car/sdkconfig.defaults.profiling)), then flash it:
-   `./scripts/run_build.sh --profiling . && idf.py flash`
+   [car/sdkconfig.defaults.debug](car/sdkconfig.defaults.debug)), then flash it:
+   `./scripts/run_build.sh --debug . && idf.py flash`
    Symbols need no publishing step: the symbolizer mounts `car/` and finds the
-   matching ELF by hash (the profile `build_id` equals the ELF's sha256).
+   matching ELF by hash (the profile `build_id` equals the ELF's sha256) in `build/` or any
+   `build_<overlay>/`, for the firmware and the component test apps.
 3. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-car"}`, optionally split by `thread_name` (FreeRTOS task). Idle
    task dominance means the workload is not CPU-bound (hardware/scheduling limited); a specific
    application or esp-idf frame dominating means there is code to optimise.
 
-QEMU is not used for profiling — its Xtensa core is not cycle-accurate, so durations would be
+QEMU is not used to read profiles — its Xtensa core is not cycle-accurate, so durations would be
 fictional. The sampler/span-link/exporter mechanics are covered by
 [esp-opentelemetry-cpp](https://github.com/ltowarek/esp-opentelemetry-cpp/blob/main/README.md#esp-specific-integrations)'s
-own CI (QEMU); dust-mite's CI does not build the profiling overlay at all, so it is validated
-live on real hardware only.
+own CI (QEMU), including a regression test for the profile export starving the tasks around it of
+internal RAM, the only memory FreeRTOS objects, lwIP sockets and DMA buffers can use. dust-mite's
+CI builds the car with the debug overlay (`main-debug`), and the smoke test (see
+[Car test types](#car-test-types)) runs it on the car.
+Flame graphs themselves are validated on real hardware only.
 
 #### Span profiles (trace → flame graph)
 
@@ -403,15 +430,17 @@ OTel Collector `profiles` pipeline the firmware uses (no symbolizer hop needed: 
 function names/line numbers are already human-readable at sample time).
 
 The generic sampler/aggregator/exporter live in `controller/src/otlp_profiler/` (no dust-mite
-imports, so it can move into its own package later with no code changes); the streamer-specific
-wiring — reading env vars, deciding whether to start it — is
-`controller/src/controller/profiling.py`.
+imports, so it can move into its own package later with no code changes); the dust-mite wiring —
+deciding whether to start it and which source-linking attributes to attach — is
+`controller/src/controller/profiling.py`, called from `configure_observability` in
+`controller/src/controller/observability.py` with the rest of the signals.
 
 Exports as real protobuf (not JSON) directly to the collector's OTLP receiver — the observability
 stack's collector/Pyroscope versions are pinned specifically so `opentelemetry-proto`'s generated
 classes are wire-compatible. Its `sample_type`/`period_type` are both `samples`/`count`, matching
 the ESP32 firmware's own choice, so both languages share one Pyroscope profile type
-(`samples:samples:count:samples:count`) and one `tracesToProfiles` datasource config.
+(`samples:samples:count:samples:count`) and one `tracesToProfiles` datasource config. By default
+it exports every 500 ms and, when the process exits, once more for the window still open.
 
 The sampler filters samples to threads Linux reports as **running** (`R` state) at sample time,
 read from `/proc/<tid>/stat` — a thread parked in `socket.recv()` between messages is excluded,
@@ -423,7 +452,9 @@ contending for the GIL is typically in `S` state and gets filtered out even thou
 See `controller/src/otlp_profiler/sampler.py`'s module docstring for the full detail.
 
 Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off unless
-`PROFILING_ENABLED` is set to `1`.
+`PROFILING_ENABLED` is set to `1`. Profiles go to `OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT`, else
+`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1development/profiles`: the profiles signal is still in
+development, so the pinned collector serves it under the development version rather than `v1`.
 
 To profile a run:
 
@@ -431,14 +462,17 @@ To profile a run:
    in `.env` (preserving any other already-set variables, e.g. `WIFI_SSID`/`WIFI_PASSWORD`),
    then brings up the stack.
 2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
-   `{service_name="dust-mite-streamer"}`, optionally split by `thread_name` — `websockets.sync.server`
-   spawns one thread per connection, so this separates them in the flame graph.
+   `{service_name="dust-mite-streamer"}`, optionally split by `thread_name`. Splitting by thread
+   name separates the event loop, which serves every connection, from worker threads such as those
+   processing Camera frames; it does not separate one connection from another.
 
 #### Span profiles (trace → flame graph)
 
 Every span (not just the root span of a trace) is stamped with a `pyroscope.profile.id`
 attribute, so any streamer span in Tempo's trace view can show a **Profiles for this span**
-flame graph scoped to exactly that span's duration — including nested spans.
+flame graph scoped to exactly that span's duration — including nested spans. On an asyncio event
+loop, a sample is linked to the span of the task the loop was running; a sample taken during a plain
+loop callback, outside any task, is not linked to a span.
 
 Same sample-rate physics as the firmware: at 100 Hz a span of only a few milliseconds will catch
 zero or one sample. Per-span flame graphs are meaningful for spans of tens of milliseconds or
@@ -456,10 +490,12 @@ resource attributes, and a self-hosted Pyroscope server configured with a GitHub
 `service_root_path` is optional (the subtree within the repository where a given service's code
 lives).
 
-- **Python streamer**: `SERVICE_REPOSITORY`/`SERVICE_ROOT_PATH` env vars, catalogued in
-  `scripts/dump_env.sh`. `service_git_ref` comes from the installed `controller` package's own
-  version (`setuptools_scm`, derived from git at `pip install .` time) rather than an env var, so
-  it can't go stale relative to `.env`. `controller/Dockerfile` bind-mounts `.git` for that one
+- **Python streamer**: `service_repository` comes from the `SERVICE_REPOSITORY` env var, catalogued
+  in `scripts/dump_env.sh`; `service_root_path` is fixed to `controller` in
+  [controller/src/controller/profiling.py](controller/src/controller/profiling.py).
+  `service_git_ref` comes from the installed `controller` package's own version (`setuptools_scm`,
+  derived from git at `pip install .` time) rather than an env var, so it can't go stale relative
+  to `.env`. `controller/Dockerfile` bind-mounts `.git` for that one
   install step only, via `additional_contexts: {root: .}` in `docker-compose.yml`.
 - **Car firmware**: `service_repository`/`service_root_path` are static Kconfig options, set in
   `car/sdkconfig.defaults`. `service_git_ref` comes from ESP-IDF's own `esp_app_desc_t.version`
@@ -511,7 +547,7 @@ Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
 - **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI.
-Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the profiling firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
+Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the debug firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 
 ```bash
 source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh
@@ -522,6 +558,8 @@ Run from the Observability devcontainer with `--dut`:
 ```bash
 ./scripts/run_tests.sh -- tests/e2e --dut
 ```
+
+`tests/e2e/test_camera_stream.py` watches the Camera stream through the streamer (`STREAMER_CAMERA_URI`) for a minute, then checks the viewer's frame rate, the car's send latency, and the stream task's stack headroom. It needs the car built with `sdkconfig.defaults.debug`. Each test records its figures as JUnit properties in `results.xml`.
 
 Dependencies use [pip-compile-multi](https://pypi.org/project/pip-compile-multi/), same as [controller/](controller/): edit `requirements/base.in`/`requirements/dev.in`, then run `./scripts/update_requirements.sh` (or `upgrade_requirements.sh`/`upgrade_package.sh <name>`).
 
@@ -569,7 +607,7 @@ If checks fail, apply automatic fixes:
 ### Controller test types
 
 - Unit tests: validate individual controller modules and functions in isolation using focused test doubles where needed; implemented in [controller/tests/unit/](controller/tests/unit/).
-- Integration tests: validate interactions across controller boundaries (for example websocket communication and packet flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/). Some require a real, connected device and are marked `@pytest.mark.dut` — skipped by default, run with `./scripts/run_tests.sh -- tests/integration --dut`, never run in CI.
+- Integration tests: validate interactions across controller boundaries (for example websocket communication and message flow) using multi-component test scenarios; implemented in [controller/tests/integration/](controller/tests/integration/). Some require a real, connected device and are marked `@pytest.mark.dut` — skipped by default, run with `./scripts/run_tests.sh -- tests/integration --dut`, never run in CI.
 - E2E tests: validate full user-level control flows across the complete stack (controller input to observable car behavior and outputs) in realistic deployment conditions; not implemented yet.
 
 Run specific suites:
@@ -645,7 +683,7 @@ If checks fail, apply automatic fixes:
 - Unit tests: validate individual modules and functions in isolation; implemented in [web/tests/unit/](web/tests/unit/).
 - Integration tests: validate interactions across component boundaries; implemented in [web/tests/integration/](web/tests/integration/).
 - E2E tests: validate full user-level flows in a browser; implemented in [web/tests/e2e/](web/tests/e2e/). Two variants:
-  - Mock-based: uses an in-process WebSocket server; runs in CI.
+  - Streamer-spy-based: runs against an in-process WebSocket server standing in for the streamer; runs in CI.
   - Full-stack (`tests/e2e/full_stack.test.js`): runs against the real running stack; on-demand only, not run in CI.
 
 Run specific suites:
@@ -835,7 +873,8 @@ test app, or each in its own boot, as in the web server test app (see
   twice.
 
 `run_coverage.sh` requires the patched QEMU binary via the `QEMU_PROG_PATH` environment variable.
-The devcontainer image builds the patched esp-qemu (`ltowarek/espressif-qemu@apptrace`) and sets
+The devcontainer image builds the patched esp-qemu (`ltowarek/espressif-qemu@apptrace`, pinned by
+`ESPRESSIF_QEMU_COMMIT` in [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)) and sets
 `QEMU_PROG_PATH` automatically, so no manual export is needed inside the devcontainer.
 
 Scoping coverage flags to just the component under test mirrors the UBSan pattern and keeps binary
@@ -889,12 +928,6 @@ Each test scope can target a different execution environment. Choose based on wh
 - Pros: no device required; runs the actual firmware binary; supports GDB debugging via `idf.py qemu gdb`; safe for irreversible hardware operations.
 - Cons: incomplete peripheral emulation; does not replace target testing for hardware-dependent components; requires the Espressif QEMU fork.
 
-**Host — CMock**: compiles the component for Linux with CMock-generated stubs replacing hardware dependencies; run directly without pytest-embedded.
-
-- Use for: pure logic with no hardware or FreeRTOS dependency (data structures, algorithms, protocol handling).
-- Pros: fastest execution; runs in standard CI; supports host-side tools (Valgrind, sanitizers).
-- Cons: stubs must be generated and maintained; cannot validate hardware interactions or FreeRTOS task behavior.
-
 **Host — POSIX/Linux simulator**: runs the component under the FreeRTOS POSIX/Linux simulator, which maps FreeRTOS tasks to pthreads and uses POSIX signals for scheduling; run directly without pytest-embedded.
 
 - Use for: code that uses FreeRTOS primitives (tasks, queues, semaphores) but has no real hardware dependency.
@@ -905,7 +938,6 @@ Each test scope can target a different execution environment. Choose based on wh
 
 | Validation target | Environment |
 |---|---|
-| Pure logic, no hardware or FreeRTOS dependency | Host — CMock |
 | FreeRTOS task interactions, no hardware dependency | Host — POSIX/Linux simulator |
 | Firmware behavior without real peripherals | QEMU |
 | Security features (eFuse, secure boot) | QEMU |
@@ -945,17 +977,21 @@ The web server test app splits its WebSocket tests by what they need:
 (`dut.run_all_single_board_cases(reset=True)`), so no case inherits a connection that an earlier
 case is still closing.
 
+The runner selects each case by writing to the Unity menu. On the car, the test app therefore uses
+USB Serial/JTAG as its primary console: as the secondary console that port is output-only, so the
+menu would never read the runner's input. The QEMU overlay keeps UART0 as the primary console.
+
 In QEMU mode the app:
 
 - brings the network up on QEMU's emulated OpenCores Ethernet MAC (`CONFIG_ETH_USE_OPENETH`) instead
   of Wi-Fi;
 - starts the real web server;
-- feeds it synthetic camera frames and telemetry packets from `main/qemu_peripherals.cpp`.
+- feeds it synthetic camera frames and Telemetry readings from `main/qemu_peripherals.cpp`.
 
-The test app's `conftest.py` starts QEMU with 4 MB of PSRAM and user-mode networking, and forwards a
-free local port to the server's port 80. The pytest tests take the server's address from the
-`car_address` fixture, which returns that port under QEMU and the car's IP address and port 80 on
-hardware.
+The test app's `conftest.py` starts QEMU with 4 MB of PSRAM and user-mode networking, and forwards
+one free local port to each endpoint's server port (80, 81 and 82). The pytest tests take the
+endpoints' addresses from the `car` fixture, which returns the forwarded ports under QEMU and the
+car's IP address with the endpoints' own ports on hardware.
 
 QEMU's user-mode network buffers whatever the client does not read, so it never throttles the
 car's sends. Tests that depend on a slow or stalled client are marked `@pytest.mark.dut` and
@@ -967,6 +1003,24 @@ Build, flash, and run all component test apps in sequence:
 ./scripts/run_tests.sh
 ```
 
+Two Unity cases measure the Camera's frame rate on the car. The camera test app's `performance`
+reads frames alone; the web server test app's `stream_keeps_the_camera_rate` reads the Camera stream
+over loopback: the camera in the car's capture mode, the stream task and the car's metrics, without
+Wi-Fi. The script also runs the latter through
+[pytest_web_server_debug.py](car/components/web_server/test_apps/pytest_web_server_debug.py),
+on the test app built with its `sdkconfig.defaults.debug` overlay into
+`build_debug/`, so a debug metric that costs frames fails there before the observability e2e
+test.
+
+The script ends with a smoke test,
+[car/test_apps/e2e/pytest_smoke.py](car/test_apps/e2e/pytest_smoke.py). CI builds the debug
+overlay (`sdkconfig.defaults.debug`) but never runs it, so the script builds the production firmware once without an overlay (`build/`) and once per
+`car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
+Camera endpoint for a minute, and fails when the frames stop for more than a few seconds. Run it
+before merging a firmware change that touches an overlay or the observability setup. The debug
+build is still flashed when the script ends; then run `test_car_has_profile_samples` from [observability/tests/e2e/](observability/tests/e2e/) (see
+[Observability tests](#observability-tests)) to check that its profiles reached Pyroscope.
+
 ### Feature flags
 
 Off-by-default behavior is controlled by Kconfig options (`default n`) in the
@@ -974,13 +1028,14 @@ relevant component's `Kconfig.projbuild`, with help text explaining what the
 flag does and why it defaults off.
 
 Every feature flag must be built and tested in CI, regardless of its default.
-[car/sdkconfig.defaults.all](car/sdkconfig.defaults.all) is an overlay that
-enables every off-by-default feature flag; CI builds `car/` with this overlay
-applied on top of `sdkconfig.defaults` so every flag-guarded code path
-compiles even though it's never built by the default config. When adding a
-new off-by-default feature flag, also set it in this overlay. It also doubles
-as a ready-made profile for flashing real hardware while debugging (see the
-file's header comment).
+Each off-by-default flag is set in a `car/sdkconfig.defaults.<overlay>` that
+CI builds on top of `sdkconfig.defaults`, so every
+flag-guarded code path compiles even though the default config never builds
+it. [car/sdkconfig.defaults.debug](car/sdkconfig.defaults.debug) holds the
+debugging tools, the debug metrics and the profiler; set a new debugging flag
+there, or add an overlay and its CI matrix entry for another concern. The debug
+overlay doubles as a ready-made profile for flashing real hardware while
+debugging (see its header comment).
 
 ## Documentation
 
@@ -1013,6 +1068,28 @@ When adding new documentation images:
    ./scripts/apply_logo.sh <path_to_logo.svg> <path_to_image.jpg>
    ```
 
+## Infrastructure
+
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise. [zizmor](https://docs.zizmor.sh/) audits the workflows for security issues, such as template injection, persisted credentials, and excessive permissions. Its configuration in [.github/zizmor.yml](.github/zizmor.yml) accepts the full version tags in `uses:` lines, because the [actions lockfile](#actions-lockfile) pins their commits ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)). The check also verifies that lockfile.
+
+Open the repository root in the `Infrastructure` devcontainer and run the checks from the repository root:
+
+```bash
+./scripts/run_infrastructure_checks.sh
+```
+
+The script runs every infrastructure check except the lockfile verification, which needs `gh` and runs on the host, as described in [Actions lockfile](#actions-lockfile). Each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt and apply zizmor's safe fixes, so a failing run can rewrite files. To apply the fixes without running the checks:
+
+```bash
+./scripts/fix_infrastructure_checks.sh
+```
+
+Locally, zizmor runs offline by default and skips its online audits, such as known-vulnerable actions and impostor commits. To run them, pass a GitHub token to the devcontainer command, for example `docker exec -e GH_TOKEN="$(gh auth token)" -w /workspaces/dust-mite <container> ./scripts/run_infrastructure_checks.sh`.
+
+The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
+
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. zizmor is installed from PyPI and pinned in [.devcontainer/infrastructure/requirements.txt](.devcontainer/infrastructure/requirements.txt), which Dependabot updates. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
+
 ## CI/CD
 
 GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/).
@@ -1029,13 +1106,64 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
   - Runs firmware build for [car/](car/) and build-only checks for each component test app
+- [infrastructure.yml](.github/workflows/infrastructure.yml)
+  - Triggers on pull requests and pushes to `main`
+  - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
+  - Runs the infrastructure checks in container as the `ci-status-infrastructure` check, as described in [Infrastructure](#infrastructure)
+  - Verifies the actions lockfile on the runner in the check's `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
+- [devcontainer-image.yml](.github/workflows/devcontainer-image.yml)
+  - Reusable workflow that the four workflows above call to build and publish their devcontainer image
+  - Takes the Dockerfile path and the image name as input and outputs the pushed image by digest; every container job in the calling workflow runs in that image ([ADR 0004](docs/adr/0004-ci-jobs-pin-devcontainer-image-by-digest.md))
+  - Tags each image `sha-<short SHA>` of the commit it is built from, which on a pull request is the test merge commit
+  - Reads a layer cache from each package's `buildcache` tag on every run and writes it only on pushes to `main`
 - [docker.yml](.github/workflows/docker.yml)
   - Triggers on pull requests and pushes to `main`
   - Builds production images for all three components in parallel
   - Validates the build on pull requests; publishes to GHCR on push to `main`
   - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
+- [pr-metadata.yml](.github/workflows/pr-metadata.yml)
+  - Triggers on pull requests, including title edits
+  - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
+- [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
+  - Triggers on pull requests opened by Dependabot
+  - Enables auto-merge as described in [Dependency updates](#dependency-updates)
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
+
+### Actions lockfile
+
+Every action that a workflow uses, including the dependencies of composite actions, is locked to a verified commit in [.github/workflows/actions.lock](.github/workflows/actions.lock) ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)). The lockfile is generated by the [`github/gh-actions-lock`](https://github.com/github/gh-actions-lock) extension and must not be edited by hand.
+
+After adding a workflow or editing a `uses:` line, regenerate the lockfile and commit it with the change:
+
+```bash
+./scripts/lock_github_actions.sh
+```
+
+The script installs the extension at the version that CI uses and passes its arguments to `gh actions-lock`. It runs on the host, because it needs an authenticated `gh`. A partial tag, such as `v4`, is narrowed to the full tag on the same commit.
+
+The `actions-lock` job of the `ci-status-infrastructure` check runs the script with `--verify`. It fails when a workflow uses an action that the lockfile does not pin, or when a locked commit cannot be traced to the action's upstream repository. To run the same check locally:
+
+```bash
+./scripts/lock_github_actions.sh --verify
+```
+
+The verification reports one expected warning: the container image of the CI jobs is chosen at runtime, so the lockfile cannot check it. The warning does not fail verification and must not be suppressed; [ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md) explains why.
+
+### Dependency updates
+
+[Dependabot](.github/dependabot.yml) checks the following ecosystems weekly and opens a pull request for each outdated dependency:
+
+| Ecosystem | Covers | Pull request title prefix |
+|---|---|---|
+| `docker` | Base images of the C++ and infrastructure devcontainers and the car production image; an `espressif/idf` bump updates the C++ devcontainer and the car production image in one pull request | `build(deps)` |
+| `npm` | The root [package.json](package.json) | `build(deps)` or `build(deps-dev)` |
+| `pip` | zizmor in the infrastructure devcontainer's [requirements.txt](.devcontainer/infrastructure/requirements.txt) | `build(deps)` |
+| `github-actions` | Every action in [.github/workflows/](.github/workflows/), one pull request per action | `ci(deps)` |
+
+Every ecosystem has a cooldown of 7 days: Dependabot proposes a release only after it has been public for 7 days, so that a compromised release can be detected first. A pull request that updates an action also regenerates the action's entry in the [actions lockfile](#actions-lockfile).
+
+[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all four ecosystems, for every update type including major versions. The required `ci-status-*` checks of the `main` ruleset gate the merge, so a pull request with a failing check stays open.
 
 ### Production images
 
@@ -1046,6 +1174,47 @@ Production Dockerfiles are located at the root of each component directory and a
 - [web/Dockerfile](web/Dockerfile) — Node.js image with the frontend dependencies installed.
 
 All production images run as user `dustmite` (uid=1040). This is distinct from the `vscode` user (uid=1050) in devcontainer images, making any file ownership cross-contamination immediately visible.
+
+## Pull request titles
+
+Pull request titles follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). `main` accepts only squash merges, and the squash commit title is the pull request title, so the title becomes the commit title on `main`. Commits on a branch are not checked and may use any message; they form the body of the squash commit.
+
+The `ci-status-pr-metadata` check in [pr-metadata.yml](.github/workflows/pr-metadata.yml) runs [commitlint](https://commitlint.js.org/) with [`@commitlint/config-conventional`](https://github.com/conventional-changelog/commitlint/tree/master/%40commitlint/config-conventional) and the scope list from [commitlint.config.mjs](commitlint.config.mjs). The check runs only in CI. To correct a failing title, edit the title; the check runs again without a new push.
+
+A title has the form `type(scope)!: description`, in which the scope and `!` are optional, for example `fix(car): brake when the Drive command times out`.
+
+Types:
+
+| Type | Use for |
+|---|---|
+| `feat` | Behavior that a Driver, a Viewer or someone running the stack can notice. |
+| `fix` | A bug fix. |
+| `perf` | A faster implementation with unchanged behavior. |
+| `refactor` | A code change that neither fixes a bug nor changes behavior. |
+| `test` | Tests only. |
+| `docs` | Documentation only, including agent guidance such as [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md) and skills. |
+| `build` | The build system, Dockerfiles or dependencies. |
+| `ci` | CI workflows. |
+| `style` | Formatting only. |
+| `chore` | Other maintenance. |
+| `revert` | A revert of an earlier change. |
+
+Scopes:
+
+- The scope is one of the values in the `scope-enum` rule of [commitlint.config.mjs](commitlint.config.mjs). Dependabot sets `deps` or `deps-dev` on its dependency bumps.
+- Omit the scope for a change that spans several areas.
+
+Description:
+
+- Start the description with a lowercase letter and do not end it with a full stop. Glossary terms keep their capitals after the first word, for example `feat: show the Telemetry message age`.
+- Keep the whole title within 100 characters.
+
+Breaking changes:
+
+- Add `!` before the colon for a breaking change, for example `feat(car)!: rename the Drive command fields`. Do not use a `BREAKING CHANGE` footer.
+- A change is breaking when it changes the format exchanged between the car, the streamer and the browser (a Drive command, a Telemetry message or an endpoint path), or when it renames or removes an environment variable declared in [scripts/dump_env.sh](scripts/dump_env.sh).
+
+GitHub's Revert button opens a pull request titled `Revert "…"`. Rename it to `revert: …` before merging.
 
 ## Pull request checklist
 

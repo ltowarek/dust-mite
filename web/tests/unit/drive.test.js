@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Command } from "../../src/command.js";
 import { DriveController, driveStatusText } from "../../src/drive.js";
 
-class FakeSocket {
+class SocketSpy {
   constructor() {
     this.readyState = WebSocket.OPEN;
     this.sent = [];
@@ -19,7 +19,7 @@ describe("DriveController", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    socket = new FakeSocket();
+    socket = new SocketSpy();
     controller = new DriveController(socket, window, { getGamepads: () => [] });
     controller.start();
   });
@@ -65,7 +65,7 @@ describe("DriveController", () => {
 
   test.each([
     { kind: "press", repeat: false },
-    { kind: "auto-repeat", repeat: true },
+    { kind: "key repeat", repeat: true },
   ])("a bound key's $kind does not scroll the page", ({ repeat }) => {
     const event = new KeyboardEvent("keydown", { code: "ArrowDown", repeat, cancelable: true });
 
@@ -82,7 +82,7 @@ describe("DriveController", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  test("an auto-repeat keydown is ignored", () => {
+  test("a key-repeat keydown is ignored", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", repeat: true }));
 

@@ -1,10 +1,3 @@
-import { recordFrameDisplayed } from "./metrics.js";
-
-export function updateStream(image, data) {
-  image.src = `data:image/jpeg;base64,${data}`;
-  recordFrameDisplayed();
-}
-
 export function updateTelemetry(elements, data) {
   elements.timestamp.innerText = data.timestamp;
   elements.rssi.innerText = `${data.rssi} dBm`;
@@ -23,12 +16,10 @@ export function updateCollisionMonitor(elements, stopping) {
   elements.collision_monitor.innerText = stopping ? "Obstacle ahead - forward blocked" : "";
 }
 
-export function handleMessage(messageData, elements) {
-  if (messageData.type === "stream") {
-    updateStream(elements.image, messageData.data);
-  } else if (messageData.type === "telemetry") {
-    updateTelemetry(elements, messageData.data);
-  } else if (messageData.type === "collision_monitor") {
-    updateCollisionMonitor(elements, messageData.stopping);
+export function handleMessage(message, elements) {
+  if (message.type === "telemetry") {
+    updateTelemetry(elements, message.data);
+  } else if (message.type === "collision_monitor") {
+    updateCollisionMonitor(elements, message.stopping);
   }
 }

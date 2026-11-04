@@ -27,6 +27,7 @@ services:
     #   - /dev/hidraw4:/dev/hidraw4
     ports:
       - "8765:8765"
+      - "8766:8766"
     command: sleep infinity
     networks:
       - dust-mite-observability
@@ -96,6 +97,7 @@ services:
     environment:
       BASE_URL: http://js:5173
       VITE_WS_URL: ws://python:8765
+      VITE_CAMERA_URL: http://python:8766/camera
       PLAYWRIGHT_OUTPUT_DIR: /tmp/playwright-results
     command: sleep infinity
     networks:

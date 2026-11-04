@@ -6,7 +6,6 @@ describe("handleMessage", () => {
 
   beforeEach(() => {
     document.body.innerHTML = `
-      <img id="image">
       <dd id="timestamp"></dd>
       <dd id="rssi"></dd>
       <dd id="speed"></dd>
@@ -17,7 +16,6 @@ describe("handleMessage", () => {
       <p id="collision_monitor"></p>
     `;
     elements = {
-      image: document.getElementById("image"),
       timestamp: document.getElementById("timestamp"),
       rssi: document.getElementById("rssi"),
       speed: document.getElementById("speed"),
@@ -27,12 +25,6 @@ describe("handleMessage", () => {
       distance_ahead: document.getElementById("distance_ahead"),
       collision_monitor: document.getElementById("collision_monitor"),
     };
-  });
-
-  test("routes stream message to image element", () => {
-    handleMessage({ type: "stream", data: "dGVzdA==" }, elements);
-
-    expect(elements.image.src).toBe("data:image/jpeg;base64,dGVzdA==");
   });
 
   test("routes telemetry message to telemetry elements", () => {
@@ -59,7 +51,6 @@ describe("handleMessage", () => {
   test("ignores unknown message types", () => {
     handleMessage({ type: "unknown", data: {} }, elements);
 
-    expect(elements.image.src).toBe("");
     expect(elements.speed.textContent).toBe("");
   });
 

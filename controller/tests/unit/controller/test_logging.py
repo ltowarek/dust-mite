@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from controller.logging import configure_logging
+from controller.logging import install_log_handler
 
 
 def _make_tracer_provider() -> TracerProvider:
@@ -26,12 +26,12 @@ def _make_tracer_provider() -> TracerProvider:
 
 @pytest.fixture
 def exporter() -> Generator[InMemoryLogRecordExporter, None, None]:
-    log_exporter = InMemoryLogRecordExporter()  # type: ignore[no-untyped-call]
+    log_exporter = InMemoryLogRecordExporter()  # type: ignore[no-untyped-call]  # the OpenTelemetry SDK leaves this constructor unannotated
     log_provider = LoggerProvider()
     log_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
     root_handlers = list(logging.getLogger().handlers)
 
-    configure_logging("test-service", provider=log_provider)
+    install_log_handler(log_provider)
 
     yield log_exporter
 
@@ -101,8 +101,10 @@ def test_records_carry_source_location(exporter: InMemoryLogRecordExporter) -> N
     test_logger = logging.getLogger("test-records-carry-source-location")
     test_logger.setLevel(logging.DEBUG)
 
+    frame = inspect.currentframe()
+    assert frame is not None
     test_logger.info("Locate me")
-    expected_line = inspect.currentframe().f_lineno - 1  # type: ignore[union-attr]
+    expected_line = frame.f_lineno - 1
 
     records = exporter.get_finished_logs()
     assert len(records) == 1

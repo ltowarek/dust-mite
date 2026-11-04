@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import os
 import threading
 from collections.abc import Generator, Iterator
 from typing import Any
@@ -7,10 +8,12 @@ from typing import Any
 import pytest
 import websockets.sync.server
 
-from .car_doubles import (
+from controller.streamer import StreamerSettings
+
+from .test_doubles import (
     CLEAR_DISTANCE_CM,
     CarEndpointSpy,
-    camera_frame,
+    car_camera_stub,
     car_control_spy,
     car_feed_stub,
     telemetry,
@@ -18,7 +21,7 @@ from .car_doubles import (
 
 
 @dataclasses.dataclass
-class LocalServer:
+class LocalServerSpy:
     server: websockets.sync.server.Server
     received: list[dict[str, Any]]
     message_received: threading.Event
@@ -30,7 +33,7 @@ class LocalServer:
 
 
 @pytest.fixture
-def local_server() -> Generator[LocalServer, None, None]:
+def local_server_spy() -> Generator[LocalServerSpy, None, None]:
     received: list[dict[str, Any]] = []
     message_received = threading.Event()
 
@@ -47,7 +50,7 @@ def local_server() -> Generator[LocalServer, None, None]:
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
         try:
-            yield LocalServer(server, received, message_received)
+            yield LocalServerSpy(server, received, message_received)
         finally:
             server.shutdown()
             thread.join()
@@ -55,7 +58,7 @@ def local_server() -> Generator[LocalServer, None, None]:
 
 @pytest.fixture
 def camera_feed() -> Iterator[CarEndpointSpy]:
-    with car_feed_stub(camera_frame) as feed:
+    with car_camera_stub() as feed:
         yield feed
 
 
@@ -69,3 +72,30 @@ def telemetry_feed() -> Iterator[CarEndpointSpy]:
 def car_control() -> Iterator[CarEndpointSpy]:
     with car_control_spy() as control:
         yield control
+
+
+def local_streamer_settings(
+    camera: CarEndpointSpy,
+    telemetry: CarEndpointSpy,
+    control: CarEndpointSpy,
+    websocket_port: int = 0,
+) -> StreamerSettings:
+    """Settings for a streamer on loopback in front of the given car doubles."""
+    return dataclasses.replace(
+        StreamerSettings.from_env(
+            {
+                "STREAM_CLIENT_URI": camera.uri,
+                "TELEMETRY_CLIENT_URI": telemetry.uri,
+                "DRIVE_CLIENT_URI": control.uri,
+                "STREAMER_CAMERA_PORT": "0",
+            }
+        ),
+        listen_host="127.0.0.1",
+        websocket_port=websocket_port,
+    )
+
+
+@pytest.fixture
+def streamer_settings() -> StreamerSettings:
+    """The streamer's own settings, for tests that reach the car it is set up for."""
+    return StreamerSettings.from_env(os.environ)

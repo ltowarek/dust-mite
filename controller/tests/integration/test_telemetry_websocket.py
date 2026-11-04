@@ -1,36 +1,37 @@
 import datetime
-import os
 import time
 
 import pytest
 from websockets.asyncio.client import connect
 
+from controller.streamer import StreamerSettings
+
 
 @pytest.fixture
-def telemetry_client_uri() -> str:
-    return os.getenv("TELEMETRY_CLIENT_URI", "ws://localhost:8765/telemetry")
+def telemetry_client_uri(streamer_settings: StreamerSettings) -> str:
+    return streamer_settings.telemetry_uri
 
 
 @pytest.mark.dut
 @pytest.mark.asyncio
 async def test_performance(telemetry_client_uri: str) -> None:
-    packet_count = 100
-    async with connect(telemetry_client_uri) as websocket:
+    message_count = 100
+    async with connect(telemetry_client_uri, proxy=None) as websocket:
         start = time.time()
-        for _ in range(packet_count):
+        for _ in range(message_count):
             await websocket.recv()
         end = time.time()
     duration = datetime.timedelta(seconds=end - start)
-    pps = packet_count / duration.total_seconds()
+    messages_per_second = message_count / duration.total_seconds()
 
     expected = 1300
-    assert pps >= expected
+    assert messages_per_second >= expected
 
 
 @pytest.mark.dut
 @pytest.mark.asyncio
 async def test_latency(telemetry_client_uri: str) -> None:
-    async with connect(telemetry_client_uri) as websocket:
+    async with connect(telemetry_client_uri, proxy=None) as websocket:
         pong_waiter = websocket.ping()
         latency_future = await pong_waiter
         latency = await latency_future

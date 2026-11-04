@@ -1,5 +1,7 @@
+import asyncio
 import threading
 
+import pytest
 from opentelemetry.sdk.trace import Span, TracerProvider
 
 from otlp_profiler.span_registry import ActiveSpanRegistry, SpanLinkingProcessor
@@ -111,3 +113,27 @@ class TestSpanLinkingProcessor:
             )
 
         assert registry.current_span_context(thread_id) is None
+
+    @pytest.mark.asyncio
+    async def test_running_task_sees_its_own_span_not_a_later_one(self) -> None:
+        registry = ActiveSpanRegistry()
+        provider = TracerProvider()
+        provider.add_span_processor(SpanLinkingProcessor(registry))
+        tracer = provider.get_tracer(__name__)
+        other_started = asyncio.Event()
+        release_other = asyncio.Event()
+
+        async def _other() -> None:
+            with tracer.start_as_current_span("other"):
+                other_started.set()
+                await release_other.wait()
+
+        with tracer.start_as_current_span("running") as span:
+            other = asyncio.create_task(_other())
+            await other_started.wait()
+            current = registry.current_span_context(threading.get_ident())
+            release_other.set()
+            await other
+            span_context = span.get_span_context()
+
+        assert current == (span_context.trace_id, span_context.span_id)

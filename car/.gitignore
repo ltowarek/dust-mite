@@ -47,6 +47,8 @@ CMakeUserPresets.json
 
 # ESP-IDF
 build/
+# Per-overlay builds made by scripts/run_tests.sh for the smoke test.
+build_*/
 sdkconfig
 sdkconfig.old
 managed_components/

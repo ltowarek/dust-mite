@@ -2,12 +2,14 @@ name: Observability
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
 
 jobs:
   run-checks:
+    if: github.event.pull_request.draft != true
     permissions:
       contents: read
 
@@ -20,10 +22,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7.1.0
       with:
         python-version: "3.12"
 
@@ -51,7 +55,7 @@ jobs:
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: observability/results.xml
@@ -65,7 +69,8 @@ jobs:
 
   ci-status-observability:
     needs: [run-checks]
-    if: always()
+    if: always() && github.event.pull_request.draft != true
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed

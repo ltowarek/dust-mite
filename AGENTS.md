@@ -59,14 +59,18 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 ## Working Rules for Agents
 
 - Treat [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) as authoritative.
-- Run all commands inside the appropriate devcontainer, not on the host. See [CONTRIBUTING.md](CONTRIBUTING.md) for available environments.
+- Run all commands inside the appropriate devcontainer, not on the host. See [CONTRIBUTING.md](CONTRIBUTING.md) for available environments. The exception is `gh` and its extensions, including the actions lockfile script, which run on the host, where `gh` is authenticated.
 - For the C++ devcontainer: the image is built from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile). Find the running container with `docker ps` (service name `cpp`) and run commands via `docker exec <name> bash -c "source /opt/esp/idf/export.sh && <command>"`. ESP-IDF lives at `/opt/esp/idf/`; QEMU (`qemu-system-xtensa`) is installed in the container. The linux IDF target is not available. Always build and flash firmware from this devcontainer — never from the host or the headless `cpp` production container.
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes. When adding or removing a metric, update the metrics table in the relevant variant document under [docs/variants/](docs/variants/).
+- Write the **idiomatic** form: the one the library's own docs and examples use, or the standard library's. When the surrounding code is built around another pattern, redesign it to the idiomatic one, however much that touches, and land the redesign as its own refactor commit before the change. Focused means one concern per commit, not the smallest diff.
 - For documentation updates, follow the formal technical writing rules in [CONTRIBUTING.md](CONTRIBUTING.md).
 - Never skip or silence linters, formatters, or type checkers: fix the finding. The only exception, and how to mark it, is in [CONTRIBUTING.md#ground-rules](CONTRIBUTING.md#ground-rules).
-- Code comments should explain *why*, not restate *what* the code does. Do not annotate imports/includes with what they provide (e.g. no `#include "x.hpp"  // some_function`). State the fact or invariant itself, not how or when it was discovered — no "confirmed this session," "measured empirically," "has been observed to," or similar. Write what's true, not the investigation that found it.
+- Keep comments and docstrings **terse**: one line by default, saying only what the code can't, such as an invariant, a constraint or an ordering rule. A module or test docstring states in one sentence what it guards. Each reason lives in one place: when CONTRIBUTING.md, a docstring or a nearby comment already gives it, add nothing. Write the fact itself, not how it was found ("measured", "confirmed this session"), and leave imports and includes unannotated.
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
+- When implementation hits behaviour the spec or ticket does not decide, stop and ask the user; never guess. After the user decides, amend the spec issue and any affected tickets before continuing.
+- Title every pull request as [CONTRIBUTING.md#pull-request-titles](CONTRIBUTING.md#pull-request-titles) describes.
+- Open every pull request as a draft. CI skips draft pull requests and runs when the pull request is marked ready for review.
 - Before running a build/compile command (`idf.py build`/`reconfigure`, `docker compose build`, etc.), check `free -h` for available memory, not just that no other build is already running — background containers idling can hold enough RAM on their own to make the difference. Run one such command at a time; don't queue more until it finishes.
 
 ## Validation by Area
@@ -77,6 +81,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - For car firmware changes, use scripts and build flow under [car/scripts/](car/scripts/) and [CONTRIBUTING.md](CONTRIBUTING.md).
 - For observability changes, use scripts under [observability/scripts/](observability/scripts/). `observability/tests/integration/` (synthetic data) always runs, including in CI; `observability/tests/e2e/` (real data, requires headless stack running) is DUT-gated and on-demand only. See [CONTRIBUTING.md#observability-tests](CONTRIBUTING.md#observability-tests).
 - For repo-wide checks/hooks, use [scripts/](scripts/).
+- For workflow changes, regenerate and verify the actions lockfile: see [CONTRIBUTING.md#actions-lockfile](CONTRIBUTING.md#actions-lockfile).
 - For full-stack E2E tests (requires headless stack running), exec into the `test-runner` container: `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack`. The test-runner starts with the headless stack in standby mode; no separate devcontainer session is needed. These on-demand tests do not run in CI.
 
 ## Starting Devcontainers
@@ -88,11 +93,12 @@ docker compose --env-file .env -f .devcontainer/cpp/docker-compose.yml up -d --b
 docker compose --env-file .env -f .devcontainer/python/docker-compose.yml up -d --build python
 docker compose --env-file .env -f .devcontainer/js/docker-compose.yml up -d --build js
 docker compose --env-file .env -f .devcontainer/observability/docker-compose.yml up -d --build observability
+docker compose --env-file .env -f .devcontainer/infrastructure/docker-compose.yml up -d --build infrastructure
 ```
 
 `--env-file .env` supplies `USER_UID`/`USER_GID` (written by [scripts/dump_env.sh](scripts/dump_env.sh)) to the `build.args` and `user:` in each devcontainer compose, so the container is built and run as the **host user**. All dev/build/check containers then share the host uid and the bind-mounted workspace, `build/`, and caches stay writable — no `chown` workarounds needed. (Without `.env`, the images fall back to uid `1050` and stay portable.)
 
-**Isolation from VS Code:** all four are the same containers VS Code's Dev Containers extension attaches to (e.g. `cpp-cpp-1`, `python-python-1`, `js-js-1`, `observability-observability-1`). Recreating/rebuilding one, or installing packages into it, drops an attached VS Code window's remote connection and can leave the workspace owned by a different uid until it reconnects. Give agent runs their own instance instead of reusing a container a human may be attached to, by adding a distinct `-p` project name to any of the bring-up commands above, e.g.:
+**Isolation from VS Code:** all five are the same containers VS Code's Dev Containers extension attaches to (e.g. `cpp-cpp-1`, `python-python-1`, `js-js-1`, `observability-observability-1`, `infrastructure-infrastructure-1`). Recreating/rebuilding one, or installing packages into it, drops an attached VS Code window's remote connection and can leave the workspace owned by a different uid until it reconnects. Give agent runs their own instance instead of reusing a container a human may be attached to, by adding a distinct `-p` project name to any of the bring-up commands above, e.g.:
 
 ```bash
 docker compose --env-file .env -p dust-mite-agent -f .devcontainer/python/docker-compose.yml up -d --build python
@@ -106,6 +112,7 @@ This builds and starts a second, independent container from the same image (e.g.
 - **JS:** `docker exec -w /workspaces/dust-mite/web <container> ./scripts/run_checks.sh`
 - **C++:** `docker exec -w /workspaces/dust-mite/car <container> ./scripts/pre-commit.sh`
 - **Observability:** `docker exec -w /workspaces/dust-mite/observability <container> ./scripts/run_checks.sh`
+- **Infrastructure:** `docker exec -w /workspaces/dust-mite <container> ./scripts/run_infrastructure_checks.sh`
 
 ## Docs and Generated Artifacts
 
@@ -146,4 +153,4 @@ The five canonical triage roles, using the role names as-is (`needs-triage`, `ne
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root, created lazily as needed. See [docs/agents/domain.md](docs/agents/domain.md).
+Single-context: one [GLOSSARY.md](GLOSSARY.md) + [docs/adr/](docs/adr/) at the repo root. See [docs/agents/domain.md](docs/agents/domain.md).

@@ -1,3 +1,4 @@
+import inspect
 import sys
 import threading
 import time
@@ -5,12 +6,13 @@ import time
 import pytest
 
 from otlp_profiler.aggregator import Aggregator, SampleKey
-from otlp_profiler.sampler import Sampler, walk_stack
+from otlp_profiler.sampler import SAMPLER_THREAD_NAME, Sampler, walk_stack
 from otlp_profiler.span_registry import ActiveSpanRegistry
 
 
 def _inner() -> tuple[tuple[str, str, int], ...]:
-    frame = sys._current_frames()[threading.get_ident()]  # noqa: SLF001
+    frame = inspect.currentframe()
+    assert frame is not None
     return walk_stack(frame)
 
 
@@ -102,6 +104,61 @@ class TestSampler:
 
         assert export_calls
 
+    def test_stop_exports_the_window_still_open(self) -> None:
+        export_calls = []
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=100,
+            export_fn=lambda _time_unix_nano: export_calls.append(1),
+        )
+
+        sampler.start()
+        sampler.stop()
+
+        assert export_calls == [1]
+
+    def test_stopping_twice_exports_once(self) -> None:
+        export_calls = []
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=100,
+            export_fn=lambda _time_unix_nano: export_calls.append(1),
+        )
+
+        sampler.start()
+        sampler.stop()
+        sampler.stop()
+
+        assert export_calls == [1]
+
+    def test_stop_does_not_wait_for_an_export_in_flight(self) -> None:
+        held_s = 1.0
+        export_started = threading.Event()
+
+        def slow_first_export(_time_unix_nano: int) -> None:
+            if not export_started.is_set():
+                export_started.set()
+                time.sleep(held_s)
+
+        sampler = Sampler(
+            Aggregator(),
+            ActiveSpanRegistry(),
+            sample_rate=200,
+            export_interval_seconds=0.05,
+            export_fn=slow_first_export,
+        )
+        sampler.start()
+        export_started.wait(timeout=2)
+
+        stop_started = time.monotonic()
+        sampler.stop()
+
+        assert time.monotonic() - stop_started < held_s / 2
+
     def test_start_is_idempotent(self) -> None:
         aggregator = Aggregator()
         registry = ActiveSpanRegistry()
@@ -110,11 +167,17 @@ class TestSampler:
         )
 
         sampler.start()
-        first_thread = sampler._thread  # noqa: SLF001
         sampler.start()
+        try:
+            sampler_threads = [
+                thread
+                for thread in threading.enumerate()
+                if thread.name == SAMPLER_THREAD_NAME
+            ]
+        finally:
+            sampler.stop()
 
-        assert sampler._thread is first_thread  # noqa: SLF001
-        sampler.stop()
+        assert len(sampler_threads) == 1
 
     def test_does_not_sample_its_own_thread(self) -> None:
         aggregator = Aggregator()

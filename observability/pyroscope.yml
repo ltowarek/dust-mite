@@ -3,8 +3,11 @@
 # extra attribute (e.g. thread_name for per-task split) is present. A dotted
 # label name is an invalid Prometheus metric name and gets the whole series
 # rejected. Drop exactly that duplicate; the normalized service_name and the
-# dotless attributes (thread_name) are kept. (All attribute keys we emit other
-# than service.name are already dotless, so a narrow rule is sufficient.)
+# dotless attributes (thread_name) are kept. service.name is the only dotted
+# attribute Pyroscope copies into a label: it ignores the other dotted
+# resource attributes the services send (vcs.*, service.instance.id,
+# telemetry.sdk.*), so a narrow rule is sufficient.
+# tests/integration/test_profiles.py checks that such a profile is queryable.
 limits:
   ingestion_relabeling_rules:
     - action: labeldrop

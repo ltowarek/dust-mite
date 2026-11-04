@@ -27,6 +27,7 @@ legacy_tox_ini = """
     package = editable
     deps = -r requirements/dev.txt
     passenv =
+        DRIVE_CLIENT_URI
         STREAM_CLIENT_URI
         TELEMETRY_CLIENT_URI
     commands = pytest --cov=src --cov-report=xml:coverage.xml --junitxml=results.xml -o junit_family=legacy {posargs:tests/}
@@ -39,6 +40,7 @@ files = [
     "tests/**/*.py"
 ]
 strict = true
+enable_error_code = ["explicit-override"]
 
 [[tool.mypy.overrides]]
 module = ["pydualsense", "pydualsense.*"]
@@ -58,18 +60,11 @@ include = [
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = [
-    "COM812",
-    "ISC001",
-    "S101",
-    "TD002",
-    "TD003",
-    "FIX002"
-]
+ignore = ["COM812"]
 unfixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["D"]
+"tests/**/*.py" = ["D", "S101"]
 "conftest.py" = ["INP001"]
 
 [tool.ruff.lint.pydocstyle]

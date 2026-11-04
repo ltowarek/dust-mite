@@ -15,7 +15,7 @@ extern "C" void app_main(void) {
   bus_cfg.flags.enable_internal_pullup = true;
   i2c_master_bus_handle_t i2c_bus;
   ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &i2c_bus));
-  camera_init(i2c_bus);
+  camera_setup(xQueueCreate(1, sizeof(camera_fb_t*)), i2c_bus);
 
   UNITY_BEGIN();
   unity_run_all_tests();

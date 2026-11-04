@@ -10,9 +10,9 @@ TMP_PATH="/tmp/$(basename "$IMAGE_PATH")"
 # across different image resolutions (logo width = 18% of image width, margins = 2%).
 IMAGE_WIDTH="$(identify -format "%w" "$IMAGE_PATH")"
 IMAGE_HEIGHT="$(identify -format "%h" "$IMAGE_PATH")"
-LOGO_WIDTH="$(( IMAGE_WIDTH * 18 / 100 ))"
-MARGIN_X="$(( IMAGE_WIDTH * 2 / 100 ))"
-MARGIN_Y="$(( IMAGE_HEIGHT * 2 / 100 ))"
+LOGO_WIDTH="$((IMAGE_WIDTH * 18 / 100))"
+MARGIN_X="$((IMAGE_WIDTH * 2 / 100))"
+MARGIN_Y="$((IMAGE_HEIGHT * 2 / 100))"
 
 rm -f "$TMP_PATH"
 

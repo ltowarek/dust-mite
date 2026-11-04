@@ -15,11 +15,11 @@
 #include "system_metrics.hpp"
 #include "wifi.hpp"
 #include "esp_git_ref.hpp"
+#include "opentelemetry/semconv/incubating/vcs_attributes.h"
 #include <memory>
 
 #include "esp_opentelemetry.hpp"
 #include "esp_otlp_http_exporters.hpp"
-#include "esp_profiles_exporter.hpp"
 #include "sdkconfig.h"
 
 static opentelemetry::sdk::resource::ResourceAttributes otel_resource_attributes() {
@@ -28,8 +28,8 @@ static opentelemetry::sdk::resource::ResourceAttributes otel_resource_attributes
   const char* repository = CONFIG_ESP_OPENTELEMETRY_SERVICE_REPOSITORY;
   const char* git_ref = esp_opentelemetry::current_git_ref();
   if (repository[0] != '\0' && git_ref[0] != '\0') {
-    attrs.SetAttribute("vcs.repository.url.full", repository);
-    attrs.SetAttribute("vcs.ref.head.revision", git_ref);
+    attrs.SetAttribute(opentelemetry::semconv::vcs::kVcsRepositoryUrlFull, repository);
+    attrs.SetAttribute(opentelemetry::semconv::vcs::kVcsRefHeadRevision, git_ref);
   }
   return attrs;
 }
@@ -48,9 +48,9 @@ static i2c_master_bus_handle_t i2c_bus_init() {
 }
 
 extern "C" void app_main() {
-  QueueHandle_t command_queue = xQueueCreate(1, sizeof(command_packet_t));
+  QueueHandle_t command_queue = xQueueCreate(1, sizeof(drive_command_t));
   QueueHandle_t frame_queue = xQueueCreate(1, sizeof(camera_fb_t*));
-  QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_packet_t));
+  QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_reading_t));
 
   i2c_master_bus_handle_t i2c_bus = i2c_bus_init();
 
@@ -68,12 +68,8 @@ extern "C" void app_main() {
       esp_opentelemetry::MakeOtlpHttpMetricExporter(CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL);
   auto log_exporter =
       esp_opentelemetry::MakeOtlpHttpLogRecordExporter(CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL);
-  // Profiling is off in this firmware, so its base-URL option does not exist to
-  // name here, and a null exporter leaves profiling off - the same thing a null
-  // exporter means for every other signal. Enabling profiling means building
-  // one from CONFIG_ESP_OPENTELEMETRY_PROFILES_OTLP_BASE_URL, which appears
-  // with it.
-  std::unique_ptr<esp_opentelemetry::ProfilesExporter> profiles_exporter;
+  auto profiles_exporter = esp_opentelemetry::MakeOtlpHttpProfilesExporter(
+      CONFIG_ESP_OPENTELEMETRY_PROFILES_OTLP_BASE_URL);
 
   esp_opentelemetry_tracing_setup(std::move(span_exporter), resource_attrs);
   esp_opentelemetry_metrics_setup(std::move(metric_exporter), resource_attrs);

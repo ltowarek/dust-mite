@@ -2,7 +2,7 @@
 #include "motor.hpp"
 #include <cJSON.h>
 
-bool parse_command_packet(const char* json, command_packet_t* out) {
+bool parse_drive_command(const char* json, drive_command_t* out) {
   if (!json || !out) return false;
   cJSON* root = cJSON_Parse(json);
   if (!root) return false;

@@ -24,10 +24,10 @@ void car_turn_right(uint8_t speed);
 #define COMMAND_LOOK_HORIZONTALLY 6
 #define COMMAND_LOOK_VERTICALLY 7
 
-typedef struct command_packet {
+typedef struct drive_command {
   char command;
   int value;
-} command_packet_t;
+} drive_command_t;
 
 void command_task(void* p);
 

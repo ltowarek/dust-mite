@@ -1,70 +1,51 @@
 """Dust-mite-specific wiring for the generic `otlp_profiler` package."""
 
 import logging
-import os
+
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.semconv._incubating.attributes.vcs_attributes import (
+    VCS_REF_HEAD_REVISION,
+    VCS_REPOSITORY_URL_FULL,
+)
 
 import otlp_profiler
-from controller.otel import current_repository, resolve_current_git_ref
 
 logger = logging.getLogger(__name__)
 
-_ENABLED_VALUE = "1"
 _ROOT_PATH = "controller"
 
 
-def resolve_endpoint(profiling_enabled: str, endpoint: str | None) -> str | None:
-    """Return the endpoint to profile with, or None if profiling should stay off.
+def source_link_attributes(resource: Resource) -> dict[str, str]:
+    """Return Pyroscope's GitHub source-linking attributes for `resource`.
 
-    Pure decision logic factored out of `configure_profiling` so it can be
-    tested directly with plain string arguments, without needing environment
-    variables or a fake `otlp_profiler.configure`.
+    Pyroscope reads the repository and revision from its own attribute
+    names, not from the OpenTelemetry `vcs.*` ones the resource carries.
     """
-    if profiling_enabled != _ENABLED_VALUE:
-        logger.debug("PROFILING_ENABLED not set, skipping profiler configuration")
-        return None
-
-    if not endpoint:
-        logger.debug(
-            "OTEL_EXPORTER_OTLP_ENDPOINT not set, skipping profiler configuration"
-        )
-        return None
-
-    return endpoint
-
-
-def resolve_source_attributes(
-    repository: str, git_ref: str, root_path: str
-) -> dict[str, str]:
-    """Return the Pyroscope GitHub source-linking resource attributes."""
-    if not repository or not git_ref:
+    repository = resource.attributes.get(VCS_REPOSITORY_URL_FULL)
+    git_ref = resource.attributes.get(VCS_REF_HEAD_REVISION)
+    if not isinstance(repository, str) or not isinstance(git_ref, str):
         return {}
-    attributes = {"service_repository": repository, "service_git_ref": git_ref}
-    if root_path:
-        attributes["service_root_path"] = root_path
-    return attributes
+    return {
+        "service_repository": repository,
+        "service_git_ref": git_ref,
+        "service_root_path": _ROOT_PATH,
+    }
 
 
-def configure_profiling(service_name: str) -> None:
-    """Configure continuous CPU profiling for `service_name`.
+def configure_profiling(endpoint: str | None, resource: Resource) -> None:
+    """Export continuous CPU profiles over OTLP/HTTP.
 
-    Opt-in: profiling only starts if ``PROFILING_ENABLED`` is set to ``"1"``.
-    Reuses ``OTEL_EXPORTER_OTLP_ENDPOINT`` (the same endpoint tracing
-    uses) since profiles are posted directly to the OTel Collector, unlike
-    the ESP32 firmware pipeline there is no symbolizer hop.
+    ``endpoint`` is the full OTLP/HTTP profiles URL, on the OTel Collector:
+    unlike the ESP32 firmware pipeline there is no symbolizer hop.
+    Configuration is skipped if it is empty.
 
     Call after `configure_tracing()`, which must have already set the global
     TracerProvider for span/profile linking to attach to.
     """
-    endpoint = resolve_endpoint(
-        os.getenv("PROFILING_ENABLED", ""), os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    )
-    if endpoint is None:
+    if not endpoint:
+        logger.debug("No OTLP profiles endpoint, skipping profiler configuration")
         return
 
-    resource_attributes = resolve_source_attributes(
-        current_repository(), resolve_current_git_ref(), _ROOT_PATH
-    )
-
     otlp_profiler.configure(
-        service_name, endpoint, resource_attributes=resource_attributes
+        endpoint, resource.merge(Resource(source_link_attributes(resource)))
     )

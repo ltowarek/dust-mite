@@ -1,22 +1,15 @@
 """OpenTelemetry tracer configuration."""
 
 import logging
-import os
 from typing import Any
 
 from opentelemetry import context, propagate, trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-
-from controller.otel import (
-    current_repository,
-    resolve_current_git_ref,
-    resolve_vcs_attributes,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -42,26 +35,19 @@ def extract_trace_context(payload: dict[str, Any]) -> context.Context:
     return propagate.extract(payload)
 
 
-def configure_tracing(service_name: str) -> None:
+def configure_tracing(endpoint: str | None, resource: Resource) -> None:
     """Configure global OpenTelemetry tracer with OTLP/HTTP export.
 
     Sets the global TracerProvider and W3C TraceContext TextMapPropagator.
     Call once at application startup before any spans are created.
 
-    The OTLP endpoint is read from the ``OTEL_EXPORTER_OTLP_ENDPOINT``
-    environment variable.
+    ``endpoint`` is the full OTLP/HTTP traces URL; configuration is skipped
+    if it is empty.
     """
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint:
-        logger.debug(
-            "OTEL_EXPORTER_OTLP_ENDPOINT not set, skipping tracer configuration"
-        )
+        logger.debug("No OTLP traces endpoint, skipping tracer configuration")
         return
-    exporter = OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces")
-    vcs_attributes = resolve_vcs_attributes(
-        current_repository(), resolve_current_git_ref()
-    )
-    resource = Resource.create({SERVICE_NAME: service_name, **vcs_attributes})
+    exporter = OTLPSpanExporter(endpoint=endpoint)
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)

@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from controller.vision import process_frame
+from controller.vision import process_camera_frame
 
 _GRAYSCALE_DIMENSIONS = 2
 
@@ -14,7 +14,7 @@ def _colour_jpeg() -> bytes:
 
 def test_turns_a_colour_frame_into_a_grayscale_jpeg() -> None:
     processed = cv2.imdecode(
-        np.frombuffer(process_frame(_colour_jpeg()), dtype=np.uint8),
+        np.frombuffer(process_camera_frame(_colour_jpeg()), dtype=np.uint8),
         cv2.IMREAD_UNCHANGED,
     )
 

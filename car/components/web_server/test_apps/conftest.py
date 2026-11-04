@@ -1,8 +1,11 @@
+import contextlib
 import socket
 
 import pytest
-from helpers import get_dut_ip
+from helpers import CAMERA_PORT, DRIVE_PORT, TELEMETRY_PORT, CarEndpoints, car_endpoints, get_dut_ip
 from pytest_embedded import Dut
+
+_CAR_PORTS = (DRIVE_PORT, CAMERA_PORT, TELEMETRY_PORT)
 
 
 def _under_qemu(config: pytest.Config) -> bool:
@@ -25,23 +28,29 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture
-def qemu_http_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('127.0.0.1', 0))
-        return s.getsockname()[1]
+def qemu_http_ports() -> dict[int, int]:
+    """A free local port for each car port. All are held open until each is chosen, so no two are the same."""
+    with contextlib.ExitStack() as stack:
+        sockets = {car: stack.enter_context(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) for car in _CAR_PORTS}
+        for s in sockets.values():
+            s.bind(('127.0.0.1', 0))
+        return {car: s.getsockname()[1] for car, s in sockets.items()}
 
 
 @pytest.fixture
-def qemu_cli_args(qemu_http_port: int) -> str:
-    return (
-        '-nographic -machine esp32s3 -m 4M '
-        f'-nic user,model=open_eth,hostfwd=tcp:127.0.0.1:{qemu_http_port}-:80'
-    )
+def qemu_cli_args(qemu_http_ports: dict[int, int]) -> str:
+    forwards = ','.join(f'hostfwd=tcp:127.0.0.1:{local}-:{car}' for car, local in qemu_http_ports.items())
+    return f'-nographic -machine esp32s3 -m 4M -nic user,model=open_eth,{forwards}'
 
 
 @pytest.fixture
-def car_address(request: pytest.FixtureRequest, dut: Dut, qemu_http_port: int) -> tuple[str, int]:
+def car(request: pytest.FixtureRequest, dut: Dut, qemu_http_ports: dict[int, int]) -> CarEndpoints:
     if _under_qemu(request.config):
         dut.expect(r'eth ip: ', timeout=30)
-        return '127.0.0.1', qemu_http_port
-    return get_dut_ip(dut), 80
+        return car_endpoints(
+            '127.0.0.1',
+            drive_port=qemu_http_ports[DRIVE_PORT],
+            camera_port=qemu_http_ports[CAMERA_PORT],
+            telemetry_port=qemu_http_ports[TELEMETRY_PORT],
+        )
+    return car_endpoints(get_dut_ip(dut))

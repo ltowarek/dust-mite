@@ -15,6 +15,8 @@
 #include "sdkconfig.h"
 #ifdef CONFIG_WEB_SERVER_TEST_QEMU_MODE
 #include "qemu_peripherals.hpp"
+#else
+#include "metrics_collection.hpp"
 #endif
 #ifdef CONFIG_WEB_SERVER_TEST_COVERAGE
 extern "C" {
@@ -40,10 +42,10 @@ static i2c_master_bus_handle_t i2c_bus_init() {
 QueueHandle_t test_app_command_queue = nullptr;
 
 extern "C" void app_main(void) {
-  QueueHandle_t command_queue = xQueueCreate(1, sizeof(command_packet_t));
+  QueueHandle_t command_queue = xQueueCreate(1, sizeof(drive_command_t));
   test_app_command_queue = command_queue;
   QueueHandle_t frame_queue = xQueueCreate(1, sizeof(camera_fb_t*));
-  QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_packet_t));
+  QueueHandle_t telemetry_queue = xQueueCreate(2, sizeof(telemetry_reading_t));
 
 #ifndef CONFIG_WEB_SERVER_TEST_QEMU_MODE
   i2c_master_bus_handle_t i2c_bus = i2c_bus_init();
@@ -53,8 +55,9 @@ extern "C" void app_main(void) {
   camera_setup(frame_queue, i2c_bus);
   telemetry_setup(telemetry_queue, i2c_bus);
   web_server_setup(frame_queue, command_queue, telemetry_queue);
-  // The server stops whenever the car loses Wi-Fi, so the cases start only once it has connected.
+  metrics_collection_setup();
   wifi_wait_for_ip();
+  web_server_wait_for_serving();
 #else
   qemu_ethernet_setup();
   web_server_setup(frame_queue, command_queue, telemetry_queue);

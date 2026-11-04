@@ -2,5 +2,5 @@
 
 SCRIPTPATH=$(dirname "$0")
 
-$SCRIPTPATH/run_linters.sh --fix
-$SCRIPTPATH/run_formatter.sh
+"$SCRIPTPATH/run_linters.sh" --fix
+"$SCRIPTPATH/run_formatter.sh"

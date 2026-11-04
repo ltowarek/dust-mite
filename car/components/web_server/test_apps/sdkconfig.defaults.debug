@@ -1,0 +1,4 @@
+# Overlay for pytest_web_server_debug.py, on the car: adds the debug metrics of
+# car/sdkconfig.defaults.debug.
+CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED=y
+CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED=y

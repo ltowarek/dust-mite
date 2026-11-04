@@ -3,22 +3,29 @@
 import contextlib
 import curses
 import logging
-from collections.abc import Generator
-from typing import Protocol
+import logging.handlers
+import sys
+from collections.abc import Callable, Generator
+from typing import Protocol, override
 
 
-class _LogWindow(Protocol):
+class LogWindow(Protocol):
     """The subset of `curses.window` this module writes through.
 
     A structural type rather than `curses.window` itself, so tests can pass
-    a plain fake instead of a real (C-extension) curses window.
+    a spy instead of a real (C-extension) curses window.
     """
 
     # `scrollok` and `addstr` mirror curses.window's C functions, which
     # only accept a positional bool/str, not a keyword.
-    def scrollok(self, flag: bool, /) -> None: ...  # noqa: FBT001
-    def addstr(self, text: str, /) -> None: ...
-    def refresh(self) -> None: ...
+    def scrollok(self, flag: bool, /) -> None:  # noqa: FBT001 - mirrors curses.window.scrollok's positional-only bool
+        """Let the window scroll when the cursor moves past its last line."""
+
+    def addstr(self, text: str, /) -> None:
+        """Write `text` at the cursor."""
+
+    def refresh(self) -> None:
+        """Show what was written on the terminal."""
 
 
 class CursesHandler(logging.Handler):
@@ -32,12 +39,13 @@ class CursesHandler(logging.Handler):
     `curses` track the cursor and scroll correctly.
     """
 
-    def __init__(self, window: _LogWindow) -> None:
+    def __init__(self, window: LogWindow) -> None:
         """Initialize the handler and enable scrolling on `window`."""
         super().__init__()
         self._window = window
-        self._window.scrollok(True)  # noqa: FBT003 -- positional-only, see above
+        self._window.scrollok(True)  # noqa: FBT003 - curses.window.scrollok takes only a positional bool
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         """Write the formatted `record` to the window."""
         try:
@@ -52,32 +60,48 @@ class CursesHandler(logging.Handler):
             # would reproduce the exact staircase bug this handler exists
             # to prevent.
             pass
-        except Exception:  # noqa: BLE001 -- never let a broken handler crash the caller
+        except Exception:  # noqa: BLE001 - logging.Handler.emit must pass every exception to handleError
             self.handleError(record)
 
 
 @contextlib.contextmanager
-def curses_console_logging(
-    window: _LogWindow, console_handler: logging.Handler
-) -> Generator[None, None, None]:
-    """Route console output through `window` for the duration of the block.
+def queued_console_logging(
+    console_handler: logging.Handler,
+) -> Generator[logging.handlers.MemoryHandler, None, None]:
+    """Buffer console output for the block; write what is left to the console on exit.
 
-    Swaps `console_handler` out for a `CursesHandler` on the root logger,
+    Swaps `console_handler` out for a `MemoryHandler` on the root logger,
     leaving every other handler (e.g. the OpenTelemetry log bridge)
-    untouched, and restores `console_handler` on exit.
+    untouched, and yields it.
     """
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)
     if console_handler not in original_handlers:
         msg = "console_handler is not attached to the root logger"
         raise ValueError(msg)
-    curses_handler = CursesHandler(window)
-    curses_handler.setFormatter(console_handler.formatter)
+    # Never flushes on its own, so records are written only by whoever flushes it.
+    buffer = logging.handlers.MemoryHandler(
+        capacity=sys.maxsize, flushLevel=logging.CRITICAL + 1
+    )
     root_logger.handlers = [
-        curses_handler if handler is console_handler else handler
+        buffer if handler is console_handler else handler
         for handler in original_handlers
     ]
     try:
-        yield
+        yield buffer
     finally:
         root_logger.handlers = original_handlers
+        buffer.setTarget(console_handler)
+        buffer.close()
+
+
+def queued_log_writer(
+    buffer: logging.handlers.MemoryHandler,
+    window: LogWindow,
+    formatter: logging.Formatter | None,
+) -> Callable[[], None]:
+    """Return a function that writes the records in `buffer` to `window`."""
+    handler = CursesHandler(window)
+    handler.setFormatter(formatter)
+    buffer.setTarget(handler)
+    return buffer.flush

@@ -28,7 +28,7 @@ void qemu_ethernet_setup() {
 static uint8_t g_frame_data[] = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0xFF, 0xD9};
 static camera_fb_t g_frame = {};
 
-static void fake_camera_task(void* p) {
+static void camera_stub_task(void* p) {
   auto frame_queue = static_cast<QueueHandle_t>(p);
   g_frame.buf = g_frame_data;
   g_frame.len = sizeof(g_frame_data);
@@ -40,18 +40,18 @@ static void fake_camera_task(void* p) {
   }
 }
 
-static void fake_telemetry_task(void* p) {
+static void telemetry_stub_task(void* p) {
   auto telemetry_queue = static_cast<QueueHandle_t>(p);
   for (int i = 0;; ++i) {
-    telemetry_packet_t packet = {};
-    snprintf(packet.timestamp, sizeof(packet.timestamp), "1970-01-01T00:00:00Z");
-    packet.distance_ahead = i;
-    xQueueSend(telemetry_queue, &packet, 0);
+    telemetry_reading_t reading = {};
+    snprintf(reading.timestamp, sizeof(reading.timestamp), "1970-01-01T00:00:00Z");
+    reading.distance_ahead = i;
+    xQueueSend(telemetry_queue, &reading, 0);
     vTaskDelay(pdMS_TO_TICKS(500));
   }
 }
 
 void qemu_producers_setup(QueueHandle_t frame_queue, QueueHandle_t telemetry_queue) {
-  xTaskCreate(fake_camera_task, "fake_camera", 3072, frame_queue, 1, nullptr);
-  xTaskCreate(fake_telemetry_task, "fake_telemetry", 3072, telemetry_queue, 1, nullptr);
+  xTaskCreate(camera_stub_task, "camera_stub", 3072, frame_queue, 1, nullptr);
+  xTaskCreate(telemetry_stub_task, "telemetry_stub", 3072, telemetry_queue, 1, nullptr);
 }

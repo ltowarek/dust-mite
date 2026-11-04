@@ -44,7 +44,7 @@
 - Host setup:
 	- Python devcontainer:
 		- In one terminal, run `streamer`.
-		- In another terminal, run `controller` (it connects to the streamer, so start `streamer` first).
+		- In another terminal, run `controller`. It waits for the streamer, so the two can start in either order.
 	- JavaScript devcontainer:
 		- Run `./scripts/run_dev_server.sh`.
 		- Open `http://localhost:5173` in a web browser (the page connects to the streamer at `ws://localhost:8765`).
@@ -61,14 +61,15 @@
 
 ## SW notes
 
-- In `Copper`, the ESP32 handles motor actuation and exposes three WebSocket endpoints: `/` (control), `/stream` (camera), and `/telemetry` (telemetry).
-- `/stream` and `/telemetry` each serve one client at a time. While one is connected, the ESP32 refuses another connection to the same endpoint with HTTP 503 before the WebSocket upgrade; the client retries until the first connection has closed.
+- In `Copper`, the ESP32 handles motor actuation and exposes three endpoints, each served by its own HTTP server instance on its own port: the Drive endpoint `/` on port 80 and the Telemetry endpoint `/telemetry` on port 82 over WebSocket, and the Camera endpoint `/stream` on port 81 as MJPEG over HTTP (`multipart/x-mixed-replace`), one part per Camera frame with its `traceparent` as a part header ([ADR 0002](../adr/0002-mjpeg-over-http-for-camera-frames.md)). Each instance runs on its own task, so a client that reads the Camera or Telemetry endpoint slowly, or stops reading, does not delay drive commands. A request for an endpoint on another endpoint's port receives HTTP 404. The decision is recorded in [ADR 0001](../adr/0001-one-http-server-per-car-endpoint.md).
+- Each endpoint serves one client at a time. While one is connected, the ESP32 refuses another connection to the same endpoint with HTTP 503, before the WebSocket upgrade on the Drive and Telemetry endpoints; the client retries until the first connection has closed. The Camera endpoint notices that its client has gone when sending the next part fails.
 - The ESP32 keeps Wi-Fi power saving off (`WIFI_PS_NONE`). With ESP-IDF's default modem sleep, the radio dozes between access point beacons and the car can take several hundred milliseconds to answer, which delays drive commands.
 - Steering is skid-steering, with left/right drive commands generated from host-side input.
-- On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to the streamer's `/drive` endpoint (`STREAMER_DRIVE_URI`), like the web page, so the same collision monitor applies. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected. If another driver already holds `/drive`, the CLI exits with the streamer's reason.
-- On the Linux host, `streamer.py` reads camera frames from `STREAM_CLIENT_URI`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and serves them from a local WebSocket server with one endpoint per channel: `ws://localhost:8765/camera` (processed camera frames), `ws://localhost:8765/telemetry` (telemetry), and `ws://localhost:8765/drive` (drive commands in).
-- `streamer.py` accepts drive commands on `ws://localhost:8765/drive` from one driver at a time, closing any other `/drive` connection with code 1013 (try again later), and forwards them to `CONTROLLER_CLIENT_URI` through a collision monitor, which turns `ADVANCE` into `BRAKE` while `distance_ahead` is below 5 cm, until it is at least 10 cm again, and publishes whether it is stopping the car on `/telemetry` as a `collision_monitor` message. It holds one connection per car endpoint, shared by every client: the control connection for as long as the streamer runs, and the camera and telemetry connections only while something subscribes to them.
-- The web page served by the JavaScript devcontainer opens `/camera` and `/telemetry` on the streamer and displays the processed camera stream with live telemetry.
+- On the Linux host, `controller.py` reads PS5 DualSense input and sends commands to the streamer's `/drive` endpoint (`STREAMER_DRIVE_URI`), like the web page, so the same collision monitor applies. Set `CONTROLLER_INPUT_BACKEND=keyboard` to drive from the terminal keyboard instead, without a DualSense controller connected. The CLI connects to `/drive` and, after a failed attempt or a lost connection, tries again every 1 s for as long as it runs, so it survives a streamer restart or a network interruption. Drive commands issued while it is disconnected are dropped, not replayed; it logs one line when the connection is lost and one when it is restored. When the streamer closes the connection with Going Away (1001) or without a close frame, the CLI reconnects; on any other close code, such as 1013 because another driver already holds `/drive` or 1008 for a wrong path, it exits with the streamer's reason at once, even while no Drive command is being sent. It sends Drive commands with the same timing as the web page: it sends a held command at once and resends it every 100 ms, sends `BRAKE` once when every control is released, and sends nothing while parked. The DualSense backend reads the controller whenever the controller reports a change, so a control already held at launch takes effect once any mapped input changes. The keyboard backend reads a released key as `BRAKE` after its 600 ms read timeout. In the curses window of the keyboard backend, log lines are written between key reads, and log lines still queued when the CLI exits are written to the console after the window closes.
+- On the Linux host, `streamer.py` reads Camera frames as MJPEG from `STREAM_CLIENT_URI`, continuing the car's trace from each part's `traceparent`, telemetry from `TELEMETRY_CLIENT_URI`, processes frames with OpenCV, and serves them to Viewers as MJPEG on `http://localhost:8766/camera` (port `STREAMER_CAMERA_PORT`), one part per Camera frame with its `traceparent` as a part header. It serves the other channels from a local WebSocket server with one endpoint each: `ws://localhost:8765/telemetry` (telemetry) and `ws://localhost:8765/drive` (drive commands in).
+- `streamer.py` accepts drive commands on `ws://localhost:8765/drive` from one driver at a time, closing any other `/drive` connection with code 1013 (try again later), and forwards them to the car's Drive endpoint at `DRIVE_CLIENT_URI` through a collision monitor, which turns `ADVANCE` into `BRAKE` while `distance_ahead` is below 5 cm, until it is at least 10 cm again, and publishes whether it is stopping the car on `/telemetry` as a `collision_monitor` WebSocket message. It holds one connection per car endpoint, shared by every client: the Drive and Telemetry endpoint connections for as long as the streamer runs, and the Camera endpoint connection only while a Viewer watches. It reconnects to a car endpoint 1 s after a failed attempt or a closed connection. Drive commands that arrive while the Drive endpoint connection is down are dropped, not queued, and while it is up only the newest unsent one is kept.
+- On SIGTERM (`docker stop`) or SIGINT (Ctrl-C), `streamer.py` closes its WebSocket clients with Going Away (1001), ends each Viewer's Camera stream, closes its connections to the car and flushes traces, metrics, logs and profiles before it exits.
+- The web page served by the JavaScript devcontainer shows the processed Camera stream in an `<img>` whose `src` is `VITE_CAMERA_URL`, and opens `/telemetry` on the streamer for live telemetry.
 - The web page also drives the car over the streamer's `/drive` endpoint: W/A/S/D to drive and the arrow keys to pan and tilt the camera from the keyboard, or a DualSense or similar controller through the Gamepad API. It sends the held command every 100 ms, then `BRAKE` once when every key is released or the page loses focus. If the streamer refuses or drops `/drive`, the page shows why it is not driving.
 
 ### Metrics
@@ -90,8 +91,11 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 | `dust_mite_free_psram_bytes` | By | Free PSRAM (SPIRAM) |
 | `dust_mite_uptime` | s | Uptime since boot |
 | `dust_mite_temperature` | Cel | ESP32-S3 die temperature |
-| `dust_mite_task_cpu_usage` | % | Per-task CPU usage; `task` and `core` attributes identify each series |
+| `dust_mite_task_cpu_usage` | % | Per-task CPU usage between the last two task stats refreshes (`CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS`); `task` and `core` attributes identify each series |
 | `dust_mite_task_priority` | 1 | Current FreeRTOS priority per task; `task` and `core` attributes identify each series |
+| `dust_mite_task_stack_min_free_bytes` | By | Minimum free stack per task since the task started; `task` and `core` attributes identify each series |
+
+`dust_mite_largest_free_block_bytes` and the three `dust_mite_task_*` metrics are off by default. [car/sdkconfig.defaults.debug](../../car/sdkconfig.defaults.debug) enables them through `CONFIG_SYSTEM_METRICS_LARGEST_FREE_BLOCK_ENABLED` and `CONFIG_SYSTEM_METRICS_TASK_STATS_ENABLED`.
 
 [car/components/telemetry/telemetry_metrics.cpp](../../car/components/telemetry/telemetry_metrics.cpp) — sensor readings:
 
@@ -108,22 +112,23 @@ Each firmware component owns its metrics in a dedicated `*_metrics.cpp` file.
 
 | Metric | Unit | Description |
 |---|---|---|
-| `dust_mite_frames_captured` | {frame} | Camera frames captured (counter) |
+| `dust_mite_camera_frames_captured` | {frame} | Camera frames captured (counter) |
 | `dust_mite_camera_frame_size_bytes` | By | Peak delivered JPEG frame size since last collection (gauge) |
 | `dust_mite_camera_frame_buffer_bytes` | By | JPEG frame-buffer capacity / drop limit (gauge) |
 
-[car/components/web_server/web_server_metrics.cpp](../../car/components/web_server/web_server_metrics.cpp) — WebSocket delivery:
+[car/components/web_server/web_server_metrics.cpp](../../car/components/web_server/web_server_metrics.cpp) — endpoint delivery:
 
 | Metric | Unit | Description |
 |---|---|---|
-| `dust_mite_frames_sent` | {frame} | Camera frames sent over WebSocket (counter) |
+| `dust_mite_camera_frames_sent` | {frame} | Camera frames sent on the Camera endpoint (counter) |
 
 **Controller package metrics** (emitted by [controller/src/controller/metrics.py](../../controller/src/controller/metrics.py)):
 
 | Metric | Unit | Description | Emitted by |
 |---|---|---|---|
-| `dust_mite_frames_processed` | {frame} | Camera frames processed (counter) | `dust-mite-streamer` |
-| `dust_mite_telemetry_packets_received` | {packet} | Telemetry packets from the car (counter) | `dust-mite-streamer` |
+| `dust_mite_camera_frames_processed` | {frame} | Camera frames processed (counter) | `dust-mite-streamer` |
+| `dust_mite_viewer_camera_frames_sent` | {frame} | Camera frames sent to viewers, summed over viewers (counter); each `streamer.send_camera_frame` span carries the viewer's `client.address` | `dust-mite-streamer` |
+| `dust_mite_telemetry_messages_received` | {message} | Telemetry messages from the car (counter) | `dust-mite-streamer` |
 | `dust_mite_commands_sent` | {command} | Drive commands sent, attributed by `command.name` (counter) | `dust-mite-streamer`, `dust-mite-controller` |
 | `dust_mite_commands_blocked` | {command} | Drive commands the collision monitor replaced with `BRAKE`, attributed by the requested `command.name` (counter) | `dust-mite-streamer` |
 
@@ -136,13 +141,7 @@ identical steering commands from `dust-mite-controller` means the input
 backend read a still-held key as released. Each `BRAKE` the collision
 monitor substitutes for an `ADVANCE` is also counted in
 `dust_mite_commands_blocked`, and its `streamer.handle_drive_command` span
-carries both `operator_command_name` and `command_name`.
-
-**Web browser metrics** (emitted by [web/src/metrics.js](../../web/src/metrics.js)):
-
-| Metric | Unit | Description |
-|---|---|---|
-| `dust_mite_frames_displayed` | {frame} | JPEG frames rendered in the browser (counter) |
+carries both `requested_command_name` and `command_name`.
 
 ### Components
 
@@ -159,11 +158,11 @@ graph LR
                 PC_CTRL_WS["WebSocket Client [/drive]"]
             end
             subgraph Streamer
-                PC_STR_WS_STREAM["WebSocket Client [/stream]"]
+                PC_STR_WS_STREAM["HTTP Client [/stream]"]
                 PC_STR_WS_TEL["WebSocket Client [/telemetry]"]
                 PC_STR_WS_CTRL["WebSocket Client [/]"]
                 PC_STR_MUX["CommandArbiter + CollisionMonitor"]
-                PC_STR_WS_CAMERA["WebSocket Server [/camera]"]
+                PC_STR_WS_CAMERA["HTTP Server [/camera]"]
                 PC_STR_WS_TEL_OUT["WebSocket Server [/telemetry]"]
                 PC_STR_WS_DRIVE["WebSocket Server [/drive]"]
             end
@@ -175,7 +174,7 @@ graph LR
             ESP_TEL[Telemetry]
             ESP_CAM[Camera]
             ESP_WS_CTRL["WebSocket Server [/]"]
-            ESP_WS_STREAM["WebSocket Server [/stream]"]
+            ESP_WS_STREAM["HTTP Server [/stream]"]
             ESP_WS_TEL["WebSocket Server [/telemetry]"]
         end
     end

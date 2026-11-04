@@ -6,12 +6,14 @@ build is the most reliable way to verify "would this actually display data"
 without a browser.
 """
 
-import os
+import dataclasses
 import time
 from collections.abc import Callable
 from typing import Any, cast
 
 import requests
+
+from tests.helpers.settings import STACK_SETTINGS
 
 TEMPO_UID = "tempo"
 PYROSCOPE_UID = "pyroscope"
@@ -23,17 +25,13 @@ _PROFILE_TOTAL_ROW = (
 )
 
 
-def grafana_url() -> str:
-    """Return the base URL of the Grafana instance to query."""
-    return os.getenv("GRAFANA_URL", "http://localhost:3000")
-
-
 def query(
     datasource_uid: str,
     datasource_type: str,
     fields: dict[str, Any],
     *,
     time_range: str = "now-5m",
+    until: str = "now",
 ) -> dict[str, Any]:
     """POST one query to `/api/ds/query` exactly as a real panel would.
 
@@ -41,7 +39,7 @@ def query(
     per request, so there is never a second result to disambiguate.
     """
     response = requests.post(
-        f"{grafana_url()}/api/ds/query",
+        f"{STACK_SETTINGS.grafana_url}/api/ds/query",
         json={
             "queries": [
                 {
@@ -51,7 +49,7 @@ def query(
                 }
             ],
             "from": time_range,
-            "to": "now",
+            "to": until,
         },
         timeout=10,
     )
@@ -61,7 +59,9 @@ def query(
 
 def datasource_settings(uid: str) -> dict[str, Any]:
     """GET a datasource's provisioned settings, the same way Grafana's UI reads them."""
-    response = requests.get(f"{grafana_url()}/api/datasources/uid/{uid}", timeout=10)
+    response = requests.get(
+        f"{STACK_SETTINGS.grafana_url}/api/datasources/uid/{uid}", timeout=10
+    )
     response.raise_for_status()
     return cast("dict[str, Any]", response.json())
 
@@ -91,6 +91,23 @@ def traceql_query(service_name: str, span_name: str) -> dict[str, Any]:
         "limit": 20,
         "tableType": "traces",
     }
+
+
+def traceql_spans_query(service_name: str, span_name: str) -> dict[str, Any]:
+    """Build a TraceQL lookup like `traceql_query`, returning one row per span."""
+    return {**traceql_query(service_name, span_name), "tableType": "spans"}
+
+
+def span_ids(result: dict[str, Any]) -> list[str]:
+    """Return the hex span IDs in a `traceql_spans_query` result."""
+    ids: list[str] = []
+    for frame in result.get("frames", []):
+        fields = frame.get("schema", {}).get("fields", [])
+        values = frame.get("data", {}).get("values", [])
+        column = next((i for i, f in enumerate(fields) if f["name"] == "spanID"), None)
+        if column is not None and values:
+            ids.extend(cast("list[str]", values[column]))
+    return ids
 
 
 def logql_query(service_name: str, log_body: str) -> dict[str, Any]:
@@ -221,17 +238,30 @@ def has_profile_samples(result: dict[str, Any]) -> bool:
     return False
 
 
-def _wait_for(  # noqa: PLR0913 -- each param independently configures the poll
+@dataclasses.dataclass(frozen=True)
+class Poll:
+    """How long and how often to repeat a query, and the range it covers."""
+
+    time_range: str = "now-5m"
+    timeout: float = 60.0
+    interval: float = 2.0
+
+
+_DEFAULT_POLL = Poll()
+# Pyroscope's ingestion lag varies with load: ~30-40s when idle, but past
+# 150s when several tests push profiles back to back, as in CI. 300s leaves
+# margin above that.
+_PROFILE_POLL = Poll(time_range="now-2h", timeout=300.0, interval=5.0)
+
+
+def _wait_for(
     is_ready: Callable[[dict[str, Any]], bool],
     datasource_uid: str,
     datasource_type: str,
     fields: dict[str, Any],
-    *,
-    time_range: str,
-    timeout: float,
-    interval: float,
+    poll: Poll,
 ) -> dict[str, Any]:
-    """Poll `query(...)` until `is_ready(result)` is true or `timeout` elapses.
+    """Poll `query(...)` until `is_ready(result)` is true or `poll.timeout` elapses.
 
     A datasource that isn't accepting queries yet (e.g. Grafana reports
     healthy before a backend it proxies to has finished starting) raises
@@ -239,53 +269,45 @@ def _wait_for(  # noqa: PLR0913 -- each param independently configures the poll
     deadline has already passed, in which case the error is the most useful
     thing to surface.
     """
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + poll.timeout
     while True:
         try:
             result = query(
-                datasource_uid, datasource_type, fields, time_range=time_range
+                datasource_uid, datasource_type, fields, time_range=poll.time_range
             )
         except requests.RequestException:
             if time.monotonic() >= deadline:
                 raise
-            time.sleep(interval)
+            time.sleep(poll.interval)
             continue
         if is_ready(result) or time.monotonic() >= deadline:
             return result
-        time.sleep(interval)
+        time.sleep(poll.interval)
 
 
-def wait_for_metrics(  # noqa: PLR0913 -- each param independently configures the poll
+def wait_for_metrics(
     datasource_uid: str,
     datasource_type: str,
     fields: dict[str, Any],
-    *,
-    time_range: str = "now-5m",
-    timeout: float = 60.0,
-    interval: float = 2.0,
+    poll: Poll = _DEFAULT_POLL,
 ) -> dict[str, Any]:
-    """Poll until a metrics query result has data, or `timeout` elapses."""
+    """Poll until a metrics query result has data, or `poll.timeout` elapses."""
     return _wait_for(
         has_metrics,
         datasource_uid,
         datasource_type,
         fields,
-        time_range=time_range,
-        timeout=timeout,
-        interval=interval,
+        poll,
     )
 
 
-def wait_for_traces(  # noqa: PLR0913 -- each param independently configures the poll
+def wait_for_traces(
     datasource_uid: str,
     datasource_type: str,
     fields: dict[str, Any],
-    *,
-    time_range: str = "now-5m",
-    timeout: float = 60.0,
-    interval: float = 2.0,
+    poll: Poll = _DEFAULT_POLL,
 ) -> dict[str, Any]:
-    """Poll until a traces query result has data, or `timeout` elapses.
+    """Poll until a traces query result has data, or `poll.timeout` elapses.
 
     A single freshly-pushed span is not queryable instantly: Tempo takes
     roughly 5-30s to index a brand-new block, varying with its own
@@ -299,55 +321,40 @@ def wait_for_traces(  # noqa: PLR0913 -- each param independently configures the
         datasource_uid,
         datasource_type,
         fields,
-        time_range=time_range,
-        timeout=timeout,
-        interval=interval,
+        poll,
     )
 
 
-def wait_for_logs(  # noqa: PLR0913 -- each param independently configures the poll
+def wait_for_logs(
     datasource_uid: str,
     datasource_type: str,
     fields: dict[str, Any],
-    *,
-    time_range: str = "now-5m",
-    timeout: float = 60.0,
-    interval: float = 2.0,
+    poll: Poll = _DEFAULT_POLL,
 ) -> dict[str, Any]:
-    """Poll until a logs query result has data, or `timeout` elapses."""
+    """Poll until a logs query result has data, or `poll.timeout` elapses."""
     return _wait_for(
         has_logs,
         datasource_uid,
         datasource_type,
         fields,
-        time_range=time_range,
-        timeout=timeout,
-        interval=interval,
+        poll,
     )
 
 
-def wait_for_profile_samples(  # noqa: PLR0913 -- each param independently configures the poll
+def wait_for_profile_samples(
     datasource_uid: str,
     datasource_type: str,
     fields: dict[str, Any],
-    *,
-    time_range: str = "now-2h",
-    timeout: float = 300.0,
-    interval: float = 5.0,
+    poll: Poll = _PROFILE_POLL,
 ) -> dict[str, Any]:
-    """Poll until samples appear or `timeout` elapses.
+    """Poll until samples appear or `poll.timeout` elapses.
 
-    Pyroscope's ingestion lag varies with load: ~30-40s when idle, but
-    several tests pushing profiles back to back (e.g. in CI) can push a
-    given push's lag past 150s -- 300s leaves real margin above the worst
-    case actually seen, not just the typical one.
+    The default poll allows for Pyroscope's ingestion lag; see `_PROFILE_POLL`.
     """
     return _wait_for(
         has_profile_samples,
         datasource_uid,
         datasource_type,
         fields,
-        time_range=time_range,
-        timeout=timeout,
-        interval=interval,
+        poll,
     )

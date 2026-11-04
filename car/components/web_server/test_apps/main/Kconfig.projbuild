@@ -7,7 +7,7 @@ config WEB_SERVER_TEST_QEMU_MODE
         When enabled, skips the motor, tracing, Wi-Fi, camera and telemetry
         setup, brings the network up on QEMU's OpenCores Ethernet MAC instead,
         and feeds the web server synthetic camera frames and telemetry
-        packets, so the WebSocket tests run against the real server in QEMU.
+        readings, so the WebSocket tests run against the real server in QEMU.
 
 config WEB_SERVER_TEST_UBSAN
     bool "Build web_server with UndefinedBehaviorSanitizer"

@@ -1,5 +1,6 @@
 pydualsense
 websockets
+aiohttp
 numpy
 opencv-python-headless
 opentelemetry-api
@@ -7,4 +8,5 @@ opentelemetry-sdk
 opentelemetry-exporter-otlp-proto-http
 opentelemetry-proto
 opentelemetry-instrumentation-logging
+opentelemetry-semantic-conventions
 requests

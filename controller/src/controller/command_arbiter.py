@@ -1,18 +1,22 @@
 """Decides which drive commands reach the car."""
 
+import asyncio
 import contextlib
-import threading
-from collections.abc import Callable, Iterator
-from typing import Any
+import logging
+from collections.abc import AsyncIterator, Callable
 
 from opentelemetry import trace
+from opentelemetry.semconv.attributes.network_attributes import NETWORK_PROTOCOL_NAME
 
-from .car import CarFeed, prepare_command_packet
+from .car import prepare_drive_command
 from .collision_monitor import CollisionMonitor
 from .command import Command
 from .metrics import record_command_blocked, record_command_sent
-from .subject import Subject
+from .outbox import Broadcast, Inbox
 from .tracing import extract_trace_context, inject_trace_context
+from .websocket_message import WebSocketMessage
+
+logger = logging.getLogger(__name__)
 
 tracer = trace.get_tracer(__name__)
 
@@ -30,68 +34,77 @@ class CommandArbiter:
     One driver at a time may claim it; another is refused until the first
     releases it. Every command goes through `collision_monitor` first and is
     then published on `commands`. While a driver holds the claim, the arbiter
-    keeps `collision_monitor` fed from the telemetry feed.
+    feeds `collision_monitor` every Telemetry message, since its hysteresis
+    depends on each reading.
     `collision_state` carries whether the monitor is stopping the car.
+    It is confined to one thread, the event loop's.
     """
 
     def __init__(
         self,
-        commands: Subject,
-        telemetry: CarFeed | Subject,
+        commands: Broadcast[WebSocketMessage],
+        telemetry: Broadcast[WebSocketMessage],
         collision_monitor: CollisionMonitor,
     ) -> None:
         """Initialize the object."""
         self._commands = commands
         self._telemetry = telemetry
         self._collision_monitor = collision_monitor
-        self._lock = threading.Lock()
         self._claimed = False
-        # Race: only changes are published, so a client that subscribes after
+        # Race: only changes are published, so a client that connects after
         # the latest change sees no collision state until the next one.
-        self.collision_state = Subject()
+        self.collision_state: Broadcast[WebSocketMessage] = Broadcast()
 
-    @contextlib.contextmanager
-    def claim(self) -> Iterator[Callable[[dict[str, Any]], None]]:
+    @contextlib.asynccontextmanager
+    async def claim(self) -> AsyncIterator[Callable[[WebSocketMessage], None]]:
         """Hold the arbiter for the context; yield a function that sends commands.
 
         Raises `DriverAlreadyConnectedError` if another driver holds it.
         """
-        with self._lock:
-            if self._claimed:
-                raise DriverAlreadyConnectedError(DRIVER_ALREADY_CONNECTED)
-            self._claimed = True
+        if self._claimed:
+            raise DriverAlreadyConnectedError(DRIVER_ALREADY_CONNECTED)
+        self._claimed = True
         try:
-            with self._telemetry.subscription(self._on_telemetry):
-                yield self._submit
+            async with Inbox(self._telemetry) as telemetry:
+                reader = asyncio.create_task(self._read_telemetry(telemetry))
+                try:
+                    yield self._submit
+                finally:
+                    reader.cancel()
+                    await asyncio.wait([reader])
         finally:
             if self._collision_monitor.stopping:
                 self._collision_monitor.reset()
                 self._publish_collision_state()
-            with self._lock:
-                self._claimed = False
+            self._claimed = False
 
-    def _submit(self, command_packet: dict[str, Any]) -> None:
-        operator_context = extract_trace_context(command_packet)
+    def _submit(self, drive_command: WebSocketMessage) -> None:
+        driver_context = extract_trace_context(drive_command)
         with tracer.start_as_current_span(
-            "streamer.handle_drive_command", context=operator_context
+            "streamer.handle_drive_command", context=driver_context
         ) as span:
-            requested = Command(command_packet["command"])
-            command_packet = self._collision_monitor.filter(command_packet)
-            command = Command(command_packet["command"])
-            span.set_attribute("network.protocol.name", "websocket")
-            span.set_attribute("operator_command_name", requested.name)
+            requested = Command(drive_command["command"])
+            drive_command = self._collision_monitor.filter(drive_command)
+            command = Command(drive_command["command"])
+            span.set_attribute(NETWORK_PROTOCOL_NAME, "websocket")
+            span.set_attribute("requested_command_name", requested.name)
             span.set_attribute("command_name", command.name)
             span.set_attribute(
                 "collision_monitor.stopping", self._collision_monitor.stopping
             )
             if command != requested:
                 record_command_blocked(requested)
-            self._commands.publish(prepare_command_packet(command_packet))
+            self._commands.publish(prepare_drive_command(drive_command))
             record_command_sent(command)
 
-    def _on_telemetry(self, message: dict[str, Any]) -> None:
-        if self._collision_monitor.update(message["data"]["distance_ahead"]):
-            self._publish_collision_state()
+    async def _read_telemetry(self, telemetry: Inbox[WebSocketMessage]) -> None:
+        async for message in telemetry:
+            # Only cancellation may end the reader: claim() never awaits its result.
+            try:
+                if self._collision_monitor.update(message["data"]["distance_ahead"]):
+                    self._publish_collision_state()
+            except Exception:
+                logger.exception("Dropping a Telemetry message that failed to apply")
 
     def _publish_collision_state(self) -> None:
         self.collision_state.publish(
