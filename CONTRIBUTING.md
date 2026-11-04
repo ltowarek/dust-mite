@@ -1070,7 +1070,7 @@ When adding new documentation images:
 
 ## Infrastructure
 
-The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise. [zizmor](https://docs.zizmor.sh/) audits the workflows for security issues, such as template injection, persisted credentials, and excessive permissions. Its configuration in [.github/zizmor.yml](.github/zizmor.yml) accepts the full version tags in `uses:` lines, because the [actions lockfile](#actions-lockfile) pins their commits ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)).
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise. [zizmor](https://docs.zizmor.sh/) audits the workflows for security issues, such as template injection, persisted credentials, and excessive permissions. Its configuration in [.github/zizmor.yml](.github/zizmor.yml) accepts the full version tags in `uses:` lines, because the [actions lockfile](#actions-lockfile) pins their commits ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)). The check also verifies that lockfile.
 
 Open the repository root in the `Infrastructure` devcontainer and run the checks from the repository root:
 
@@ -1078,7 +1078,7 @@ Open the repository root in the `Infrastructure` devcontainer and run the checks
 ./scripts/run_infrastructure_checks.sh
 ```
 
-The script runs every infrastructure check, and each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt and apply zizmor's safe fixes, so a failing run can rewrite files. To apply the fixes without running the checks:
+The script runs every infrastructure check except the lockfile verification, which needs `gh` and runs on the host, as described in [Actions lockfile](#actions-lockfile). Each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt and apply zizmor's safe fixes, so a failing run can rewrite files. To apply the fixes without running the checks:
 
 ```bash
 ./scripts/fix_infrastructure_checks.sh
@@ -1086,7 +1086,7 @@ The script runs every infrastructure check, and each check also has its own scri
 
 Locally, zizmor runs offline by default and skips its online audits, such as known-vulnerable actions and impostor commits. To run them, pass a GitHub token to the devcontainer command, for example `docker exec -e GH_TOKEN="$(gh auth token)" -w /workspaces/dust-mite <container> ./scripts/run_infrastructure_checks.sh`.
 
-The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log.
+The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
 
 The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. zizmor is installed from PyPI and pinned in [.devcontainer/infrastructure/requirements.txt](.devcontainer/infrastructure/requirements.txt), which Dependabot updates. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
 
@@ -1110,6 +1110,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on pull requests and pushes to `main`
   - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
   - Runs the infrastructure checks in container as the `ci-status-infrastructure` check, as described in [Infrastructure](#infrastructure)
+  - Verifies the actions lockfile on the runner in the check's `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
 - [devcontainer-image.yml](.github/workflows/devcontainer-image.yml)
   - Reusable workflow that the four workflows above call to build and publish their devcontainer image
   - Takes the Dockerfile path and the image name as input and outputs the pushed image by digest; every container job in the calling workflow runs in that image ([ADR 0004](docs/adr/0004-ci-jobs-pin-devcontainer-image-by-digest.md))
@@ -1123,9 +1124,6 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
 - [pr-title.yml](.github/workflows/pr-title.yml)
   - Triggers on pull requests, including title edits
   - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
-- [actions-lock.yml](.github/workflows/actions-lock.yml)
-  - Triggers on pull requests and pushes to `main`
-  - Verifies the actions lockfile as the `ci-status-actions-lock` check, as described in [Actions lockfile](#actions-lockfile)
 - [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
   - Triggers on pull requests opened by Dependabot
   - Enables auto-merge as described in [Dependency updates](#dependency-updates)
@@ -1144,7 +1142,7 @@ After adding a workflow or editing a `uses:` line, regenerate the lockfile and c
 
 The script installs the extension at the version that CI uses and passes its arguments to `gh actions-lock`. It runs on the host, because it needs an authenticated `gh`. A partial tag, such as `v4`, is narrowed to the full tag on the same commit.
 
-The `ci-status-actions-lock` check runs the script with `--verify`. It fails when a workflow uses an action that the lockfile does not pin, or when a locked commit cannot be traced to the action's upstream repository. To run the same check locally:
+The `actions-lock` job of the `ci-status-infrastructure` check runs the script with `--verify`. It fails when a workflow uses an action that the lockfile does not pin, or when a locked commit cannot be traced to the action's upstream repository. To run the same check locally:
 
 ```bash
 ./scripts/lock_github_actions.sh --verify
