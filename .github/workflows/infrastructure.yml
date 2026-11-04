@@ -44,9 +44,7 @@ jobs:
         persist-credentials: false
 
     - name: Run actionlint
-      run: |
-        echo "::add-matcher::.github/actionlint-matcher.json"
-        ./scripts/run_actionlint.sh -color
+      run: ./scripts/run_actionlint.sh -format '{{range .}}::error file={{.Filepath}},line={{.Line}},col={{.Column}}::{{.Message}}\n{{end}}'
 
   shellcheck:
     needs: build-docker
