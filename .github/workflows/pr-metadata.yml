@@ -1,11 +1,11 @@
-name: Pull request title
+name: Pull request metadata
 
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
 
 jobs:
-  ci-status-pr-title:
+  ci-status-pr-metadata:
     if: github.event.pull_request.draft != true
     permissions:
       contents: read

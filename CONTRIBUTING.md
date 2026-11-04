@@ -1121,7 +1121,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Builds production images for all three components in parallel
   - Validates the build on pull requests; publishes to GHCR on push to `main`
   - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
-- [pr-title.yml](.github/workflows/pr-title.yml)
+- [pr-metadata.yml](.github/workflows/pr-metadata.yml)
   - Triggers on pull requests, including title edits
   - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
 - [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
@@ -1179,7 +1179,7 @@ All production images run as user `dustmite` (uid=1040). This is distinct from t
 
 Pull request titles follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). `main` accepts only squash merges, and the squash commit title is the pull request title, so the title becomes the commit title on `main`. Commits on a branch are not checked and may use any message; they form the body of the squash commit.
 
-The `ci-status-pr-title` check in [pr-title.yml](.github/workflows/pr-title.yml) runs [commitlint](https://commitlint.js.org/) with [`@commitlint/config-conventional`](https://github.com/conventional-changelog/commitlint/tree/master/%40commitlint/config-conventional) and the scope list from [commitlint.config.mjs](commitlint.config.mjs). The check runs only in CI. To correct a failing title, edit the title; the check runs again without a new push.
+The `ci-status-pr-metadata` check in [pr-metadata.yml](.github/workflows/pr-metadata.yml) runs [commitlint](https://commitlint.js.org/) with [`@commitlint/config-conventional`](https://github.com/conventional-changelog/commitlint/tree/master/%40commitlint/config-conventional) and the scope list from [commitlint.config.mjs](commitlint.config.mjs). The check runs only in CI. To correct a failing title, edit the title; the check runs again without a new push.
 
 A title has the form `type(scope)!: description`, in which the scope and `!` are optional, for example `fix(car): brake when the Drive command times out`.
 

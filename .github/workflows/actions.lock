@@ -31,7 +31,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-python@v7.1.0'
         - 'codecov/codecov-action@v7.1.1'
-    '.github/workflows/pr-title.yml':
+    '.github/workflows/pr-metadata.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
     '.github/workflows/python-controller.yml':
