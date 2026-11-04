@@ -3,6 +3,7 @@ updates:
   - package-ecosystem: docker
     directories:
       - /.devcontainer/cpp
+      - /.devcontainer/infrastructure
       - /car
     schedule:
       interval: weekly

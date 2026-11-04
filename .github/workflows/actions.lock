@@ -24,6 +24,8 @@ workflows:
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.7.0'
         - 'docker/setup-buildx-action@v4.4.1'
+    '.github/workflows/infrastructure.yml':
+        - 'actions/checkout@v7.0.1'
     '.github/workflows/js-web.yml':
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v7.1.1'

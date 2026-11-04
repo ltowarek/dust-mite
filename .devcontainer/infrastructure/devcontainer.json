@@ -1,0 +1,17 @@
+{
+    "name": "Infrastructure",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "infrastructure",
+    "workspaceFolder": "/workspaces/dust-mite",
+    "containerEnv": {
+        "PRE_COMMIT_SCRIPT": "${containerWorkspaceFolder}/scripts/infrastructure_pre_commit.sh"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "streetsidesoftware.code-spell-checker"
+            ]
+        }
+    },
+    "remoteUser": "vscode"
+}
