@@ -21,6 +21,7 @@ jobs:
       uses: actions/checkout@v7.0.1
       with:
         submodules: recursive
+        persist-credentials: false
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4.4.1
@@ -54,6 +55,7 @@ jobs:
       uses: actions/checkout@v7.0.1
       with:
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4.4.1
@@ -87,6 +89,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4.4.1
@@ -110,6 +114,7 @@ jobs:
   ci-status-docker:
     needs: [build-car, build-controller, build-web]
     if: always() && github.event.pull_request.draft != true
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed

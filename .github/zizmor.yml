@@ -1,0 +1,6 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # ADR 0005: uses: lines keep full version tags; actions.lock pins the commits.
+        "*": ref-pin

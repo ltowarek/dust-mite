@@ -14,7 +14,7 @@ jobs:
       contents: read
       packages: write
 
-    uses: ./.github/workflows/devcontainer-image.yml
+    uses: $/.github/workflows/devcontainer-image.yml
     with:
       file: ./.devcontainer/js/Dockerfile
       image: ghcr.io/ltowarek/dust-mite-js-devcontainer
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}
+      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -41,6 +41,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Install dependencies
       run: npm ci
@@ -78,6 +80,7 @@ jobs:
   ci-status-js-web:
     needs: [build-docker, run-checks]
     if: always() && github.event.pull_request.draft != true
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
     - name: Fail if any needed job did not succeed
