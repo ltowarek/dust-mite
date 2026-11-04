@@ -74,8 +74,7 @@ jobs:
       run: |
         # The checkout is owned by the runner user, not the container's root.
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        echo "::add-matcher::.github/shellcheck-matcher.json"
-        ./scripts/run_shellcheck.sh -f gcc
+        ./scripts/run_shellcheck.sh
 
   shfmt:
     needs: build-docker
