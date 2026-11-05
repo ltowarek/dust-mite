@@ -23,7 +23,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -134,7 +133,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -179,7 +177,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -234,7 +231,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
