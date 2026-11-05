@@ -2,14 +2,12 @@ name: Infrastructure
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
 
 jobs:
   build-docker:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -164,7 +162,6 @@ jobs:
         run: ./scripts/run_zizmor.sh --format=github
 
   actions-lock:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
 
@@ -183,7 +180,7 @@ jobs:
 
   ci-status-infrastructure:
     needs: [build-docker, actionlint, shellcheck, shfmt, yamllint, zizmor, actions-lock]
-    if: always() && github.event.pull_request.draft != true
+    if: always()
     permissions: {}
     runs-on: ubuntu-latest
     steps:

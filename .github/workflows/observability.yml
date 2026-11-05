@@ -2,14 +2,12 @@ name: Observability
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
 
 jobs:
   run-checks:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
 
@@ -69,7 +67,7 @@ jobs:
 
   ci-status-observability:
     needs: [run-checks]
-    if: always() && github.event.pull_request.draft != true
+    if: always()
     permissions: {}
     runs-on: ubuntu-latest
     steps:

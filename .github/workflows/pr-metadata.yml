@@ -2,11 +2,10 @@ name: Pull request metadata
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened, ready_for_review]
+    types: [opened, edited, synchronize, reopened]
 
 jobs:
   ci-status-pr-metadata:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
 

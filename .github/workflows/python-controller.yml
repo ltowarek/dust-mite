@@ -2,14 +2,12 @@ name: Python controller
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
 
 jobs:
   build-docker:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -86,7 +84,7 @@ jobs:
 
   ci-status-python-controller:
     needs: [build-docker, run-checks]
-    if: always() && github.event.pull_request.draft != true
+    if: always()
     permissions: {}
     runs-on: ubuntu-latest
     steps:

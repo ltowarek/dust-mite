@@ -2,14 +2,12 @@ name: Docker
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
 
 jobs:
   build-car:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -43,7 +41,6 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-controller:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -79,7 +76,6 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-web:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -113,7 +109,7 @@ jobs:
 
   ci-status-docker:
     needs: [build-car, build-controller, build-web]
-    if: always() && github.event.pull_request.draft != true
+    if: always()
     permissions: {}
     runs-on: ubuntu-latest
     steps:
