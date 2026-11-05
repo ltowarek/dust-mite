@@ -15,7 +15,7 @@ jobs:
         id: metadata
         uses: dependabot/fetch-metadata@v3.1.0
 
-      # The main ruleset's required ci-status checks gate the merge, so a bump
+      # The main ruleset's required ci-status check gates the merge, so a bump
       # that breaks the build or the QEMU tests stays open.
       - name: Enable auto-merge
         if: contains(fromJSON('["docker", "github_actions", "npm_and_yarn", "pip"]'), steps.metadata.outputs.package-ecosystem)
