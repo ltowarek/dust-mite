@@ -1,10 +1,10 @@
 name: Python controller
 
-on: 
+on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
-    branches: 
+    branches:
       - main
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -39,49 +39,49 @@ jobs:
         working-directory: ./controller
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
-    - name: Activate venv
-      run: |
-        source /home/vscode/venv/bin/activate
-        echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> "$GITHUB_ENV"
-        echo "$VIRTUAL_ENV/bin" >> "$GITHUB_PATH"
+      - name: Activate venv
+        run: |
+          source /home/vscode/venv/bin/activate
+          echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> "$GITHUB_ENV"
+          echo "$VIRTUAL_ENV/bin" >> "$GITHUB_PATH"
 
-    - name: Install package
-      run: pip install --disable-pip-version-check --no-cache-dir -e .
+      - name: Install package
+        run: pip install --disable-pip-version-check --no-cache-dir -e .
 
-    - name: Run linters
-      run: ./scripts/run_linters.sh --output-format=github
-    - name: Run formatter
-      run: ./scripts/run_formatter.sh --diff
-    - name: Run type checks
-      run: ./scripts/run_type_checks.sh
-    - name: Run requirements checks
-      run: ./scripts/run_requirements_checks.sh
+      - name: Run linters
+        run: ./scripts/run_linters.sh --output-format=github
+      - name: Run formatter
+        run: ./scripts/run_formatter.sh --diff
+      - name: Run type checks
+        run: ./scripts/run_type_checks.sh
+      - name: Run requirements checks
+        run: ./scripts/run_requirements_checks.sh
 
-    - name: Run tests
-      run: ./scripts/run_tests.sh
+      - name: Run tests
+        run: ./scripts/run_tests.sh
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: controller/coverage.xml
-        flags: python
-        fail_ci_if_error: false
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: controller/coverage.xml
+          flags: python
+          fail_ci_if_error: false
 
-    - name: Upload test results to Codecov
-      if: ${{ !cancelled() }}
-      uses: codecov/codecov-action@v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: controller/results.xml
-        flags: python
-        fail_ci_if_error: false
-        report_type: test_results
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: controller/results.xml
+          flags: python
+          fail_ci_if_error: false
+          report_type: test_results
 
 
   ci-status-python-controller:
@@ -90,6 +90,6 @@ jobs:
     permissions: {}
     runs-on: ubuntu-latest
     steps:
-    - name: Fail if any needed job did not succeed
-      if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-      run: exit 1
+      - name: Fail if any needed job did not succeed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1
