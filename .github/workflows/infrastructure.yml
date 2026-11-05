@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -38,13 +38,13 @@ jobs:
         shell: bash
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
-    - name: Run actionlint
-      run: ./scripts/run_actionlint.sh -format '{{range .}}::error file={{.Filepath}},line={{.Line}},col={{.Column}}::{{.Message}}\n{{end}}'
+      - name: Run actionlint
+        run: ./scripts/run_actionlint.sh -format '{{range .}}::error file={{.Filepath}},line={{.Line}},col={{.Column}}::{{.Message}}\n{{end}}'
 
   shellcheck:
     needs: build-docker
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -65,16 +65,16 @@ jobs:
         shell: bash
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
-    - name: Run ShellCheck
-      run: |
-        # The checkout is owned by the runner user, not the container's root.
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        ./scripts/run_shellcheck.sh
+      - name: Run ShellCheck
+        run: |
+          # The checkout is owned by the runner user, not the container's root.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./scripts/run_shellcheck.sh
 
   shfmt:
     needs: build-docker
@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -95,15 +95,15 @@ jobs:
         shell: bash
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
-    - name: Run shfmt
-      run: |
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        ./scripts/run_shfmt.sh --diff
+      - name: Run shfmt
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./scripts/run_shfmt.sh --diff
 
   zizmor:
     needs: build-docker
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -124,15 +124,15 @@ jobs:
         shell: bash
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
-    - name: Run zizmor
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./scripts/run_zizmor.sh --format=github
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/run_zizmor.sh --format=github
 
   actions-lock:
     if: github.event.pull_request.draft != true
@@ -142,15 +142,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
-    - name: Verify lockfile
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./scripts/lock_github_actions.sh --verify
+      - name: Verify lockfile
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/lock_github_actions.sh --verify
 
   ci-status-infrastructure:
     needs: [build-docker, actionlint, shellcheck, shfmt, zizmor, actions-lock]
@@ -158,6 +158,6 @@ jobs:
     permissions: {}
     runs-on: ubuntu-latest
     steps:
-    - name: Fail if any needed job did not succeed
-      if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-      run: exit 1
+      - name: Fail if any needed job did not succeed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1
