@@ -1,10 +1,7 @@
 name: Infrastructure
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
+  workflow_call:
 
 jobs:
   build-docker:
@@ -177,13 +174,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/lock_github_actions.sh --verify
-
-  ci-status-infrastructure:
-    needs: [build-docker, actionlint, shellcheck, shfmt, yamllint, zizmor, actions-lock]
-    if: always()
-    permissions: {}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail if any needed job did not succeed
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-        run: exit 1

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  cpp-car:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/cpp-car.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  docker:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/docker.yml
+
+  infrastructure:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/infrastructure.yml
+
+  js-web:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/js-web.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  observability:
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/observability.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  python-controller:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/python-controller.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  ci-status:
+    needs: [cpp-car, docker, infrastructure, js-web, observability, python-controller]
+    if: always()
+    permissions: {}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any needed job did not succeed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1

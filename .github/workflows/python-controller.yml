@@ -1,10 +1,10 @@
 name: Python controller
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
 
 jobs:
   build-docker:
@@ -80,14 +80,3 @@ jobs:
           flags: python
           fail_ci_if_error: false
           report_type: test_results
-
-
-  ci-status-python-controller:
-    needs: [build-docker, run-checks]
-    if: always()
-    permissions: {}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail if any needed job did not succeed
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-        run: exit 1

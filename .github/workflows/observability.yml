@@ -1,10 +1,10 @@
 name: Observability
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
 
 jobs:
   run-checks:
@@ -64,13 +64,3 @@ jobs:
       - name: Stop observability stack
         if: always()
         run: docker compose -f docker-compose.yml down
-
-  ci-status-observability:
-    needs: [run-checks]
-    if: always()
-    permissions: {}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail if any needed job did not succeed
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-        run: exit 1
