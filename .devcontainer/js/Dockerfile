@@ -18,9 +18,11 @@ RUN userdel -r node \
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
-COPY ./web/package.json ./web/package-lock.json /tmp/web/
-RUN cd /tmp/web && npm ci \
+WORKDIR /tmp/web
+COPY ./web/package.json ./web/package-lock.json ./
+RUN npm ci \
     && npx playwright install --with-deps firefox \
     && rm -rf /tmp/web
+WORKDIR /
 
 USER $USERNAME
