@@ -1,0 +1,3 @@
+ignored:
+  # Debian mirrors drop superseded package versions, so pins break builds (ADR 0006).
+  - DL3008

@@ -27,6 +27,10 @@ ARG SHFMT_VERSION=3.14.1
 RUN curl -fsSL -o /usr/local/bin/shfmt "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
     && chmod +x /usr/local/bin/shfmt
 
+ARG HADOLINT_VERSION=2.15.1
+RUN curl -fsSL -o /usr/local/bin/hadolint "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64" \
+    && chmod +x /usr/local/bin/hadolint
+
 # Debian's Python is externally managed (PEP 668), so the Python tools get their own venv.
 ENV PATH="/opt/venv/bin:$PATH"
 COPY .devcontainer/infrastructure/requirements.txt /tmp/requirements.txt
