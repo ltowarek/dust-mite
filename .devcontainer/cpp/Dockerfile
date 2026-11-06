@@ -30,7 +30,7 @@ RUN git init -q /tmp/espressif-qemu \
                    --enable-gcrypt \
                    --enable-pixman \
                    --enable-slirp \
-    && make -j$(nproc) \
+    && make -j"$(nproc)" \
     && make install \
     && rm -rf /tmp/espressif-qemu
 
@@ -77,7 +77,7 @@ ENV QEMU_PROG_PATH=/opt/espressif-qemu/bin/qemu-system-xtensa
 # clang-tidy has no Xtensa backend, and a separate apt clang-format would drift
 # in version from this one (car/scripts use esp-clang's clang-format/clang-tidy
 # everywhere via export.sh, not whatever's on the system PATH).
-RUN python3 $IDF_PATH/tools/idf_tools.py --quiet --idf-path $IDF_PATH install esp-clang
+RUN python3 "$IDF_PATH/tools/idf_tools.py" --quiet --idf-path "$IDF_PATH" install esp-clang
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen
@@ -106,4 +106,4 @@ RUN mkdir -p /home/$USERNAME/build && \
 USER $USERNAME
 
 RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread
-RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> $HOME/.bashrc
+RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> "$HOME/.bashrc"

@@ -10,6 +10,6 @@ RUN groupadd --gid $USER_GID $USERNAME \
 
 USER $USERNAME
 
-RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> $HOME/.bashrc
+RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> "$HOME/.bashrc"
 
 COPY --chown=$USERNAME:$USERNAME scripts/run_cpp.sh /home/$USERNAME/run_cpp.sh
