@@ -5,7 +5,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     ansible \
     libhidapi-dev \
     locales \
-    rsync
+    rsync \
+    && rm -rf /var/lib/apt/lists/*
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen

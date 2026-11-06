@@ -54,7 +54,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     libpixman-1-0 \
     libslirp0 \
     locales \
-    unzip
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Ubuntu's protobuf-compiler (libprotoc 3.21.12) cannot generate code for the
 # vendored protobuf runtime pinned in car/components/esp-opentelemetry-cpp:
