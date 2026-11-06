@@ -1,15 +1,13 @@
 name: C++ car
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches:
-      - main
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
 
 jobs:
   build-docker:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -23,7 +21,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -134,7 +131,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -179,7 +175,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -234,7 +229,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -288,13 +282,3 @@ jobs:
           files: car/${{ matrix.component_path }}/coverage.info
           flags: cpp
           fail_ci_if_error: false
-
-  ci-status-cpp-car:
-    needs: [build-docker, build, clang-format, clang-tidy, ubsan, coverage]
-    if: always() && github.event.pull_request.draft != true
-    permissions: {}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail if any needed job did not succeed
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-        run: exit 1
