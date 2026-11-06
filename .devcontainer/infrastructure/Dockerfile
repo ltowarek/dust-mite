@@ -34,6 +34,7 @@ RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
+# hadolint ignore=DL3064 # USERNAME follows VS Code's documented devcontainer convention
 ARG USERNAME=vscode
 ARG USER_UID=1050
 ARG USER_GID=$USER_UID

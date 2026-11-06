@@ -16,6 +16,7 @@ RUN wget --progress=dot:giga https://github.com/todbot/hidapitester/releases/dow
     && rm hidapitester-linux-x86_64.zip \
     && mv ./hidapitester /usr/local/bin/hidapitester
 
+# hadolint ignore=DL3064 # USERNAME follows VS Code's documented devcontainer convention
 ARG USERNAME=vscode
 ARG USER_UID=1050
 ARG USER_GID=$USER_UID

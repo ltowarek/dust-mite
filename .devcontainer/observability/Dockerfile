@@ -8,6 +8,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen
 
+# hadolint ignore=DL3064 # USERNAME follows VS Code's documented devcontainer convention
 ARG USERNAME=vscode
 ARG USER_UID=1050
 ARG USER_GID=$USER_UID
