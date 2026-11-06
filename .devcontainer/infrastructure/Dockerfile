@@ -1,5 +1,7 @@
 FROM debian:bookworm
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     ca-certificates \
@@ -7,7 +9,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     git \
     locales \
     python3-venv \
-    xz-utils
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen
@@ -24,6 +27,10 @@ ARG SHFMT_VERSION=3.14.1
 RUN curl -fsSL -o /usr/local/bin/shfmt "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
     && chmod +x /usr/local/bin/shfmt
 
+ARG HADOLINT_VERSION=2.15.1
+RUN curl -fsSL -o /usr/local/bin/hadolint "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64" \
+    && chmod +x /usr/local/bin/hadolint
+
 # Debian's Python is externally managed (PEP 668), so the Python tools get their own venv.
 ENV PATH="/opt/venv/bin:$PATH"
 COPY .devcontainer/infrastructure/requirements.txt /tmp/requirements.txt
@@ -31,6 +38,7 @@ RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
+# hadolint ignore=DL3064 # USERNAME follows VS Code's documented devcontainer convention
 ARG USERNAME=vscode
 ARG USER_UID=1050
 ARG USER_GID=$USER_UID

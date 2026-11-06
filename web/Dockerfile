@@ -1,5 +1,6 @@
 FROM node:22-bookworm-slim
 
+# hadolint ignore=DL3064 # USERNAME mirrors the devcontainers' VS Code convention
 ARG USERNAME=dustmite
 ARG USER_UID=1040
 ARG USER_GID=$USER_UID
