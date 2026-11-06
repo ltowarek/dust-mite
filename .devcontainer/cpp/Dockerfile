@@ -104,5 +104,5 @@ RUN mkdir -p /home/$USERNAME/build && \
 
 USER $USERNAME
 
-RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread
-RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> "$HOME/.bashrc"
+RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread \
+    && echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> "$HOME/.bashrc"
