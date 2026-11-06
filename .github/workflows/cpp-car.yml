@@ -1,15 +1,13 @@
 name: C++ car
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches:
-      - main
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
 
 jobs:
   build-docker:
-    if: github.event.pull_request.draft != true
     permissions:
       contents: read
       packages: write
@@ -23,7 +21,6 @@ jobs:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -53,7 +50,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -64,43 +61,43 @@ jobs:
         shell: bash
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        submodules: recursive
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
 
-    - name: Cache ccache
-      uses: actions/cache@v6.1.0
-      with:
-        path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ runner.os }}-idf-${{ matrix.path }}-${{ github.run_id }}
-        restore-keys: |
-          ccache-${{ runner.os }}-idf-${{ matrix.path }}-
-          ccache-${{ runner.os }}-idf-
+      - name: Cache ccache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-idf-${{ matrix.path }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-idf-${{ matrix.path }}-
+            ccache-${{ runner.os }}-idf-
 
-    - name: Build
-      env:
-        CCACHE_DIR: ${{ github.workspace }}/.ccache
-        SDKCONFIG_DEFAULTS: ${{ matrix.sdkconfig_overlay && format('sdkconfig.defaults;{0}', matrix.sdkconfig_overlay) || '' }}
-      run: |
-        source "$IDF_PATH/export.sh"
-        idf.py build
-      working-directory: ${{ matrix.path }}
+      - name: Build
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          SDKCONFIG_DEFAULTS: ${{ matrix.sdkconfig_overlay && format('sdkconfig.defaults;{0}', matrix.sdkconfig_overlay) || '' }}
+        run: |
+          source "$IDF_PATH/export.sh"
+          idf.py build
+        working-directory: ${{ matrix.path }}
 
-    - name: Run QEMU tests
-      if: matrix.qemu
-      run: car/scripts/run_qemu_tests.sh ${{ matrix.path }} ${{ matrix.pytest_pattern }}
+      - name: Run QEMU tests
+        if: matrix.qemu
+        run: car/scripts/run_qemu_tests.sh ${{ matrix.path }} ${{ matrix.pytest_pattern }}
 
-    - name: Upload test results to Codecov
-      if: ${{ !cancelled() && matrix.qemu }}
-      uses: codecov/codecov-action@v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ${{ matrix.path }}/results.xml
-        flags: cpp
-        fail_ci_if_error: false
-        report_type: test_results
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && matrix.qemu }}
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ matrix.path }}/results.xml
+          flags: cpp
+          fail_ci_if_error: false
+          report_type: test_results
 
   clang-format:
     needs: build-docker
@@ -110,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -122,24 +119,23 @@ jobs:
         working-directory: ./car
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
-    - name: Run clang-format
-      run: ./scripts/run_clang_format.sh -n --Werror
+      - name: Run clang-format
+        run: ./scripts/run_clang_format.sh -n --Werror
 
   clang-tidy:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -150,36 +146,35 @@ jobs:
         shell: bash
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        submodules: recursive
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
 
-    - name: Cache ccache
-      uses: actions/cache@v6.1.0
-      with:
-        path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ runner.os }}-idf-clang-tidy-${{ github.run_id }}
-        restore-keys: |
-          ccache-${{ runner.os }}-idf-clang-tidy-
+      - name: Cache ccache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-idf-clang-tidy-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-idf-clang-tidy-
 
-    # Building with esp-idf's clang toolchain is still experimental
-    # (see CONTRIBUTING.md). run_clang_tidy.sh tolerates the known
-    # link-step failure on its own; a non-zero exit here means clang-tidy
-    # itself failed (tool crash) or surfaced a finding in a check that
-    # WarningsAsErrors promotes, not the expected link failure.
-    - name: Run clang-tidy
-      env:
-        CCACHE_DIR: ${{ github.workspace }}/.ccache
-      run: ./scripts/run_clang_tidy.sh
-      working-directory: car
+      # Building with esp-idf's clang toolchain is still experimental
+      # (see CONTRIBUTING.md). run_clang_tidy.sh tolerates the known
+      # link-step failure on its own; a non-zero exit here means clang-tidy
+      # itself failed (tool crash) or surfaced a finding in a check that
+      # WarningsAsErrors promotes, not the expected link failure.
+      - name: Run clang-tidy
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+        run: ./scripts/run_clang_tidy.sh
+        working-directory: car
 
   ubsan:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -194,7 +189,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -206,35 +201,34 @@ jobs:
         working-directory: car
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        submodules: recursive
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
 
-    - name: Cache ccache
-      uses: actions/cache@v6.1.0
-      with:
-        path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-${{ github.run_id }}
-        restore-keys: |
-          ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-
-          ccache-${{ runner.os }}-idf-ubsan-
+      - name: Cache ccache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-idf-ubsan-${{ matrix.name }}-
+            ccache-${{ runner.os }}-idf-ubsan-
 
-    - name: Build
-      env:
-        CCACHE_DIR: ${{ github.workspace }}/.ccache
-        SDKCONFIG_DEFAULTS: sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
-      run: ./scripts/run_build.sh ${{ matrix.component_path }}
+      - name: Build
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          SDKCONFIG_DEFAULTS: sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.ubsan
+        run: ./scripts/run_build.sh ${{ matrix.component_path }}
 
-    - name: Run QEMU tests
-      run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
+      - name: Run QEMU tests
+        run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
 
   coverage:
     needs: build-docker
     permissions:
       contents: read
-      actions: read
 
     runs-on: ubuntu-latest
 
@@ -249,7 +243,7 @@ jobs:
             pytest_pattern: pytest_web_server.py
 
     container:
-      image: ${{ needs.build-docker.outputs.image }} # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -261,40 +255,30 @@ jobs:
         working-directory: car
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
-      with:
-        submodules: recursive
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
 
-    - name: Cache ccache
-      uses: actions/cache@v6.1.0
-      with:
-        path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-${{ github.run_id }}
-        restore-keys: |
-          ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-
-          ccache-${{ runner.os }}-idf-coverage-
+      - name: Cache ccache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-idf-coverage-${{ matrix.name }}-
+            ccache-${{ runner.os }}-idf-coverage-
 
-    - name: Run coverage
-      env:
-        CCACHE_DIR: ${{ github.workspace }}/.ccache
-      run: ./scripts/run_coverage.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
+      - name: Run coverage
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+        run: ./scripts/run_coverage.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: car/${{ matrix.component_path }}/coverage.info
-        flags: cpp
-        fail_ci_if_error: false
-
-  ci-status-cpp-car:
-    needs: [build-docker, build, clang-format, clang-tidy, ubsan, coverage]
-    if: always() && github.event.pull_request.draft != true
-    permissions: {}
-    runs-on: ubuntu-latest
-    steps:
-    - name: Fail if any needed job did not succeed
-      if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-      run: exit 1
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: car/${{ matrix.component_path }}/coverage.info
+          flags: cpp
+          fail_ci_if_error: false

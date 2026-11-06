@@ -13,10 +13,7 @@ flag_management:
   default_rules:
     carryforward: true
 
-comment:
-  layout: "flags, diff"
-  behavior: default
-  require_changes: true
+comment: false
 
 fixes:
   - "/__w/dust-mite/dust-mite/::"

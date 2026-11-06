@@ -756,7 +756,7 @@ If checks fail, apply automatic fixes (only reformats lines you've already stage
 `clang-format`/`git-clang-format`, regardless of caller context — there is no
 separate apt `clang-format` package, which would otherwise drift in version
 from `esp-clang`'s. The `clang-format` CI job is blocking (part of
-`ci-status-cpp-car`).
+`ci-status`).
 
 #### clang-tidy
 
@@ -770,7 +770,7 @@ Xtensa-aware `esp-clang` toolchain bundled with ESP-IDF rather than the distro's
 and is known to fail at the final link step for this project due to TLS-relocation
 issues in vendored dependencies (protobuf/abseil/opentelemetry-cpp). `run_clang_tidy.sh`
 tolerates that link failure and only requires `compile_commands.json` to be generated. The
-`clang-tidy` CI job is blocking (part of `ci-status-cpp-car`); since `WarningsAsErrors` is
+`clang-tidy` CI job is blocking (part of `ci-status`); since `WarningsAsErrors` is
 empty, it only fails on a genuine clang-tidy tool error, not on findings. The enabled
 check set includes `misc-include-cleaner`, which flags headers included but not used
 directly and symbols sourced only through transitive includes — the Xtensa-aware
@@ -797,7 +797,7 @@ which is also why it is never enabled for the production firmware build. A dedic
 job builds and runs each opted-in test app with `sdkconfig.defaults.ubsan` layered on top of
 `sdkconfig.defaults.qemu`, using its own matrix (separate from the `build` job's matrix) so the
 default test apps keep building without the sanitizer. The `ubsan` CI job is blocking (part of
-`ci-status-cpp-car`).
+`ci-status`).
 
 ESP-IDF's `malloc` aligns allocations to only 4 bytes
 ([espressif/esp-idf#18685](https://github.com/espressif/esp-idf/issues/18685)), so a `cJSON` node,
@@ -881,7 +881,7 @@ Scoping coverage flags to just the component under test mirrors the UBSan patter
 size manageable. A dedicated `coverage` CI job builds each opted-in test app with
 `sdkconfig.defaults;sdkconfig.defaults.qemu;sdkconfig.defaults.coverage`, runs the standard QEMU
 pytest with `-apptrace file_io`, and uploads coverage data to Codecov. The
-`coverage` CI job is blocking (part of `ci-status-cpp-car`).
+`coverage` CI job is blocking (part of `ci-status`).
 
 To run locally (from the `car/` directory in the C++ devcontainer):
 
@@ -1070,7 +1070,13 @@ When adding new documentation images:
 
 ## Infrastructure
 
-The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise. [zizmor](https://docs.zizmor.sh/) audits the workflows for security issues, such as template injection, persisted credentials, and excessive permissions. Its configuration in [.github/zizmor.yml](.github/zizmor.yml) accepts the full version tags in `uses:` lines, because the [actions lockfile](#actions-lockfile) pins their commits ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)). The check also verifies that lockfile.
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise. [zizmor](https://docs.zizmor.sh/) audits the workflows for security issues, such as template injection, persisted credentials, and excessive permissions. Its configuration in [.github/zizmor.yml](.github/zizmor.yml) accepts the full version tags in `uses:` lines, because the [actions lockfile](#actions-lockfile) pins their commits ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)). The check also verifies that lockfile. [yamllint](https://yamllint.readthedocs.io/) checks the style and validity of every tracked YAML file, as listed by `git ls-files '*.yml' '*.yaml'`, so it leaves out submodules and extensionless YAML such as `car/.clang-format`. It runs with `--strict`, so a warning fails the check as an error does.
+
+The root [.yamllint.yaml](.yamllint.yaml) extends yamllint's `default` configuration with three changes:
+
+- `truthy` does not check keys, because the workflows' `on:` key is GitHub's own syntax. It still checks values.
+- `line-length` is disabled, because some lines cannot be wrapped, such as `# zizmor: ignore[…]` comments, which must stay on the line they apply to, and long `run:` commands.
+- `document-start` is disabled, because a `---` adds nothing to a single-document file.
 
 Open the repository root in the `Infrastructure` devcontainer and run the checks from the repository root:
 
@@ -1078,7 +1084,7 @@ Open the repository root in the `Infrastructure` devcontainer and run the checks
 ./scripts/run_infrastructure_checks.sh
 ```
 
-The script runs every infrastructure check except the lockfile verification, which needs `gh` and runs on the host, as described in [Actions lockfile](#actions-lockfile). Each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt and apply zizmor's safe fixes, so a failing run can rewrite files. To apply the fixes without running the checks:
+The script runs every infrastructure check except the lockfile verification, which needs `gh` and runs on the host, as described in [Actions lockfile](#actions-lockfile). Each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt and apply zizmor's safe fixes, so a failing run can rewrite files. yamllint has no automatic fixes. To apply the fixes without running the checks:
 
 ```bash
 ./scripts/fix_infrastructure_checks.sh
@@ -1086,43 +1092,47 @@ The script runs every infrastructure check except the lockfile verification, whi
 
 Locally, zizmor runs offline by default and skips its online audits, such as known-vulnerable actions and impostor commits. To run them, pass a GitHub token to the devcontainer command, for example `docker exec -e GH_TOKEN="$(gh auth token)" -w /workspaces/dust-mite <container> ./scripts/run_infrastructure_checks.sh`.
 
-The `ci-status-infrastructure` check in [infrastructure.yml](.github/workflows/infrastructure.yml) runs the same scripts in the same devcontainer image, and annotates each actionlint and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
+The `infrastructure` area of the [CI entry workflow](#cicd), defined in [infrastructure.yml](.github/workflows/infrastructure.yml), runs the same scripts in the same devcontainer image, and annotates each actionlint, yamllint, and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
 
-The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. zizmor is installed from PyPI and pinned in [.devcontainer/infrastructure/requirements.txt](.devcontainer/infrastructure/requirements.txt), which Dependabot updates. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. yamllint and zizmor are installed from PyPI and pinned in [.devcontainer/infrastructure/requirements.txt](.devcontainer/infrastructure/requirements.txt), which Dependabot updates. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
 
 ## CI/CD
 
 GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/).
 
-- [python-controller.yml](.github/workflows/python-controller.yml)
-  - Triggers on pull requests and pushes to `main`
-  - Builds and publishes the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
-  - Runs controller checks in container: lint, format check, type checks, requirements checks, and tests
-- [js-web.yml](.github/workflows/js-web.yml)
-  - Triggers on pull requests and pushes to `main`
-  - Builds and publishes the JavaScript devcontainer image from [.devcontainer/js/Dockerfile](.devcontainer/js/Dockerfile)
-  - Runs web frontend checks in container: lint, format check, and production build
-- [cpp-car.yml](.github/workflows/cpp-car.yml)
-  - Triggers on pull requests and pushes to `main`
-  - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
-  - Runs firmware build for [car/](car/) and build-only checks for each component test app
-- [infrastructure.yml](.github/workflows/infrastructure.yml)
-  - Triggers on pull requests and pushes to `main`
-  - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
-  - Runs the infrastructure checks in container as the `ci-status-infrastructure` check, as described in [Infrastructure](#infrastructure)
-  - Verifies the actions lockfile on the runner in the check's `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
+- [ci.yml](.github/workflows/ci.yml)
+  - The `CI` entry workflow; triggers on pull requests, including drafts, and on pushes to `main`
+  - Calls each area below as a reusable workflow, in a calling job named after the area, so that the area's jobs appear as, for example, `cpp-car / build`
+  - Grants each area only the `GITHUB_TOKEN` permissions its jobs use, and passes `CODECOV_TOKEN` only to the areas that upload to Codecov
+  - Aggregates all areas in the `ci-status` job, which fails when an area fails, is cancelled, or is skipped; the `main` ruleset requires this check
+  - Cancels a pull request's previous run when a new commit is pushed to it, so the outdated commit shows a failed `ci-status`; runs on `main` are never cancelled
+- Areas, each called only by [ci.yml](.github/workflows/ci.yml):
+  - [python-controller.yml](.github/workflows/python-controller.yml)
+    - Builds and publishes the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
+    - Runs controller checks in container: lint, format check, type checks, requirements checks, and tests
+  - [js-web.yml](.github/workflows/js-web.yml)
+    - Builds and publishes the JavaScript devcontainer image from [.devcontainer/js/Dockerfile](.devcontainer/js/Dockerfile)
+    - Runs web frontend checks in container: lint, format check, and production build
+  - [cpp-car.yml](.github/workflows/cpp-car.yml)
+    - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
+    - Runs firmware build for [car/](car/) and build-only checks for each component test app
+  - [infrastructure.yml](.github/workflows/infrastructure.yml)
+    - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
+    - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure)
+    - Verifies the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
+  - [observability.yml](.github/workflows/observability.yml)
+    - Runs the observability checks and the synthetic pipeline tests against the observability stack on the runner
+  - [docker.yml](.github/workflows/docker.yml)
+    - Builds production images for all three components in parallel
+    - Validates the build on pull requests; publishes to GHCR on push to `main`
+    - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
 - [devcontainer-image.yml](.github/workflows/devcontainer-image.yml)
-  - Reusable workflow that the four workflows above call to build and publish their devcontainer image
+  - Reusable workflow that the Python, JavaScript, C++ and infrastructure areas call to build and publish their devcontainer image
   - Takes the Dockerfile path and the image name as input and outputs the pushed image by digest; every container job in the calling workflow runs in that image ([ADR 0004](docs/adr/0004-ci-jobs-pin-devcontainer-image-by-digest.md))
   - Tags each image `sha-<short SHA>` of the commit it is built from, which on a pull request is the test merge commit
   - Reads a layer cache from each package's `buildcache` tag on every run and writes it only on pushes to `main`
-- [docker.yml](.github/workflows/docker.yml)
-  - Triggers on pull requests and pushes to `main`
-  - Builds production images for all three components in parallel
-  - Validates the build on pull requests; publishes to GHCR on push to `main`
-  - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
 - [pr-metadata.yml](.github/workflows/pr-metadata.yml)
-  - Triggers on pull requests, including title edits
+  - Triggers on pull requests, including drafts and title edits; it stays outside the entry workflow, so a title edit reruns only the `ci-status-pr-metadata` check
   - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
 - [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
   - Triggers on pull requests opened by Dependabot
@@ -1142,7 +1152,7 @@ After adding a workflow or editing a `uses:` line, regenerate the lockfile and c
 
 The script installs the extension at the version that CI uses and passes its arguments to `gh actions-lock`. It runs on the host, because it needs an authenticated `gh`. A partial tag, such as `v4`, is narrowed to the full tag on the same commit.
 
-The `actions-lock` job of the `ci-status-infrastructure` check runs the script with `--verify`. It fails when a workflow uses an action that the lockfile does not pin, or when a locked commit cannot be traced to the action's upstream repository. To run the same check locally:
+The `actions-lock` job of the `infrastructure` area runs the script with `--verify`. It fails when a workflow uses an action that the lockfile does not pin, or when a locked commit cannot be traced to the action's upstream repository. To run the same check locally:
 
 ```bash
 ./scripts/lock_github_actions.sh --verify
@@ -1158,12 +1168,12 @@ The verification reports one expected warning: the container image of the CI job
 |---|---|---|
 | `docker` | Base images of the C++ and infrastructure devcontainers and the car production image; an `espressif/idf` bump updates the C++ devcontainer and the car production image in one pull request | `build(deps)` |
 | `npm` | The root [package.json](package.json) | `build(deps)` or `build(deps-dev)` |
-| `pip` | zizmor in the infrastructure devcontainer's [requirements.txt](.devcontainer/infrastructure/requirements.txt) | `build(deps)` |
+| `pip` | yamllint and zizmor in the infrastructure devcontainer's [requirements.txt](.devcontainer/infrastructure/requirements.txt) | `build(deps)` |
 | `github-actions` | Every action in [.github/workflows/](.github/workflows/), one pull request per action | `ci(deps)` |
 
 Every ecosystem has a cooldown of 7 days: Dependabot proposes a release only after it has been public for 7 days, so that a compromised release can be detected first. A pull request that updates an action also regenerates the action's entry in the [actions lockfile](#actions-lockfile).
 
-[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all four ecosystems, for every update type including major versions. The required `ci-status-*` checks of the `main` ruleset gate the merge, so a pull request with a failing check stays open.
+[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all four ecosystems, for every update type including major versions. The `ci-status` and `ci-status-pr-metadata` checks that the `main` ruleset requires gate the merge, so a pull request with a failing check stays open.
 
 ### Production images
 

@@ -11,6 +11,8 @@ echo 'run_shellcheck.sh'
 "$SCRIPTPATH/run_shellcheck.sh"
 echo 'run_shfmt.sh'
 "$SCRIPTPATH/run_shfmt.sh" --diff
+echo 'run_yamllint.sh'
+"$SCRIPTPATH/run_yamllint.sh"
 echo 'run_zizmor.sh'
 "$SCRIPTPATH/run_zizmor.sh"
 

@@ -70,7 +70,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
 - When implementation hits behaviour the spec or ticket does not decide, stop and ask the user; never guess. After the user decides, amend the spec issue and any affected tickets before continuing.
 - Title every pull request as [CONTRIBUTING.md#pull-request-titles](CONTRIBUTING.md#pull-request-titles) describes.
-- Open every pull request as a draft. CI skips draft pull requests and runs when the pull request is marked ready for review.
+- Open every pull request as a draft. CI runs on drafts too.
 - Before running a build/compile command (`idf.py build`/`reconfigure`, `docker compose build`, etc.), check `free -h` for available memory, not just that no other build is already running — background containers idling can hold enough RAM on their own to make the difference. Run one such command at a time; don't queue more until it finishes.
 
 ## Validation by Area
