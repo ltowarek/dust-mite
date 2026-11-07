@@ -97,6 +97,19 @@ _Avoid_: Chunk, frame (on its own)
 A client watching the streamer's Camera stream. Any number can watch at once.
 _Avoid_: Watcher, subscriber
 
+### Testing
+
+**DUT**:
+The real car as the device a test runs against; QEMU emulating the car's ESP32 is not a DUT.
+
+**DUT-gated test**:
+A test that needs the DUT, so it is skipped without one and never runs in CI.
+_Avoid_: DUT test
+
+**DUT run**:
+Checking a change on the DUT: running every DUT-gated test and any check its PR asks for.
+_Avoid_: Car check, car test, hardware test, HIL test
+
 ### Agent workflow
 
 **AFK agent session**:
