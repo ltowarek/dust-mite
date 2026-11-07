@@ -56,6 +56,7 @@ asyncio runs the handler as a normal callback inside the event loop, so `stop.se
 
 - **Before:** no automated test covers the signal wiring.
   **After:** by hand, `streamer` against the car doubles and a recording OTLP server, for both SIGTERM and SIGINT: the client got 1001, the process exited 0 in about 0.17 s, and logs, metrics and traces were posted after the signal.
+- **DUT run:** not needed. The car doubles cover every connection the change closes, and the car firmware is unchanged.
 
 ## Merge Danger
 

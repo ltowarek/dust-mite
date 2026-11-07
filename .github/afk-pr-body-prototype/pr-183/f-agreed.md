@@ -41,31 +41,29 @@ On the dual-core ESP32-S3, `uxTaskGetSystemState()` holds the kernel lock with i
 
 ## Evidence
 
-- **Before:** `main`, two runs: 14.4 / 12.5 Camera frames per second; internal free heap at least 104.9 / 97.1 KB while streaming.
-  **After:** 17.4 / 17.4 Camera frames per second; internal free heap at least 117.5 / 119.4 KB.
-- **CI:** firmware builds with `sdkconfig.defaults`, `.all` and `.profiling`; QEMU tests pass. No QEMU test sees Wi-Fi sends or DMA interrupts.
+### DUT run
 
-## DUT run
+_Car agent session, 2026-10-24: `sdkconfig.defaults` + `.all` + `.profiling`, two runs on `main` and two on this branch._
 
-Steps, from #182's "How to measure":
+| | `main` | This PR | #182 asks |
+|---|---|---|---|
+| Camera frames per second | 14.4 / 12.5 | 17.4 / 17.4 | at least 22: **not met** |
+| Send p95 | | | at most 45 ms: **not measured**, the test needs #104 |
+| Internal free heap, minimum while streaming | 104.9 / 97.1 KB | 117.5 / 119.4 KB | no fall: met |
+| Internal free heap, idle | 121.4 / 121.8 KB | 123.3 / 123.3 KB | |
+| Gap between Camera frames, p95 | 123 / 136 ms | 119 / 120 ms | |
+
+<details>
+<summary>Steps, from #182's "How to measure"</summary>
 
 - [x] Build `car/` with `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.all;sdkconfig.defaults.profiling"` and flash it.
 - [x] Run `observability/tests/e2e/test_camera_stream.py --dut` twice on `main` and twice on this branch.
 
-Criteria, from #182's "Done when":
+</details>
 
-- [ ] `test_viewer_receives_camera_rate`, at least 22 per second: **not met**, 17.4.
-- [ ] `test_car_sends_frames_promptly`, send p95 at most 45 ms: **not measured**. The test needs the MJPEG stream from #104.
-- [x] Internal free heap does not fall: met.
+### CI
 
-_Results from the car agent session, 2026-10-24:_
-
-| | `main` (2 runs) | This PR (2 runs) |
-|---|---|---|
-| Camera frames per second | 14.4 / 12.5 | 17.4 / 17.4 |
-| Gap between Camera frames, p95 | 123 / 136 ms | 119 / 120 ms |
-| Internal free heap, idle | 121.4 / 121.8 KB | 123.3 / 123.3 KB |
-| Internal free heap, minimum while streaming | 104.9 / 97.1 KB | 117.5 / 119.4 KB |
+Firmware builds with `sdkconfig.defaults`, `.all` and `.profiling`; QEMU tests pass. No QEMU test sees Wi-Fi sends or DMA interrupts.
 
 ## Merge Danger
 
