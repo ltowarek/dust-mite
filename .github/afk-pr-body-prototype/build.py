@@ -28,6 +28,7 @@ VARIANTS = {
     "d-calls-first": ("D", "Calls first", "Opens with what the agent decided that the ticket didn't, then what isn't tested; shape and evidence fold away."),
     "e-four-lines": ("E", "Four lines", "Changed, verified, could break, safe to merge. Everything else folds away."),
     "f-agreed": ("F", "Agreed so far", "Vanilla /pr plus the agreed parts: Differences from the ticket below Summary, a Worth understanding section of folded items, the DUT run inside Evidence, and the YAML's Closes line and run link."),
+    "g-minimal": ("G", "Minimal", "Vanilla /pr with the DUT run inside Evidence, unmet criteria stated there, and the YAML's Closes line and run link. Why questions go to a new agent."),
 }
 
 
