@@ -1,6 +1,6 @@
 # Dust Mite
 
-A remote-controlled car whose ESP32 firmware exposes endpoints to a host-side streamer, which relays Camera frames, telemetry and Drive commands to its own clients.
+A remote-controlled car whose ESP32 firmware exposes endpoints to a host-side streamer, which relays Camera frames, telemetry and Drive commands to its own clients. The Agent workflow terms cover the agents that maintain it.
 
 ## Language
 
@@ -96,3 +96,37 @@ _Avoid_: Chunk, frame (on its own)
 **Viewer**:
 A client watching the streamer's Camera stream. Any number can watch at once.
 _Avoid_: Watcher, subscriber
+
+### Agent workflow
+
+**AFK agent session**:
+An agent session that works tickets on its own, with no one answering its questions. It says nothing about whether anyone is near the car.
+_Avoid_: Unattended session, background agent
+
+**AFK loop**:
+The system that repeatedly picks a ticket ready for an agent and starts an AFK run on it.
+_Avoid_: Agent swarm, runner, Ralph loop, factory, orchestrator
+
+**AFK run**:
+One run of the AFK loop: an AFK agent session on one ticket, from the loop picking it until it ends, with or without a draft PR.
+_Avoid_: Job, workflow run, agent run
+
+**Car agent session**:
+An AFK agent session, started at the maintainer's desk with the car connected, that works through every ticket waiting on the car while the maintainer stays by it.
+_Avoid_: Car session, hardware session, bench session
+
+**Interactive agent session**:
+An agent session in which the maintainer and the agent take turns: the agent asks and the maintainer answers.
+_Avoid_: HITL session
+
+**Ticket**:
+One GitHub issue, whatever it asks for.
+_Avoid_: Issue (except in GitHub's own feature names), task, story
+
+**Follow-up ticket**:
+A ticket an agent files on its own, without the maintainer reviewing its text, for a problem outside the ticket it is working.
+_Avoid_: Spin-off, side issue, pre-existing finding
+
+**Agent brief**:
+The triage comment that is the contract an agent works from; the rest of the ticket is context.
+_Avoid_: Prompt, task description
