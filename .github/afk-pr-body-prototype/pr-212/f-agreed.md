@@ -26,12 +26,6 @@ Everything else follows #197 as written.
 +  atexit: Sampler.stop()                      # exports the profile window still open
 ```
 
-Read first:
-
-1. [`streamer.py` L307–328](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/controller/streamer.py#L307-L328): the signal handlers and the Viewer shutdown.
-2. [`test_streamer.py` L622–671](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/tests/integration/test_streamer.py#L622-L671): what "cleanly" means.
-3. [`sampler.py` L76–84](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/otlp_profiler/sampler.py#L76-L84): the last profile export.
-
 ## Worth understanding
 
 <details>

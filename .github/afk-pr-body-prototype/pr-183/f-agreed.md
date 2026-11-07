@@ -23,11 +23,6 @@ Every send of a Camera frame that takes longer than one frame period (40 ms at 2
 +  uxTaskGetSystemState()      # every CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS, default 10 s
 ```
 
-Read first:
-
-1. [`sdkconfig.defaults` L20–29](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/sdkconfig.defaults#L20-L29): five settings, the whole fix for the send.
-2. [`system_metrics.cpp` L54–58](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/components/tracing/system_metrics.cpp#L54-L58): the refresh gate.
-
 ## Worth understanding
 
 <details>
