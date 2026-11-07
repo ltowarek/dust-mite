@@ -1,8 +1,8 @@
 Closes #197.
 
-## Check these against the ticket
+## Not in the ticket
 
-Everything else follows #197 as written.
+Decisions and changes #197 doesn't contain; nothing else departs from it.
 
 1. **A Viewer still starting up when shutdown begins is cancelled after 0.1 s**, as in `aiohttp`'s own graceful-shutdown example. #197 says Viewer responses end, not what happens to one mid-handshake. [`streamer.py` L294](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/controller/streamer.py#L294)
 2. **The profiler's stop doesn't wait for an export already in flight.** Both may run; the aggregator's lock gives each sample to one of them. Waiting instead would hold the exit for up to one export's timeout. [`sampler.py` L76–84](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/otlp_profiler/sampler.py#L76-L84)

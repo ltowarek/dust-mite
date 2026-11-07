@@ -1,13 +1,12 @@
 Closes #182.
 
-## Check these against the ticket
+## Not in the ticket
 
-Everything else follows #182 as written.
+Decisions and changes #182 doesn't contain; nothing else departs from it.
 
-1. **This PR doesn't reach #182's 22 Camera frames per second: it reaches 17.4.** Base64 and cJSON encoding cap the rate until #104 moves Camera frames to MJPEG. On that branch the same changes reach 24.0. Merge this now, or hold it for #104?
-2. **Task stats are read every 10 s instead of every 100 ms,** through a new `CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS`. #182 doesn't mention task stats; the DUT run found Camera frames dropped during each read. Task stats stay off unless `sdkconfig.defaults.all`. [`system_metrics.cpp` L54–58](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/components/tracing/system_metrics.cpp#L54-L58)
-3. **Eight static Wi-Fi TX buffers and the old RX values.** Moving Wi-Fi to PSRAM makes TX buffers static and raises the RX defaults; these counts keep idle internal RAM where it was. [`sdkconfig.defaults` L27–29](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/sdkconfig.defaults#L27-L29)
-4. **A third frame buffer (#182's candidate 3) not tried.** Candidates 1 and 2 were enough to measure the effect.
+1. **Task stats are read every 10 s instead of every 100 ms,** through a new `CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS`. #182 doesn't mention task stats; the DUT run found Camera frames dropped during each read. Task stats stay off unless `sdkconfig.defaults.all`. [`system_metrics.cpp` L54–58](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/components/tracing/system_metrics.cpp#L54-L58)
+2. **Eight static Wi-Fi TX buffers and the old RX values.** Moving Wi-Fi to PSRAM makes TX buffers static and raises the RX defaults; these counts keep idle internal RAM where it was. [`sdkconfig.defaults` L27–29](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/sdkconfig.defaults#L27-L29)
+3. **A third frame buffer (#182's candidate 3) not tried.** Candidates 1 and 2 were enough to measure the effect.
 
 ## Summary
 
