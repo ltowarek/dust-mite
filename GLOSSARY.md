@@ -143,3 +143,7 @@ _Avoid_: Spin-off, side issue, pre-existing finding
 **Agent brief**:
 The triage comment that is the contract an agent works from; the rest of the ticket is context.
 _Avoid_: Prompt, task description
+
+**Spec gap**:
+A question about what a change does (its behaviour, an interface other code uses, its scope or an acceptance criterion) that the ticket's agent brief, its spec and the repo's docs leave open or contradict. How the change does it is the agent's call.
+_Avoid_: Blocker, open question, ambiguity
