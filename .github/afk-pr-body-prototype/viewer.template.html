@@ -153,7 +153,7 @@
   const state = { pr: prIds[0], variant: DATA.variants[0].id };
 
   function readHash() {
-    const m = location.hash.match(/^#pr-(\d+)-([a-e])$/);
+    const m = location.hash.match(/^#pr-(\d+)-([a-f])$/);
     if (!m || !DATA.prs[m[1]]) return;
     const v = DATA.variants.find((x) => x.key.toLowerCase() === m[2]);
     if (v) { state.pr = m[1]; state.variant = v.id; }

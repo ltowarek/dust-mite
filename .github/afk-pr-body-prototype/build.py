@@ -23,10 +23,11 @@ PRS = {
 
 VARIANTS = {
     "a-actual": ("A", "As merged", "The body the real PR carried, for comparison."),
-    "b-pr-skill": ("B", "/pr as released", "Matt's three sections: Summary, Evidence, Merge Danger. Nothing added."),
+    "b-pr-skill": ("B", "Vanilla /pr", "Matt's released template filled as written: Summary, Evidence, Merge Danger. Nothing added."),
     "c-pr-plus": ("C", "/pr + review aids", "Adds Read first, Worth understanding, a DUT run section, the repo's one-way doors and Undo."),
     "d-calls-first": ("D", "Calls first", "Opens with what the agent decided that the ticket didn't, then what isn't tested; shape and evidence fold away."),
     "e-four-lines": ("E", "Four lines", "Changed, verified, could break, safe to merge. Everything else folds away."),
+    "f-agreed": ("F", "Agreed so far", "Vanilla /pr plus the agreed parts: Check these against the ticket, Read first, folded Worth understanding, DUT run, and the YAML's Closes line and run link."),
 }
 
 
