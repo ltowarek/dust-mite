@@ -125,7 +125,7 @@ One run of the AFK loop: an AFK agent session on one ticket, from the loop picki
 _Avoid_: Job, workflow run, agent run
 
 **Car agent session**:
-An AFK agent session, started at the maintainer's desk with the car connected, that works through every ticket waiting on the car while the maintainer stays by it.
+An AFK agent session, started at the maintainer's desk with the car connected, that works through every ticket waiting on the car, for its fix or for a DUT run of its PR, while the maintainer stays by it.
 _Avoid_: Car session, hardware session, bench session
 
 **Interactive agent session**:
