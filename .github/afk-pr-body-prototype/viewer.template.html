@@ -1,0 +1,226 @@
+<title>AFK PR Body Variants</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: a GitHub pull request description, one column, variant switcher pinned to the bottom edge. */
+  :root {
+    --bg: #f6f8fa;
+    --card: #ffffff;
+    --fg: #1f2328;
+    --muted: #59636e;
+    --border: #d1d9e0;
+    --subtle: #f6f8fa;
+    --accent: #0969da;
+    --add-fg: #116329;
+    --add-bg: #dafbe1;
+    --del-fg: #82071e;
+    --del-bg: #ffebe9;
+    --label-bg: #fbca04;
+    --label-fg: #1f2328;
+    --bar-bg: #1f2328;
+    --bar-fg: #f0f6fc;
+    --bar-muted: #9198a1;
+    --bar-active: #f0f6fc;
+    --bar-active-fg: #1f2328;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #010409; --card: #0d1117; --fg: #f0f6fc; --muted: #9198a1; --border: #3d444d;
+      --subtle: #151b23; --accent: #4493f8; --add-fg: #3fb950; --add-bg: rgba(46,160,67,.15);
+      --del-fg: #f85149; --del-bg: rgba(248,81,73,.12); --label-bg: #fbca04; --label-fg: #1f2328;
+      --bar-bg: #f0f6fc; --bar-fg: #1f2328; --bar-muted: #59636e; --bar-active: #1f2328; --bar-active-fg: #f0f6fc;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #010409; --card: #0d1117; --fg: #f0f6fc; --muted: #9198a1; --border: #3d444d;
+    --subtle: #151b23; --accent: #4493f8; --add-fg: #3fb950; --add-bg: rgba(46,160,67,.15);
+    --del-fg: #f85149; --del-bg: rgba(248,81,73,.12); --label-bg: #fbca04; --label-fg: #1f2328;
+    --bar-bg: #f0f6fc; --bar-fg: #1f2328; --bar-muted: #59636e; --bar-active: #1f2328; --bar-active-fg: #f0f6fc;
+    color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+  .page {
+    max-width: 980px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px 160px;
+    display: grid; gap: 16px;
+  }
+  .proto { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+  .proto b { color: var(--fg); }
+  .prs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .prs button {
+    font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card); color: var(--fg);
+  }
+  .prs button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .prs button:focus-visible, .bar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  header.pr h1 { font-size: 26px; font-weight: 400; margin: 0; text-wrap: balance; }
+  header.pr h1 .num { color: var(--muted); }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); margin-top: 6px; }
+  .state { background: #8250df; color: #fff; border-radius: 2em; padding: 2px 10px; font-weight: 500; font-size: 13px; }
+  .label { background: var(--label-bg); color: var(--label-fg); border-radius: 2em; padding: 0 8px; font-size: 12px; font-weight: 500; }
+  .context { color: var(--muted); max-width: 70ch; margin: 0; }
+  .stats { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stats b { color: var(--fg); font-weight: 600; }
+  .comment { border: 1px solid var(--border); border-radius: 6px; background: var(--card); min-width: 0; }
+  .comment-head {
+    background: var(--subtle); border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0;
+    padding: 8px 16px; color: var(--muted); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px;
+  }
+  .comment-head strong { color: var(--fg); }
+
+  /* GitHub's rendered Markdown, restyled with the tokens above. */
+  .md { padding: 16px; overflow-wrap: break-word; min-width: 0; }
+  .md > :first-child { margin-top: 0 !important; }
+  .md > :last-child { margin-bottom: 0 !important; }
+  .md p, .md ul, .md ol, .md table, .md pre, .md details, .md .highlight { margin: 0 0 16px; }
+  .md h2 { font-size: 1.5em; font-weight: 600; margin: 24px 0 16px; padding-bottom: .3em; border-bottom: 1px solid var(--border); line-height: 1.25; }
+  .md h3 { font-size: 1.25em; font-weight: 600; margin: 24px 0 16px; }
+  .md a { color: var(--accent); text-decoration: none; }
+  .md a:hover { text-decoration: underline; }
+  .md ul, .md ol { padding-left: 2em; }
+  .md li + li { margin-top: .25em; }
+  .md code { font-family: var(--font-mono); font-size: 85%; background: var(--subtle); border-radius: 6px; padding: .2em .4em; }
+  .md pre { font-family: var(--font-mono); font-size: 85%; background: var(--subtle); border-radius: 6px; padding: 16px; overflow-x: auto; line-height: 1.45; }
+  .md pre code { background: none; padding: 0; font-size: 100%; }
+  .md .highlight pre { margin: 0; }
+  .md table { border-collapse: collapse; display: block; overflow-x: auto; max-width: 100%; font-variant-numeric: tabular-nums; }
+  .md th, .md td { border: 1px solid var(--border); padding: 6px 13px; }
+  .md th { font-weight: 600; }
+  .md tr:nth-child(2n) { background: var(--subtle); }
+  .md details summary { cursor: pointer; }
+  .md details[open] summary { margin-bottom: 8px; }
+  .md .task-list-item { list-style: none; }
+  .md .contains-task-list { padding-left: 1.2em; }
+  .md .task-list-item-checkbox { margin: 0 .3em .25em -1.4em; vertical-align: middle; }
+  .md .pl-mi1 { color: var(--add-fg); background: var(--add-bg); }
+  .md .pl-md { color: var(--del-fg); background: var(--del-bg); }
+  .md .pl-mdr { color: var(--accent); font-weight: 600; }
+
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    background: var(--bar-bg); color: var(--bar-fg);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .bar-inner { max-width: 980px; margin: 0 auto; display: grid; gap: 6px; }
+  .bar-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bar button {
+    font: inherit; font-size: 13px; cursor: pointer; border-radius: 6px; padding: 5px 10px;
+    border: 1px solid var(--bar-muted); background: transparent; color: var(--bar-fg);
+  }
+  .bar button[aria-pressed="true"] { background: var(--bar-active); color: var(--bar-active-fg); border-color: var(--bar-active); }
+  .bar button kbd { font-family: var(--font-mono); font-weight: 700; margin-right: 4px; }
+  .bar .note { font-size: 12px; color: var(--bar-muted); }
+  @media (prefers-reduced-motion: no-preference) { .md { transition: opacity .12s; } }
+</style>
+
+<div class="page">
+  <div class="proto"><b>Prototype, throwaway.</b> Answers "Prototype the PR body an AFK agent session writes" (#261). Bodies are rendered by GitHub's own Markdown API. Use ← → or the bar to switch.</div>
+  <div class="prs" id="prs" role="group" aria-label="Pull request"></div>
+  <header class="pr">
+    <h1><span id="title"></span> <span class="num" id="num"></span></h1>
+    <div class="meta">
+      <span class="state">Merged</span>
+      <span id="stats"></span>
+      <span id="labels"></span>
+    </div>
+  </header>
+  <p class="context" id="context"></p>
+  <div class="comment">
+    <div class="comment-head">
+      <span><strong id="vname"></strong> · <span id="vnote"></span></span>
+      <span class="stats" id="counts"></span>
+    </div>
+    <div class="md" id="body"></div>
+  </div>
+</div>
+
+<nav class="bar" aria-label="Variant">
+  <div class="bar-inner">
+    <div class="bar-buttons" id="variants"></div>
+    <div class="note">Words shown counts only what is visible before opening any folded section.</div>
+  </div>
+</nav>
+
+<script>
+  const DATA = /*DATA*/null;
+  const prIds = Object.keys(DATA.prs);
+  const state = { pr: prIds[0], variant: DATA.variants[0].id };
+
+  function readHash() {
+    const m = location.hash.match(/^#pr-(\d+)-([a-e])$/);
+    if (!m || !DATA.prs[m[1]]) return;
+    const v = DATA.variants.find((x) => x.key.toLowerCase() === m[2]);
+    if (v) { state.pr = m[1]; state.variant = v.id; }
+  }
+
+  function words(el) {
+    return (el.textContent.trim().match(/\S+/g) || []).length;
+  }
+
+  function counts(body) {
+    const shown = body.cloneNode(true);
+    shown.querySelectorAll("details").forEach((d) => {
+      [...d.childNodes].forEach((n) => { if (n.nodeName !== "SUMMARY") n.remove(); });
+    });
+    return { total: words(body), shown: words(shown), lines: (body.textContent.match(/\n/g) || []).length };
+  }
+
+  function render() {
+    const pr = DATA.prs[state.pr];
+    const v = DATA.variants.find((x) => x.id === state.variant);
+    document.getElementById("title").textContent = pr.title;
+    document.getElementById("num").textContent = "#" + state.pr;
+    document.getElementById("stats").textContent = pr.stats;
+    document.getElementById("labels").innerHTML = pr.labels.map((l) => `<span class="label">${l}</span>`).join(" ");
+    document.getElementById("context").textContent = pr.context;
+    document.getElementById("vname").textContent = `${v.key}. ${v.name}`;
+    document.getElementById("vnote").textContent = v.note;
+    const body = document.getElementById("body");
+    body.innerHTML = DATA.bodies[state.pr][state.variant];
+    body.querySelectorAll("a[href^='https://']").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
+    const c = counts(body);
+    document.getElementById("counts").innerHTML = `<span>Words shown <b>${c.shown}</b></span><span>Total <b>${c.total}</b></span>`;
+    document.querySelectorAll("#prs button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.pr === state.pr));
+    document.querySelectorAll("#variants button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === state.variant));
+    const hash = `#pr-${state.pr}-${v.key.toLowerCase()}`;
+    if (location.hash !== hash) history.replaceState(null, "", hash);
+  }
+
+  const prsEl = document.getElementById("prs");
+  prIds.forEach((id) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.pr = id; b.id = "pr-" + id;
+    b.textContent = `#${id} ${DATA.prs[id].title}`;
+    b.onclick = () => { state.pr = id; render(); };
+    prsEl.append(b);
+  });
+  const varsEl = document.getElementById("variants");
+  DATA.variants.forEach((v) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.v = v.id; b.id = "variant-" + v.key;
+    b.innerHTML = `<kbd>${v.key}</kbd>${v.name}`;
+    b.onclick = () => { state.variant = v.id; render(); };
+    varsEl.append(b);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea")) return;
+    const i = DATA.variants.findIndex((x) => x.id === state.variant);
+    if (e.key === "ArrowRight") state.variant = DATA.variants[(i + 1) % DATA.variants.length].id;
+    else if (e.key === "ArrowLeft") state.variant = DATA.variants[(i - 1 + DATA.variants.length) % DATA.variants.length].id;
+    else {
+      const v = DATA.variants.find((x) => x.key.toLowerCase() === e.key.toLowerCase());
+      if (!v) return;
+      state.variant = v.id;
+    }
+    render();
+  });
+  window.addEventListener("hashchange", () => { readHash(); render(); });
+  readHash();
+  render();
+</script>
