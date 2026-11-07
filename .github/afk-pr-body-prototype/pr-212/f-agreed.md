@@ -1,13 +1,5 @@
 Closes #197.
 
-## Not in the ticket
-
-Decisions and changes #197 doesn't contain; nothing else departs from it.
-
-1. **A Viewer still starting up when shutdown begins is cancelled after 0.1 s**, as in `aiohttp`'s own graceful-shutdown example. #197 says Viewer responses end, not what happens to one mid-handshake. [`streamer.py` L294](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/controller/streamer.py#L294)
-2. **The profiler's stop doesn't wait for an export already in flight.** Both may run; the aggregator's lock gives each sample to one of them. Waiting instead would hold the exit for up to one export's timeout. [`sampler.py` L76–84](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/otlp_profiler/sampler.py#L76-L84)
-3. **A new ground rule in `CONTRIBUTING.md`:** a test's expected values come from outside the code under test. #197 doesn't ask for it; the close-code checks needed it. [`CONTRIBUTING.md` L12](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/CONTRIBUTING.md#L12)
-
 ## Summary
 
 `docker stop` (SIGTERM) and Ctrl-C (SIGINT) now leave the streamer the way the tests already do: by ending its entry point.
@@ -25,6 +17,14 @@ Decisions and changes #197 doesn't contain; nothing else departs from it.
 +    await stop.wait()
 +  atexit: Sampler.stop()                      # exports the profile window still open
 ```
+
+## Differences from the ticket
+
+1. **Decided:** a Viewer still starting up when shutdown begins is cancelled after 0.1 s, as in `aiohttp`'s own graceful-shutdown example. #197 says Viewer responses end, not what happens to one mid-handshake. [`streamer.py` L294](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/controller/streamer.py#L294)
+2. **Decided:** the profiler's stop doesn't wait for an export already in flight. Both may run; the aggregator's lock gives each sample to one of them. Waiting instead would hold the exit for up to one export's timeout. [`sampler.py` L76–84](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/otlp_profiler/sampler.py#L76-L84)
+3. **Not asked for:** a new ground rule in `CONTRIBUTING.md`, that a test's expected values come from outside the code under test. The close-code checks needed it. [`CONTRIBUTING.md` L12](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/CONTRIBUTING.md#L12)
+
+Everything else is as #197 asks.
 
 ## Worth understanding
 

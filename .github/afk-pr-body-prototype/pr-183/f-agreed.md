@@ -1,13 +1,5 @@
 Closes #182.
 
-## Not in the ticket
-
-Decisions and changes #182 doesn't contain; nothing else departs from it.
-
-1. **Task stats are read every 10 s instead of every 100 ms,** through a new `CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS`. #182 doesn't mention task stats; the DUT run found Camera frames dropped during each read. Task stats stay off unless `sdkconfig.defaults.all`. [`system_metrics.cpp` L54–58](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/components/tracing/system_metrics.cpp#L54-L58)
-2. **Eight static Wi-Fi TX buffers and the old RX values.** Moving Wi-Fi to PSRAM makes TX buffers static and raises the RX defaults; these counts keep idle internal RAM where it was. [`sdkconfig.defaults` L27–29](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/sdkconfig.defaults#L27-L29)
-3. **A third frame buffer (#182's candidate 3) not tried.** Candidates 1 and 2 were enough to measure the effect.
-
 ## Summary
 
 Every send of a Camera frame that takes longer than one frame period (40 ms at 25 per second) costs the next Camera frame. Two things made sends that long.
@@ -21,6 +13,15 @@ Every send of a Camera frame that takes longer than one frame period (40 ms at 2
 -  uxTaskGetSystemState()      # every 100 ms; masks interrupts, so the camera misses DMA
 +  uxTaskGetSystemState()      # every CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS, default 10 s
 ```
+
+## Differences from the ticket
+
+1. **Not met:** #182's 22 Camera frames per second; this PR reaches 17.4. Base64 and cJSON encoding cap the rate until #104 moves Camera frames to MJPEG; on that branch the same changes reach 24.0. Merge this now, or hold it for #104? See the DUT run under Evidence.
+2. **Not asked for:** task stats are read every 10 s instead of every 100 ms, through a new `CONFIG_SYSTEM_METRICS_TASK_STATS_REFRESH_MS`. The DUT run found Camera frames dropped during each read. Task stats stay off unless `sdkconfig.defaults.all`. [`system_metrics.cpp` L54–58](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/components/tracing/system_metrics.cpp#L54-L58)
+3. **Decided:** eight static Wi-Fi TX buffers and the old RX values. Moving Wi-Fi to PSRAM makes TX buffers static and raises the RX defaults; these counts keep idle internal RAM where it was. [`sdkconfig.defaults` L27–29](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/sdkconfig.defaults#L27-L29)
+4. **Left out:** #182's candidate 3, a third frame buffer. Candidates 1 and 2 were enough to measure the effect.
+
+Everything else is as #182 asks.
 
 ## Worth understanding
 
