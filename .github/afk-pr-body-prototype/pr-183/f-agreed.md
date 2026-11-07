@@ -28,15 +28,17 @@ Read first:
 1. [`sdkconfig.defaults` L20–29](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/sdkconfig.defaults#L20-L29): five settings, the whole fix for the send.
 2. [`system_metrics.cpp` L54–58](https://github.com/ltowarek/dust-mite/blob/010a21ff04b24a3be5673f4b1b49c4b6db0a035a/car/components/tracing/system_metrics.cpp#L54-L58): the refresh gate.
 
+## Worth understanding
+
 <details>
-<summary>Worth understanding: why a bigger TCP send buffer raises the frame rate</summary>
+<summary>Why a bigger TCP send buffer raises the frame rate</summary>
 
 The send call returns only once lwIP has accepted every byte. With 5760 bytes of buffer, a 20 KB Camera frame waits for three or four rounds of ACKs over Wi-Fi. Meanwhile the stream task can't take the next Camera frame, and with two frame buffers the camera has nowhere to put one, so it drops it. With 32 KB the whole Camera frame is copied in and the call returns; the ACKs arrive while the camera fills the next buffer.
 
 </details>
 
 <details>
-<summary>Worth understanding: why reading task stats drops Camera frames</summary>
+<summary>Why reading task stats drops Camera frames</summary>
 
 On the dual-core ESP32-S3, `uxTaskGetSystemState()` holds the kernel lock with interrupts masked while it walks every task's stack. The camera's DMA interrupt waits for it, and the frame being captured is lost.
 

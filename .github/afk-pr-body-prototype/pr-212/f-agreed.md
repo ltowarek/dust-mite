@@ -32,15 +32,17 @@ Read first:
 2. [`test_streamer.py` L622–671](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/tests/integration/test_streamer.py#L622-L671): what "cleanly" means.
 3. [`sampler.py` L76–84](https://github.com/ltowarek/dust-mite/blob/db5ff8436f945e06734a12751079fb93657c2edc/controller/src/otlp_profiler/sampler.py#L76-L84): the last profile export.
 
+## Worth understanding
+
 <details>
-<summary>Worth understanding: why one word in <code>run_streamer.sh</code> decides whether SIGTERM arrives</summary>
+<summary>Why one word in <code>run_streamer.sh</code> decides whether SIGTERM arrives</summary>
 
 `docker stop` signals PID 1 of the container. Without `exec`, PID 1 is the shell running the script, and the shell doesn't pass SIGTERM on to its child, so Docker sends SIGKILL after 10 s. `exec` replaces the shell with the streamer, which then is PID 1 and gets the signal itself.
 
 </details>
 
 <details>
-<summary>Worth understanding: why <code>loop.add_signal_handler</code>, not <code>signal.signal</code></summary>
+<summary>Why <code>loop.add_signal_handler</code>, not <code>signal.signal</code></summary>
 
 asyncio runs the handler as a normal callback inside the event loop, so `stop.set()` is safe there. A `signal.signal` handler interrupts whatever Python code is running, which may be halfway through the event loop's own bookkeeping.
 
