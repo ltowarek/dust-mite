@@ -19,8 +19,8 @@ ENV PATH="/opt/qemu-builder-venv/bin:$PATH"
 RUN pip install --disable-pip-version-check --no-cache-dir meson==1.7.0 tomli==2.2.1
 
 ARG ESPRESSIF_QEMU_COMMIT=ca3bac91db4d4dfc4eb179c39b2eb4908cabb8ec
-RUN git init -q /tmp/espressif-qemu \
-    && cd /tmp/espressif-qemu \
+WORKDIR /tmp/espressif-qemu
+RUN git init -q \
     && git fetch -q --depth 1 https://github.com/ltowarek/espressif-qemu.git \
            "$ESPRESSIF_QEMU_COMMIT" \
     && git checkout -q FETCH_HEAD \
@@ -30,9 +30,8 @@ RUN git init -q /tmp/espressif-qemu \
                    --enable-gcrypt \
                    --enable-pixman \
                    --enable-slirp \
-    && make -j$(nproc) \
-    && make install \
-    && rm -rf /tmp/espressif-qemu
+    && make -j"$(nproc)" \
+    && make install
 
 
 # ESP-IDF releases containing release/v6.0 merge 1f8d24ceeb7 or release/v6.1
@@ -54,7 +53,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     libpixman-1-0 \
     libslirp0 \
     locales \
-    unzip
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Ubuntu's protobuf-compiler (libprotoc 3.21.12) cannot generate code for the
 # vendored protobuf runtime pinned in car/components/esp-opentelemetry-cpp:
@@ -76,11 +76,12 @@ ENV QEMU_PROG_PATH=/opt/espressif-qemu/bin/qemu-system-xtensa
 # clang-tidy has no Xtensa backend, and a separate apt clang-format would drift
 # in version from this one (car/scripts use esp-clang's clang-format/clang-tidy
 # everywhere via export.sh, not whatever's on the system PATH).
-RUN python3 $IDF_PATH/tools/idf_tools.py --quiet --idf-path $IDF_PATH install esp-clang
+RUN python3 "$IDF_PATH/tools/idf_tools.py" --quiet --idf-path "$IDF_PATH" install esp-clang
 
 # WA for VSCode issue https://github.com/microsoft/vscode/issues/189924
 RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && locale-gen
 
+# hadolint ignore=DL3064 # USERNAME follows VS Code's documented devcontainer convention
 ARG USERNAME=vscode
 ARG USER_UID=1050
 ARG USER_GID=$USER_UID
@@ -104,5 +105,5 @@ RUN mkdir -p /home/$USERNAME/build && \
 
 USER $USERNAME
 
-RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread
-RUN echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> $HOME/.bashrc
+RUN git config --global --add safe.directory /opt/esp/idf/components/openthread/openthread \
+    && echo "source $IDF_PATH/export.sh > /dev/null 2>&1" >> "$HOME/.bashrc"
