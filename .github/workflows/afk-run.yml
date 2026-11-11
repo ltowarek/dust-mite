@@ -53,6 +53,7 @@ jobs:
           plugins: mattpocock-skills@claude-plugins-official
           prompt: |
             /mattpocock-skills:implement ${{ github.server_url }}/${{ github.repository }}/issues/${{ inputs.ticket }}
+            Every step `implement` names is mandatory in an AFK agent session; never skip one because the change is small.
 
             This is an AFK agent session: no one will answer questions. Follow CLAUDE.md, including running every check inside the devcontainer it names; Docker is available.
             Commit to the current branch. Do not push, open or edit pull requests, comment, or change labels.
