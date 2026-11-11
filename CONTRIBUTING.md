@@ -1137,6 +1137,11 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
 - [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
   - Triggers on pull requests opened by Dependabot
   - Enables auto-merge as described in [Dependency updates](#dependency-updates)
+- [afk-run.yml](.github/workflows/afk-run.yml)
+  - Trial of one AFK run, started by hand with `gh workflow run afk-run.yml -f ticket=<number>`
+  - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, then pushes the branch and opens a draft pull request with the Claude app token, so that CI runs on it
+  - Opens no pull request when the agent reports a spec gap; the run summary lists the gaps instead
+  - Uploads the agent's transcript as the `afk-run-transcript` artifact
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
 
