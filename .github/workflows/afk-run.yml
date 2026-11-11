@@ -1,0 +1,92 @@
+name: AFK run
+
+# Trial for one ticket at a time; started by hand until the AFK loop's trigger is decided.
+on:
+  workflow_dispatch:
+    inputs:
+      ticket:
+        description: Number of the ticket to implement
+        required: true
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: afk-run
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: write
+      id-token: write  # Exchanged for the Claude app token, whose pushes start CI
+      actions: read
+
+    env:
+      TICKET: ${{ inputs.ticket }}
+      BRANCH: afk/issue-${{ inputs.ticket }}-${{ github.run_id }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create the branch
+        run: git switch -c "$BRANCH"
+
+      - name: Write .env
+        run: ./scripts/dump_env.sh
+
+      - name: Run the AFK agent session
+        id: agent
+        uses: anthropics/claude-code-action@v1.0.266
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugins: mattpocock-skills@claude-plugins-official
+          prompt: |
+            /mattpocock-skills:implement ${{ github.server_url }}/${{ github.repository }}/issues/${{ inputs.ticket }}
+
+            This is an AFK agent session: no one will answer questions. Follow CLAUDE.md, including running every check inside the devcontainer it names; Docker is available.
+            Commit to the current branch. Do not push, open or edit pull requests, comment, or change labels.
+            If the ticket leaves open what the change does, make no commits, set outcome to spec_gap, and list every open question in spec_gaps.
+            Otherwise set outcome to done, write a Conventional Commits PR title in pr_title, and write the PR body with the pr skill in pr_body.
+          claude_args: >-
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
+            --json-schema '{"type":"object","properties":{"outcome":{"enum":["done","spec_gap"]},"pr_title":{"type":"string"},"pr_body":{"type":"string"},"spec_gaps":{"type":"string"}},"required":["outcome"]}'
+
+      - name: Push the branch
+        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
+        env:
+          GH_TOKEN: ${{ steps.agent.outputs.github_token }}
+        run: git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
+
+      - name: Open the draft PR
+        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
+        env:
+          GH_TOKEN: ${{ steps.agent.outputs.github_token }}
+          PR_TITLE: ${{ fromJSON(steps.agent.outputs.structured_output).pr_title }}
+          PR_BODY: ${{ fromJSON(steps.agent.outputs.structured_output).pr_body }}
+        run: |
+          printf 'Closes #%s\n\n%s\n\n[AFK run](%s)\n' "$TICKET" "$PR_BODY" "$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
+          gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
+
+      - name: Report spec gaps
+        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'spec_gap'
+        env:
+          SPEC_GAPS: ${{ fromJSON(steps.agent.outputs.structured_output).spec_gaps }}
+        run: printf '## Spec gaps\n\n%s\n' "$SPEC_GAPS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the transcript
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: afk-run-transcript
+          path: ${{ steps.agent.outputs.execution_file }}
