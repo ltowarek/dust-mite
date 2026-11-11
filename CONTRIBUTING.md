@@ -240,7 +240,7 @@ rather than introducing a separate structured logging vocabulary. `configure_log
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
 `logging.getLogger(...)` call site is bridged with no change to call sites or log levels. Both
-`controller.py` (gamepad CLI) and `streamer.py` (always-on service) set it up, with every other
+`controller.py` (the Terminal app) and `streamer.py` (always-on service) set it up, with every other
 signal, through `configure_observability`. Log records share the resource tracing uses, and route
 through the same collector as traces, at `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else
 `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs` (not the metrics bypass-to-Mimir pattern). No
@@ -364,7 +364,7 @@ Open Grafana at `http://localhost:3000` → **Explore** → select the **Loki** 
 
 - `{service_name="dust-mite-car"}` — firmware logs only
 - `{service_name="dust-mite-streamer"}` — streamer logs only
-- `{service_name="dust-mite-controller"}` — gamepad CLI logs only
+- `{service_name="dust-mite-controller"}` — Terminal app logs only
 - `{service_name="dust-mite-web"}` — browser logs only
 
 In a Tempo trace view, a span carries a **Logs for this span** link that jumps straight to the matching Loki lines by `trace_id`.

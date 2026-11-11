@@ -66,7 +66,21 @@ _Avoid_: Telemetry packet, telemetry sample
 **Collision-monitor message**:
 The WebSocket message that tells a client whether the collision monitor is blocking forward motion.
 
+### Apps
+
+**Terminal app**:
+The app a person runs in a terminal to reach the car through the streamer.
+_Avoid_: Controller, controller CLI, gamepad CLI
+
+**Web app**:
+The app a person runs in a browser to reach the car through the streamer.
+_Avoid_: Frontend, web client, web controller
+
 ### Driver input
+
+**Input device**:
+A device a Driver produces Input readings with: the keyboard or a gamepad.
+_Avoid_: Input backend, controller (for the device)
 
 **Input reading**:
 The Drive command the Driver's input asks for at one moment; a brake when no control is held.
