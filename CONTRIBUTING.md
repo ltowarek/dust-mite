@@ -65,6 +65,12 @@ This installs a Git pre-commit hook that can run project checks.
 
 The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRIPT` configured in each devcontainer.
 
+[.claude/settings.json](.claude/settings.json) enables Matt Pocock's skills plugin for Claude Code, but enabling a plugin does not download it. Install it once per clone:
+
+```bash
+claude plugin install mattpocock-skills@claude-plugins-official --scope project
+```
+
 ## Development environment
 
 This project is designed to be developed in VS Code Dev Containers.
