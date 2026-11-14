@@ -6,6 +6,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     libhidapi-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# hadolint ignore=DL3064 # USERNAME mirrors the devcontainers' VS Code convention
 ARG USERNAME=dustmite
 ARG USER_UID=1040
 ARG USER_GID=$USER_UID

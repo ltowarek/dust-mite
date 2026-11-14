@@ -1,6 +1,6 @@
 # Dust Mite
 
-A remote-controlled car whose ESP32 firmware exposes endpoints to a host-side streamer, which relays Camera frames, telemetry and Drive commands to its own clients.
+A remote-controlled car whose ESP32 firmware exposes endpoints to a host-side streamer, which relays Camera frames, telemetry and Drive commands to its own clients. The Agent workflow terms cover the agents that maintain it.
 
 ## Language
 
@@ -66,7 +66,21 @@ _Avoid_: Telemetry packet, telemetry sample
 **Collision-monitor message**:
 The WebSocket message that tells a client whether the collision monitor is blocking forward motion.
 
+### Apps
+
+**Terminal app**:
+The app a person runs in a terminal to reach the car through the streamer.
+_Avoid_: Controller, controller CLI, gamepad CLI
+
+**Web app**:
+The app a person runs in a browser to reach the car through the streamer.
+_Avoid_: Frontend, web client, web controller
+
 ### Driver input
+
+**Input device**:
+A device a Driver produces Input readings with: the keyboard or a gamepad.
+_Avoid_: Input backend, controller (for the device)
 
 **Input reading**:
 The Drive command the Driver's input asks for at one moment; a brake when no control is held.
@@ -96,3 +110,54 @@ _Avoid_: Chunk, frame (on its own)
 **Viewer**:
 A client watching the streamer's Camera stream. Any number can watch at once.
 _Avoid_: Watcher, subscriber
+
+### Testing
+
+**DUT**:
+The real car as the device a test runs against; QEMU emulating the car's ESP32 is not a DUT.
+
+**DUT-gated test**:
+A test that needs the DUT, so it is skipped without one and never runs in CI.
+_Avoid_: DUT test
+
+**DUT run**:
+Checking a change on the DUT: running every DUT-gated test and any check its PR asks for.
+_Avoid_: Car check, car test, hardware test, HIL test
+
+### Agent workflow
+
+**AFK agent session**:
+An agent session that works tickets on its own, with no one answering its questions. It says nothing about whether anyone is near the car.
+_Avoid_: Unattended session, background agent
+
+**AFK loop**:
+The system that starts an AFK run on each ticket or PR the maintainer labels for one, and chains a spec's sub-issues and waiting tickets as their blockers close.
+_Avoid_: Agent swarm, runner, Ralph loop, factory, orchestrator
+
+**AFK run**:
+One run of the AFK loop: an AFK agent session on one ticket, or on the PR that closes one, from its start until it ends, with or without a push.
+_Avoid_: Job, workflow run, agent run, PR run
+
+**Car agent session**:
+An AFK agent session, started at the maintainer's desk with the car connected, that works through every ticket waiting on the car, for its fix or for a DUT run of its PR, while the maintainer stays by it.
+_Avoid_: Car session, hardware session, bench session
+
+**Interactive agent session**:
+An agent session in which the maintainer and the agent take turns: the agent asks and the maintainer answers.
+_Avoid_: HITL session
+
+**Ticket**:
+One GitHub issue, whatever it asks for.
+_Avoid_: Issue (except in GitHub's own feature names), task, story
+
+**Follow-up ticket**:
+A ticket an agent files on its own, without the maintainer reviewing its text, for a problem outside the ticket it is working.
+_Avoid_: Spin-off, side issue, pre-existing finding
+
+**Agent brief**:
+The triage comment that is the contract an agent works from; the rest of the ticket is context.
+_Avoid_: Prompt, task description
+
+**Spec gap**:
+A question about what a change does (its behaviour, an interface other code uses, its scope or an acceptance criterion) that the ticket's agent brief, its spec and the repo's docs leave open or contradict. How the change does it is the agent's call.
+_Avoid_: Blocker, open question, ambiguity

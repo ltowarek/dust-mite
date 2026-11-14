@@ -15,6 +15,8 @@ echo 'run_yamllint.sh'
 "$SCRIPTPATH/run_yamllint.sh"
 echo 'run_zizmor.sh'
 "$SCRIPTPATH/run_zizmor.sh"
+echo 'run_hadolint.sh'
+"$SCRIPTPATH/run_hadolint.sh"
 
 trap - ERR
 

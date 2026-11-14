@@ -10,7 +10,7 @@ This repository is an experimental platform, and contributions that improve tech
 - Preserve existing style and tooling unless a change explicitly updates them.
 - Follow classical TDD: prefer real collaborators in tests. Where a real collaborator is impractical, use a hand-written stub, spy, or fake as described in [Test doubles](#test-doubles). Never use mocks or monkeypatching.
 - Take a test's expected values from outside the code under test: a literal, or a named constant from a library or a standard. Never import an expected value from the code under test.
-- Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`, `# shellcheck …`, `# zizmor: ignore[…]`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step).
+- Fix every linter, formatter, and type-checker finding in the code instead of silencing it. Do not add inline suppressions (`# noqa`, `# type: ignore`, `// oxlint-disable…`, `// NOLINT`, `# shellcheck …`, `# zizmor: ignore[…]`, `# hadolint ignore=…`), new per-file or global ignores in tool configuration, or skip checks (`git commit --no-verify`, disabling or skipping a CI step). The only rule ignored for the whole repository in tool configuration is hadolint's DL3008, which asks for pinned apt package versions; [ADR 0006](docs/adr/0006-leave-apt-package-versions-unpinned.md) explains why.
 - A suppression is acceptable only when the finding cannot be fixed because the code must match an interface outside the repository, such as a C extension's signature or a server that must bind to all interfaces. In that case, suppress the single rule on the single line and state the reason after it, for example `# noqa: S104 - the streamer must accept connections from all interfaces`, and list the suppression in the pull request description. actionlint has no inline form, so its suppression is a per-file `ignore:` pattern in [.github/actionlint.yaml](.github/actionlint.yaml) that matches only the one error, with the reason in a comment above it.
 - Open or reference a GitHub Issue for bugs, tasks, and larger proposals.
 
@@ -64,6 +64,12 @@ From repository root:
 This installs a Git pre-commit hook that can run project checks.
 
 The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRIPT` configured in each devcontainer.
+
+[.claude/settings.json](.claude/settings.json) enables Matt Pocock's skills plugin for Claude Code, but enabling a plugin does not download it. Install it once per clone:
+
+```bash
+claude plugin install mattpocock-skills@claude-plugins-official --scope project
+```
 
 ## Development environment
 
@@ -240,7 +246,7 @@ rather than introducing a separate structured logging vocabulary. `configure_log
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
 `logging.getLogger(...)` call site is bridged with no change to call sites or log levels. Both
-`controller.py` (gamepad CLI) and `streamer.py` (always-on service) set it up, with every other
+`controller.py` (the Terminal app) and `streamer.py` (always-on service) set it up, with every other
 signal, through `configure_observability`. Log records share the resource tracing uses, and route
 through the same collector as traces, at `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else
 `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs` (not the metrics bypass-to-Mimir pattern). No
@@ -364,7 +370,7 @@ Open Grafana at `http://localhost:3000` → **Explore** → select the **Loki** 
 
 - `{service_name="dust-mite-car"}` — firmware logs only
 - `{service_name="dust-mite-streamer"}` — streamer logs only
-- `{service_name="dust-mite-controller"}` — gamepad CLI logs only
+- `{service_name="dust-mite-controller"}` — Terminal app logs only
 - `{service_name="dust-mite-web"}` — browser logs only
 
 In a Tempo trace view, a span carries a **Logs for this span** link that jumps straight to the matching Loki lines by `trace_id`.
@@ -1070,7 +1076,7 @@ When adding new documentation images:
 
 ## Infrastructure
 
-The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise. [zizmor](https://docs.zizmor.sh/) audits the workflows for security issues, such as template injection, persisted credentials, and excessive permissions. Its configuration in [.github/zizmor.yml](.github/zizmor.yml) accepts the full version tags in `uses:` lines, because the [actions lockfile](#actions-lockfile) pins their commits ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)). The check also verifies that lockfile. [yamllint](https://yamllint.readthedocs.io/) checks the style and validity of every tracked YAML file, as listed by `git ls-files '*.yml' '*.yaml'`, so it leaves out submodules and extensionless YAML such as `car/.clang-format`. It runs with `--strict`, so a warning fails the check as an error does.
+The infrastructure check lints the GitHub Actions workflows in [.github/workflows/](.github/workflows/) with [actionlint](https://github.com/rhysd/actionlint). actionlint also runs [ShellCheck](https://www.shellcheck.net/) on the shell in every `run:` block. ShellCheck also checks every tracked shell script, as listed by `git ls-files '*.sh'`, at its default severity. [shfmt](https://github.com/mvdan/sh) checks the formatting of the same scripts, with the 4-space indentation set in the root [.editorconfig](.editorconfig) and shfmt's defaults otherwise. [zizmor](https://docs.zizmor.sh/) audits the workflows for security issues, such as template injection, persisted credentials, and excessive permissions. Its configuration in [.github/zizmor.yml](.github/zizmor.yml) accepts the full version tags in `uses:` lines, because the [actions lockfile](#actions-lockfile) pins their commits ([ADR 0005](docs/adr/0005-lock-workflow-actions-in-a-lockfile.md)). The check also verifies that lockfile. [yamllint](https://yamllint.readthedocs.io/) checks the style and validity of every tracked YAML file, as listed by `git ls-files '*.yml' '*.yaml'`, so it leaves out submodules and extensionless YAML such as `car/.clang-format`. It runs with `--strict`, so a warning fails the check as an error does. [hadolint](https://github.com/hadolint/hadolint) lints every tracked file named `Dockerfile`, as listed by `git ls-files`, so it leaves out submodules, and runs ShellCheck on the shell in every `RUN` instruction. Every finding fails the check, info level included. Its configuration in [.hadolint.yaml](.hadolint.yaml) ignores only DL3008, which asks for pinned apt package versions ([ADR 0006](docs/adr/0006-leave-apt-package-versions-unpinned.md)). hadolint's inline suppression is a comment on the line above the instruction, with the reason after a second `#`, for example `# hadolint ignore=DL3064 # USERNAME follows VS Code's documented devcontainer convention`.
 
 The root [.yamllint.yaml](.yamllint.yaml) extends yamllint's `default` configuration with three changes:
 
@@ -1092,9 +1098,9 @@ The script runs every infrastructure check except the lockfile verification, whi
 
 Locally, zizmor runs offline by default and skips its online audits, such as known-vulnerable actions and impostor commits. To run them, pass a GitHub token to the devcontainer command, for example `docker exec -e GH_TOKEN="$(gh auth token)" -w /workspaces/dust-mite <container> ./scripts/run_infrastructure_checks.sh`.
 
-The `infrastructure` area of the [CI entry workflow](#cicd), defined in [infrastructure.yml](.github/workflows/infrastructure.yml), runs the same scripts in the same devcontainer image, and annotates each actionlint, yamllint, and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck job shows its findings in its log, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
+The `infrastructure` area of the [CI entry workflow](#cicd), defined in [infrastructure.yml](.github/workflows/infrastructure.yml), runs the same scripts in the same devcontainer image, and annotates each actionlint, yamllint, and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck and hadolint jobs show their findings in their logs, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
 
-The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, and `SHFMT_VERSION`. Dependabot does not update them. yamllint and zizmor are installed from PyPI and pinned in [.devcontainer/infrastructure/requirements.txt](.devcontainer/infrastructure/requirements.txt), which Dependabot updates. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
+The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, `SHFMT_VERSION`, and `HADOLINT_VERSION`. Dependabot does not update them. yamllint and zizmor are installed from PyPI and pinned in [.devcontainer/infrastructure/requirements.txt](.devcontainer/infrastructure/requirements.txt), which Dependabot updates. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
 
 ## CI/CD
 
@@ -1136,9 +1142,21 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
 - [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
   - Triggers on pull requests opened by Dependabot
-  - Enables auto-merge as described in [Dependency updates](#dependency-updates)
+  - Enables auto-merge and approves the pull request as described in [Dependency updates](#dependency-updates)
+  - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
+- [afk-run.yml](.github/workflows/afk-run.yml)
+  - Trial of one AFK run, started by hand with `gh workflow run afk-run.yml -f ticket=<number>`
+  - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, then pushes the branch and opens a draft pull request with the Claude app token, so that CI runs on it
+  - Opens no pull request when the agent reports a spec gap; the run summary lists the gaps instead
+  - Uploads the agent's transcript as the `afk-run-transcript` artifact
+- [claude.yml](.github/workflows/claude.yml)
+  - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
+
+### AFK GitHub App
+
+AFK agent sessions act as one GitHub App, installed only on dust-mite. The App has Contents, Pull requests and Issues write, Actions and Metadata read, and no Workflows permission. To create the App, run [scripts/setup_afk_github_app.sh](scripts/setup_afk_github_app.sh) on the host, where `gh` is authenticated. The wizard stores the App's slug, Client ID and bot id in the `AFK_APP_SLUG`, `AFK_APP_CLIENT_ID` and `AFK_APP_BOT_ID` Actions variables, and its private key in the `AFK_APP_PRIVATE_KEY` Actions secret.
 
 ### Actions lockfile
 
@@ -1173,7 +1191,7 @@ The verification reports one expected warning: the container image of the CI job
 
 Every ecosystem has a cooldown of 7 days: Dependabot proposes a release only after it has been public for 7 days, so that a compromised release can be detected first. A pull request that updates an action also regenerates the action's entry in the [actions lockfile](#actions-lockfile).
 
-[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all four ecosystems, for every update type including major versions. The `ci-status` and `ci-status-pr-metadata` checks that the `main` ruleset requires gate the merge, so a pull request with a failing check stays open.
+[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all four ecosystems, for every update type including major versions, and approves them as `github-actions[bot]`. Both steps run only when `dependabot/fetch-metadata` reports one of the four ecosystems. The `main` ruleset requires one approval of the most recent push, which the bot's approval satisfies, and the `ci-status` and `ci-status-pr-metadata` checks gate the merge, so a pull request with a failing check stays open. The approval requires the repository setting "Allow GitHub Actions to create and approve pull requests".
 
 ### Production images
 
