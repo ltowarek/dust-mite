@@ -23,3 +23,11 @@ jobs:
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The main ruleset requires an approval of the most recent push.
+      - name: Approve
+        if: contains(fromJSON('["docker", "github_actions", "npm_and_yarn", "pip"]'), steps.metadata.outputs.package-ecosystem)
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
