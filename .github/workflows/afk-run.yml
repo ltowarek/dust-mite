@@ -23,7 +23,7 @@ jobs:
     permissions:
       contents: write
       issues: read
-      pull-requests: write
+      pull-requests: read
       id-token: write  # Exchanged for the Claude app token, whose pushes start CI
       actions: read
 

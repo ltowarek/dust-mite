@@ -1142,12 +1142,15 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
 - [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml)
   - Triggers on pull requests opened by Dependabot
-  - Enables auto-merge as described in [Dependency updates](#dependency-updates)
+  - Enables auto-merge and approves the pull request as described in [Dependency updates](#dependency-updates)
+  - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-run.yml](.github/workflows/afk-run.yml)
   - Trial of one AFK run, started by hand with `gh workflow run afk-run.yml -f ticket=<number>`
   - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, then pushes the branch and opens a draft pull request with the Claude app token, so that CI runs on it
   - Opens no pull request when the agent reports a spec gap; the run summary lists the gaps instead
   - Uploads the agent's transcript as the `afk-run-transcript` artifact
+- [claude.yml](.github/workflows/claude.yml)
+  - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
 
@@ -1188,7 +1191,7 @@ The verification reports one expected warning: the container image of the CI job
 
 Every ecosystem has a cooldown of 7 days: Dependabot proposes a release only after it has been public for 7 days, so that a compromised release can be detected first. A pull request that updates an action also regenerates the action's entry in the [actions lockfile](#actions-lockfile).
 
-[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all four ecosystems, for every update type including major versions. The `ci-status` and `ci-status-pr-metadata` checks that the `main` ruleset requires gate the merge, so a pull request with a failing check stays open.
+[dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml) enables auto-merge on Dependabot pull requests of all four ecosystems, for every update type including major versions, and approves them as `github-actions[bot]`. Both steps run only when `dependabot/fetch-metadata` reports one of the four ecosystems. The `main` ruleset requires one approval of the most recent push, which the bot's approval satisfies, and the `ci-status` and `ci-status-pr-metadata` checks gate the merge, so a pull request with a failing check stays open. The approval requires the repository setting "Allow GitHub Actions to create and approve pull requests".
 
 ### Production images
 
