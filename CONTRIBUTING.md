@@ -1146,7 +1146,9 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-run.yml](.github/workflows/afk-run.yml)
   - Trial of one AFK run, started by hand with `gh workflow run afk-run.yml -f ticket=<number>`
-  - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, then pushes the branch and opens a draft pull request with the Claude app token, so that CI runs on it
+  - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, which holds a read-only token of the [AFK GitHub App](#afk-github-app) and makes its commits as the App's bot
+  - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch and opens a draft pull request as the App's bot, so that CI runs on it
+  - Grants its own `GITHUB_TOKEN` only `contents: read`
   - Opens no pull request when the agent reports a spec gap; the run summary lists the gaps instead
   - Uploads the agent's transcript as the `afk-run-transcript` artifact
 - [claude.yml](.github/workflows/claude.yml)
