@@ -1157,7 +1157,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Starts an AFK run when the maintainer adds the `agent:implement` label to a ticket or to a spec
   - Expects the `agent:implement`, `agent:blocked`, `agent:queued` and `source:follow-up` labels to exist in the repository
   - Queues every AFK run in one concurrency group with `queue: max`, so that runs go one at a time in label order and no labelled ticket is cancelled
-  - Refuses, with a comment, a child ticket, which it also labels `agent:blocked`, a ticket that an open pull request already closes, and a spec whose child tickets are all closed
+  - Refuses, with a comment, a child ticket, which it also labels `agent:blocked`, a ticket or spec that has an open blocking ticket, pointing to `agent:queued`, a ticket that an open pull request already closes, and a spec whose child tickets are all closed
   - Implements a spec one child ticket per run, as an AFK spec implementation:
     - Each run implements the first child ticket of the spec's frontier, the open child tickets with no open blocking ticket, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier child tickets
     - When the frontier is empty, the run labels the spec `agent:queued` without a comment, so that [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml) resumes it; when the open child tickets block only each other, it refuses the spec with a comment and labels it `agent:blocked`

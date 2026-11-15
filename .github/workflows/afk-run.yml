@@ -46,6 +46,11 @@ jobs:
         run: |
           shape=$(gh issue view "$TICKET" --json subIssuesSummary,parent --jq '"\(.subIssuesSummary.total) \(.parent.number // "")"')
           read -r child_tickets parent <<<"$shape"
+          open_blocking_tickets=$(gh api "repos/${GH_REPO}/issues/${TICKET}" --jq .issue_dependencies_summary.blocked_by)
+          if [ -z "$parent" ] && [ "$open_blocking_tickets" != 0 ]; then
+            echo "refusal=Refused to run: this ticket has an open blocking ticket. Label it \`agent:queued\` instead, and it starts when its last blocking ticket closes." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "$child_tickets" != 0 ]; then
             open=$(gh api "repos/${GH_REPO}/issues/${TICKET}/sub_issues?per_page=100" --jq '[.[] | select(.state == "open")]')
             if [ "$(jq length <<<"$open")" = 0 ]; then
