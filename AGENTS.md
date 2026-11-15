@@ -150,6 +150,10 @@ Issues live in [ltowarek/dust-mite GitHub Issues](https://github.com/ltowarek/du
 
 The five canonical triage roles, using the role names as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) — a separate axis from this repo's type/component labels ([CONTRIBUTING.md#issue-labels](CONTRIBUTING.md#issue-labels)). See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 
+### Follow-up tickets
+
+AFK agent sessions file follow-up tickets for problems in code their PR did not change. See [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md).
+
 ### Domain docs
 
 Single-context: one [GLOSSARY.md](GLOSSARY.md) + [docs/adr/](docs/adr/) at the repo root. See [docs/agents/domain.md](docs/agents/domain.md).
