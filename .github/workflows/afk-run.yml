@@ -144,19 +144,14 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Push the branch
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
-
-      - name: Open the draft PR
+      - name: Push the branch and open the draft PR
         if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           PR_TITLE: ${{ fromJSON(steps.agent.outputs.structured_output).pr_title }}
           PR_BODY: ${{ fromJSON(steps.agent.outputs.structured_output).pr_body }}
         run: |
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
           printf 'Closes #%s\n\n%s\n\n[AFK run](%s)\n' "$TICKET" "$PR_BODY" "$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
           gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
 
