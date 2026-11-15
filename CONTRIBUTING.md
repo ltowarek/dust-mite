@@ -1151,6 +1151,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Skips a ticket that has sub-issues, without a comment
   - Refuses, with a comment, a sub-issue, which it also labels `agent:blocked`, and a ticket that an open pull request already closes
   - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, which holds a read-only token of the [AFK GitHub App](#afk-github-app) and makes its commits as the App's bot
+  - Validates the agent's structured output against [afk-run-output.schema.json](.github/afk-run-output.schema.json)
   - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch and opens a draft pull request as the App's bot, so that CI runs on it
   - Grants its own `GITHUB_TOKEN` no write permission
   - Pushes nothing when the agent reports a spec gap, as described in [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md); instead, with an Issues write token of the App, it:

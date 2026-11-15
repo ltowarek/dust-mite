@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "outcome": { "enum": ["done", "spec_gap"] },
+    "pr_title": { "type": "string" },
+    "pr_body": { "type": "string" },
+    "spec_gaps": { "type": "string" }
+  },
+  "required": ["outcome"]
+}

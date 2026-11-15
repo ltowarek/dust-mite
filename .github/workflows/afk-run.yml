@@ -85,6 +85,10 @@ jobs:
       - name: Write .env
         run: ./scripts/dump_env.sh
 
+      - name: Read the agent's output schema
+        id: schema
+        run: echo "json=$(jq -c . .github/afk-run-output.schema.json)" >> "$GITHUB_OUTPUT"
+
       - name: Mint the App's read-only token for the agent
         id: read-token
         uses: actions/create-github-app-token@v3.3.0
@@ -116,7 +120,7 @@ jobs:
           claude_args: >-
             --model claude-opus-5-5 --effort medium
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
-            --json-schema '{"type":"object","properties":{"outcome":{"enum":["done","spec_gap"]},"pr_title":{"type":"string"},"pr_body":{"type":"string"},"spec_gaps":{"type":"string"}},"required":["outcome"]}'
+            --json-schema '${{ steps.schema.outputs.json }}'
 
       - name: Read the agent's error
         id: agent-error
