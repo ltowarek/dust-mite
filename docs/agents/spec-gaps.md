@@ -27,6 +27,10 @@ The session discards its work: no commits, no branch and no PR. What the session
 
 The ticket is not picked again until the maintainer triages it. `/triage` posts a new full agent brief that supersedes the old one and applies `ready-for-agent` again. The latest agent brief is the contract.
 
+## A review comment
+
+An AFK run on a pull request does not stop at a spec gap that a review comment raises. It asks the question as a reply in that comment's thread, or as a top-level comment when the comment is not in a thread, and makes no change for that comment. The run keeps the rest of its work and leaves the labels as they are. The rest of this document applies to tickets only.
+
 ## Comment format
 
 ```markdown

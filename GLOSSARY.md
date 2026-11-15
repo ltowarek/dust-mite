@@ -135,7 +135,7 @@ The system that starts an AFK run on each ticket or PR the maintainer labels for
 _Avoid_: Agent swarm, runner, Ralph loop, factory, orchestrator
 
 **AFK run**:
-One run of the AFK loop: an AFK agent session on one ticket, or on the PR that closes one, from its start until it ends, with or without a push.
+One run of the AFK loop: an AFK agent session on one ticket or one PR, from its start until it ends, with or without a push.
 _Avoid_: Job, workflow run, agent run, PR run
 
 **Car agent session**:
