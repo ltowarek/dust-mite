@@ -73,6 +73,18 @@ The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRI
 claude plugin install mattpocock-skills@claude-plugins-official --scope project
 ```
 
+To update the plugin, run:
+
+```bash
+claude plugin update mattpocock-skills@claude-plugins-official --scope project
+```
+
+Restart Claude Code, then bring [docs/agents/](docs/agents/) in line with the new version's seed templates by running this in Claude Code:
+
+```text
+/setup-matt-pocock-skills Don't change the issue tracker, the labels or the domain layout. Check docs/agents/ against the current seed templates and report the drift. Take the template text wherever it changed, keep this repo's own additions, and show me the diff before writing.
+```
+
 ## Development environment
 
 This project is designed to be developed in VS Code Dev Containers.
