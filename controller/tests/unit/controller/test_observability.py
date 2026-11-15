@@ -1,5 +1,6 @@
 import logging
 import threading
+from collections.abc import Generator
 
 import pytest
 
@@ -119,16 +120,28 @@ class TestObservabilitySettingsFromEnv:
         assert ObservabilitySettings.from_env({}).profiling_enabled is False
 
 
-class TestConfigureObservability:
-    def test_sets_up_no_log_export_without_endpoints(
-        self, root_logger: logging.Logger
-    ) -> None:
-        original_handlers = list(root_logger.handlers)
+@pytest.fixture
+def package_level() -> Generator[None, None, None]:
+    """The `controller` logger's level, restored after the test."""
+    package_logger = logging.getLogger("controller")
+    original_level = package_logger.level
+    yield
+    package_logger.setLevel(original_level)
 
+
+@pytest.mark.usefixtures("root_logger", "package_level")
+class TestConfigureObservabilityLogging:
+    def test_writes_controller_debug_records_to_the_console(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         configure_observability("test-service", ObservabilitySettings.from_env({}))
 
-        assert root_logger.handlers == original_handlers
+        logging.getLogger("controller.test_module").debug("debug detail")
 
+        assert "DEBUG:controller.test_module:debug detail" in capsys.readouterr().err
+
+
+class TestConfigureObservability:
     def test_starts_no_profiler_without_a_profiles_endpoint(self) -> None:
         settings = ObservabilitySettings.from_env({"PROFILING_ENABLED": "1"})
 

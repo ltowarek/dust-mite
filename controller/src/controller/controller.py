@@ -19,13 +19,13 @@ from .input_backends import (
     InputBackendName,
     KeyboardInputBackend,
 )
+from .logging import CONSOLE_HANDLER_NAME
 from .observability import ObservabilitySettings, configure_observability
 from .outbox import Broadcast
 from .reconnecting_connection import send_until_lost, stay_connected
 from .senders import send_command
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class DriveConnectionClosedError(Exception):
@@ -48,14 +48,6 @@ class ControllerSettings:
             input_backend=InputBackendName(environ["CONTROLLER_INPUT_BACKEND"]),
             observability=ObservabilitySettings.from_env(environ),
         )
-
-
-def _configure_console_logging() -> logging.Handler:
-    """Attach a plain stream handler for console output and return it."""
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
-    logging.getLogger().addHandler(handler)
-    return handler
 
 
 async def autorepeat(
@@ -116,15 +108,17 @@ def main() -> None:
     """Run the main entry point."""
     settings = ControllerSettings.from_env(os.environ)
     configure_observability("dust-mite-controller", settings.observability)
-    console_handler = _configure_console_logging()
 
     try:
         if settings.input_backend is InputBackendName.KEYBOARD:
+            console_handler = logging.getHandlerByName(CONSOLE_HANDLER_NAME)
+            if console_handler is None:
+                msg = "configure_observability attached no console handler"
+                raise RuntimeError(msg)
+            formatter = console_handler.formatter
 
             def run_keyboard(window: curses.window) -> None:
-                write_queued_logs = queued_log_writer(
-                    records, window, console_handler.formatter
-                )
+                write_queued_logs = queued_log_writer(records, window, formatter)
                 backend = KeyboardInputBackend(window, write_queued_logs)
                 asyncio.run(drive(backend, settings.drive_uri))
 

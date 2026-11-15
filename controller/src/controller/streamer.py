@@ -39,9 +39,7 @@ from .tracing import extract_trace_context, inject_trace_context
 from .vision import process_camera_frame
 from .websocket_message import WebSocketMessage
 
-logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 tracer = trace.get_tracer(__name__)
 

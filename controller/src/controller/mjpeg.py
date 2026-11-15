@@ -10,7 +10,6 @@ from collections.abc import Callable
 import aiohttp
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 BOUNDARY = "frame"
 CONTENT_TYPE = f"multipart/x-mixed-replace;boundary={BOUNDARY}"
