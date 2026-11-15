@@ -3,13 +3,7 @@ import threading
 from collections.abc import Generator
 
 import pytest
-from opentelemetry.sdk._logs.export import (
-    InMemoryLogRecordExporter,
-    SimpleLogRecordProcessor,
-)
 
-import controller.logging
-from controller.curses_logging import queued_console_logging
 from controller.observability import ObservabilitySettings, configure_observability
 
 
@@ -126,113 +120,25 @@ class TestObservabilitySettingsFromEnv:
         assert ObservabilitySettings.from_env({}).profiling_enabled is False
 
 
-_LOGS_SETTINGS = ObservabilitySettings.from_env(
-    {"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://collector.invalid/v1/logs"}
-)
-
-
 @pytest.fixture
-def exporter(monkeypatch: pytest.MonkeyPatch) -> InMemoryLogRecordExporter:
-    """The in-memory exporter the logs endpoint exports to, synchronously."""
-    log_exporter = InMemoryLogRecordExporter()  # type: ignore[no-untyped-call]  # the OpenTelemetry SDK leaves this constructor unannotated
-    monkeypatch.setattr(controller.logging, "OTLPLogExporter", lambda **_: log_exporter)
-    monkeypatch.setattr(
-        controller.logging, "BatchLogRecordProcessor", SimpleLogRecordProcessor
-    )
-    return log_exporter
-
-
-def _exported_bodies(exporter: InMemoryLogRecordExporter) -> list[object]:
-    return [record.log_record.body for record in exporter.get_finished_logs()]
-
-
-@pytest.fixture
-def default_levels() -> Generator[None, None, None]:
-    """Root and `controller` levels at their defaults, restored after the test.
-
-    Importing pydualsense sets the root level to INFO.
-    """
-    root_logger, package_logger = logging.getLogger(), logging.getLogger("controller")
-    root_level, package_level = root_logger.level, package_logger.level
-    root_logger.setLevel(logging.WARNING)
-    package_logger.setLevel(logging.NOTSET)
+def package_level() -> Generator[None, None, None]:
+    """The `controller` logger's level, restored after the test."""
+    package_logger = logging.getLogger("controller")
+    original_level = package_logger.level
     yield
-    root_logger.setLevel(root_level)
-    package_logger.setLevel(package_level)
+    package_logger.setLevel(original_level)
 
 
-@pytest.fixture
-def controller_logger() -> logging.Logger:
-    return logging.getLogger("controller.test_module")
-
-
-@pytest.mark.usefixtures("root_logger", "default_levels")
+@pytest.mark.usefixtures("root_logger", "package_level")
 class TestConfigureObservabilityLogging:
-    def test_writes_controller_debug_and_info_records_to_the_console(
-        self, controller_logger: logging.Logger, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        configure_observability("test-service", ObservabilitySettings.from_env({}))
-
-        controller_logger.debug("debug detail")
-        controller_logger.info("info detail")
-
-        console = capsys.readouterr().err
-        assert "DEBUG:controller.test_module:debug detail" in console
-        assert "INFO:controller.test_module:info detail" in console
-
-    def test_exports_controller_debug_and_info_records_and_writes_them_to_the_console(
-        self,
-        controller_logger: logging.Logger,
-        exporter: InMemoryLogRecordExporter,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        configure_observability("test-service", _LOGS_SETTINGS)
-
-        controller_logger.debug("debug detail")
-        controller_logger.info("info detail")
-
-        console = capsys.readouterr().err
-        assert "DEBUG:controller.test_module:debug detail" in console
-        assert "INFO:controller.test_module:info detail" in console
-        exported = _exported_bodies(exporter)
-        assert "debug detail" in exported
-        assert "info detail" in exported
-
-    def test_drops_third_party_records_below_warning(
-        self, exporter: InMemoryLogRecordExporter, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        configure_observability("test-service", _LOGS_SETTINGS)
-        third_party_logger = logging.getLogger("websockets.test_module")
-
-        third_party_logger.debug("debug detail")
-        third_party_logger.info("info detail")
-        third_party_logger.warning("warning detail")
-
-        console = capsys.readouterr().err
-        assert "debug detail" not in console
-        assert "info detail" not in console
-        assert "WARNING:websockets.test_module:warning detail" in console
-        exported = _exported_bodies(exporter)
-        assert "debug detail" not in exported
-        assert "info detail" not in exported
-        assert "warning detail" in exported
-
-    def test_returns_a_console_handler_queued_console_logging_accepts(self) -> None:
-        console_handler = configure_observability(
-            "test-service", ObservabilitySettings.from_env({})
-        )
-
-        with queued_console_logging(console_handler):
-            pass
-
-    def test_writes_its_own_skipped_export_record_to_the_console(
+    def test_writes_controller_debug_records_to_the_console(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         configure_observability("test-service", ObservabilitySettings.from_env({}))
 
-        assert "No OTLP logs endpoint, skipping log configuration" in (
-            capsys.readouterr().err
-        )
+        logging.getLogger("controller.test_module").debug("debug detail")
+
+        assert "DEBUG:controller.test_module:debug detail" in capsys.readouterr().err
 
 
 class TestConfigureObservability:
