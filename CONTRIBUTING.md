@@ -88,6 +88,8 @@ Available environments:
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
 - [.devcontainer/infrastructure/](.devcontainer/infrastructure/) for GitHub Actions workflows and repository-level scripts (see [Infrastructure](#infrastructure))
 
+Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, so VS Code builds and runs every devcontainer except `docs` as the host uid. Rebuild an existing devcontainer created before these symlinks existed to pick this up.
+
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
 
 ### Devcontainer ports alongside the headless stack
@@ -1268,7 +1270,7 @@ Production Dockerfiles are located at the root of each component directory and a
 - [controller/Dockerfile](controller/Dockerfile) — Python streamer image with the controller package installed.
 - [web/Dockerfile](web/Dockerfile) — Node.js image with the frontend dependencies installed.
 
-All production images run as user `dustmite` (uid=1040). This is distinct from the `vscode` user (uid=1050) in devcontainer images, making any file ownership cross-contamination immediately visible.
+All production images run as user `dustmite` (uid=1040). A devcontainer runs as the host uid, or uid 1050 for `docs`, which is distinct from `dustmite`, making any file ownership cross-contamination immediately visible.
 
 ## Pull request titles
 

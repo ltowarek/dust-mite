@@ -85,22 +85,22 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 
 ## Starting Devcontainers
 
-For VS Code Dev Container workflow see [CONTRIBUTING.md#development-environment](CONTRIBUTING.md#development-environment). For headless/agent use, the devcontainer images are not started by default. Start them on demand, always passing `--env-file .env`:
+For VS Code Dev Container workflow see [CONTRIBUTING.md#development-environment](CONTRIBUTING.md#development-environment). For headless/agent use, the devcontainer images are not started by default. Start them on demand:
 
 ```bash
-docker compose --env-file .env -f .devcontainer/cpp/docker-compose.yml up -d --build cpp
-docker compose --env-file .env -f .devcontainer/python/docker-compose.yml up -d --build python
-docker compose --env-file .env -f .devcontainer/js/docker-compose.yml up -d --build js
-docker compose --env-file .env -f .devcontainer/observability/docker-compose.yml up -d --build observability
-docker compose --env-file .env -f .devcontainer/infrastructure/docker-compose.yml up -d --build infrastructure
+docker compose -f .devcontainer/cpp/docker-compose.yml up -d --build cpp
+docker compose -f .devcontainer/python/docker-compose.yml up -d --build python
+docker compose -f .devcontainer/js/docker-compose.yml up -d --build js
+docker compose -f .devcontainer/observability/docker-compose.yml up -d --build observability
+docker compose -f .devcontainer/infrastructure/docker-compose.yml up -d --build infrastructure
 ```
 
-`--env-file .env` supplies `USER_UID`/`USER_GID` (written by [scripts/dump_env.sh](scripts/dump_env.sh)) to the `build.args` and `user:` in each devcontainer compose, so the container is built and run as the **host user**. All dev/build/check containers then share the host uid and the bind-mounted workspace, `build/`, and caches stay writable — no `chown` workarounds needed. (Without `.env`, the images fall back to uid `1050` and stay portable.)
+Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, and falls back to uid `1050` without one.
 
 **Isolation from VS Code:** all five are the same containers VS Code's Dev Containers extension attaches to (e.g. `cpp-cpp-1`, `python-python-1`, `js-js-1`, `observability-observability-1`, `infrastructure-infrastructure-1`). Recreating/rebuilding one, or installing packages into it, drops an attached VS Code window's remote connection and can leave the workspace owned by a different uid until it reconnects. Give agent runs their own instance instead of reusing a container a human may be attached to, by adding a distinct `-p` project name to any of the bring-up commands above, e.g.:
 
 ```bash
-docker compose --env-file .env -p dust-mite-agent -f .devcontainer/python/docker-compose.yml up -d --build python
+docker compose -p dust-mite-agent -f .devcontainer/python/docker-compose.yml up -d --build python
 ```
 
 This builds and starts a second, independent container from the same image (e.g. `dust-mite-agent-python-1`) that agent work can freely stop, rebuild, or install packages into. Tear it down with the same `-p dust-mite-agent` flag, replacing `up -d --build` with `down`, when finished — dropping `-p` targets the shared container instead.
