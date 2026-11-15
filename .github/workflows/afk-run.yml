@@ -140,6 +140,7 @@ jobs:
           github_token: ${{ steps.read-token.outputs.token }}
           bot_name: ${{ vars.AFK_APP_SLUG }}[bot]
           bot_id: ${{ vars.AFK_APP_BOT_ID }}
+          allowed_bots: ${{ vars.AFK_APP_SLUG }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: mattpocock-skills@claude-plugins-official
           prompt: |
