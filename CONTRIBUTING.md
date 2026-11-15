@@ -1145,14 +1145,19 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Enables auto-merge and approves the pull request as described in [Dependency updates](#dependency-updates)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-run.yml](.github/workflows/afk-run.yml)
-  - Trial of one AFK run, started by hand with `gh workflow run afk-run.yml -f ticket=<number>`
+  - Starts an AFK run when the maintainer adds the `agent:implement` label to a ticket
+  - Expects the `agent:implement` and `agent:blocked` labels to exist in the repository
+  - Queues every AFK run in one concurrency group with `queue: max`, so that runs go one at a time in label order and no labelled ticket is cancelled
+  - Skips a ticket that has sub-issues, without a comment
+  - Refuses, with a comment, a sub-issue, which it also labels `agent:blocked`, and a ticket that an open pull request already closes
   - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, which holds a read-only token of the [AFK GitHub App](#afk-github-app) and makes its commits as the App's bot
   - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch and opens a draft pull request as the App's bot, so that CI runs on it
-  - Grants its own `GITHUB_TOKEN` only `contents: read`
+  - Grants its own `GITHUB_TOKEN` no write permission
   - Pushes nothing when the agent reports a spec gap, as described in [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md); instead, with an Issues write token of the App, it:
     - Replaces the ticket's `ready-for-agent` label with `needs-triage`
     - Posts the gaps as a comment on the ticket
-  - Uploads the agent's transcript as the `afk-run-transcript` artifact
+  - Removes `agent:implement` when the run ends; after a failure, labels the ticket `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
+  - Times out after 180 minutes
 - [claude.yml](.github/workflows/claude.yml)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 

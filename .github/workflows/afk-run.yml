@@ -1,32 +1,77 @@
 name: AFK run
 
-# Trial for one ticket at a time; started by hand until the AFK loop's trigger is decided.
 on:
-  workflow_dispatch:
-    inputs:
-      ticket:
-        description: Number of the ticket to implement
-        required: true
-        type: number
+  issues:
+    types: [labeled]
 
 permissions: {}
 
+# Runs for other labels get a group of their own, so they never wait in the AFK queue.
 concurrency:
-  group: afk-run
-  cancel-in-progress: false
+  group: ${{ github.event.label.name == 'agent:implement' && 'afk-run' || format('afk-run-{0}', github.run_id) }}
+  queue: max
+
+env:
+  TICKET: ${{ github.event.issue.number }}
+  GH_REPO: ${{ github.repository }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
+  check:
+    if: github.event.label.name == 'agent:implement'
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: read
+      pull-requests: read
+
+    outputs:
+      spec: ${{ steps.shape.outputs.spec }}
+      refusal: ${{ steps.shape.outputs.refusal || steps.open-pr.outputs.refusal }}
+      block: ${{ steps.shape.outputs.block }}
+
+    steps:
+      - name: Read the ticket's sub-issues and parent
+        id: shape
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shape=$(gh issue view "$TICKET" --json subIssuesSummary,parent --jq '"\(.subIssuesSummary.total) \(.parent.number // "")"')
+          read -r sub_issues parent <<<"$shape"
+          # A spec is skipped without a comment; the spec chain will run it.
+          if [ "$sub_issues" != 0 ]; then
+            echo "spec=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$parent" ]; then
+            echo "block=true" >> "$GITHUB_OUTPUT"
+            echo "refusal=Refused to run: this ticket is a sub-issue of #${parent}. Sub-issues run only through their spec's chain; add \`agent:implement\` to #${parent} instead." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Look for an open PR that closes the ticket
+        id: open-pr
+        if: steps.shape.outputs.spec != 'true' && steps.shape.outputs.refusal == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr=$(gh pr list --state open --search "in:body \"#${TICKET}\"" --json url,body \
+            --jq "[.[] | select(.body | test(\"(?i)(closes|fixes|resolves)\\\\s+#${TICKET}\\\\b\"))][0].url // empty")
+          if [ -n "$pr" ]; then
+            echo "refusal=Refused to run: PR $pr already targets this ticket. Close it first, then re-add \`agent:implement\`." >> "$GITHUB_OUTPUT"
+          fi
+
   implement:
+    needs: check
+    if: needs.check.outputs.spec != 'true' && needs.check.outputs.refusal == ''
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
     permissions:
       contents: read
 
+    outputs:
+      agent-error: ${{ steps.agent-error.outputs.result }}
+
     env:
-      TICKET: ${{ inputs.ticket }}
-      BRANCH: afk/issue-${{ inputs.ticket }}-${{ github.run_id }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      BRANCH: afk/issue-${{ github.event.issue.number }}-${{ github.run_id }}
 
     steps:
       - name: Checkout
@@ -61,7 +106,7 @@ jobs:
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: mattpocock-skills@claude-plugins-official
           prompt: |
-            /mattpocock-skills:implement ${{ github.server_url }}/${{ github.repository }}/issues/${{ inputs.ticket }}
+            /mattpocock-skills:implement ${{ github.event.issue.html_url }}
             Every step `implement` names is mandatory in an AFK agent session; never skip one because the change is small.
 
             This is an AFK agent session: no one will answer questions. Follow CLAUDE.md, including running every check inside the devcontainer it names; Docker is available.
@@ -72,6 +117,18 @@ jobs:
             --model claude-opus-5-5 --effort medium
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
             --json-schema '{"type":"object","properties":{"outcome":{"enum":["done","spec_gap"]},"pr_title":{"type":"string"},"pr_body":{"type":"string"},"spec_gaps":{"type":"string"}},"required":["outcome"]}'
+
+      - name: Read the agent's error
+        id: agent-error
+        if: failure() && steps.agent.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        run: |
+          {
+            echo 'result<<AGENT_ERROR_EOF'
+            jq -r 'last | select(.type == "result" and .is_error) | .result // empty' "$EXECUTION_FILE"
+            echo 'AGENT_ERROR_EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Mint the App's write token for the push and PR
         id: write-token
@@ -118,9 +175,72 @@ jobs:
           gh issue edit "$TICKET" --remove-label ready-for-agent --add-label needs-triage
           gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/spec-gaps.md"
 
-      - name: Upload the transcript
-        if: always()
-        uses: actions/upload-artifact@v7.0.2
+  finish:
+    needs: [check, implement]
+    if: always() && github.event.label.name == 'agent:implement' && needs.check.outputs.spec != 'true'
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+
+    steps:
+      - name: Mint the App's write token for labels and comments
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
         with:
-          name: afk-run-transcript
-          path: ${{ steps.agent.outputs.execution_file }}
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+
+      - name: Refuse the ticket
+        if: always() && needs.check.outputs.refusal != ''
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          REFUSAL: ${{ needs.check.outputs.refusal }}
+          BLOCK: ${{ needs.check.outputs.block }}
+        run: |
+          if [ "$BLOCK" = true ]; then
+            gh issue edit "$TICKET" --add-label agent:blocked
+          fi
+          gh issue comment "$TICKET" --body "$REFUSAL"
+
+      - name: Clear agent:blocked after a successful run
+        if: always() && needs.implement.result == 'success'
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh issue edit "$TICKET" --remove-label agent:blocked
+
+      - name: Report the failure
+        if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          ACTIONS_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          AGENT_ERROR: ${{ needs.implement.outputs.agent-error }}
+        run: |
+          failed_step=$(GH_TOKEN="$ACTIONS_TOKEN" gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
+            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
+              | [.name, first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name)] | join(" › ")]
+              | first // "unknown step"')
+          reason="\`${failed_step}\` failed."
+          if [ -n "$AGENT_ERROR" ]; then
+            reason="${reason} The agent reported: ${AGENT_ERROR}"
+          fi
+          cat > "$RUNNER_TEMP/failure.md" <<EOF
+          \`agent:implement\` run failed.
+
+          **Reason:** ${reason}
+
+          **Run:** ${RUN_URL}
+
+          Re-add \`agent:implement\` to retry.
+          EOF
+          gh issue edit "$TICKET" --add-label agent:blocked
+          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/failure.md"
+
+      - name: Remove the trigger label
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh issue edit "$TICKET" --remove-label agent:implement
