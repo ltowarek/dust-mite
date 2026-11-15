@@ -13,8 +13,22 @@ services:
     user: "${USER_UID:-1050}:${USER_GID:-1050}"
     volumes:
       - ../..:/workspaces/dust-mite:cached
-    env_file:
-      - path: ../../.env
+    environment:
+      - CONTROLLER_INPUT_BACKEND
+      - DRIVE_CLIENT_URI
+      - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
+      - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+      - OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+      - PROFILING_ENABLED
+      - RPI_ADDRESS
+      - RPI_USERNAME
+      - SERVICE_REPOSITORY
+      - STREAMER_CAMERA_PORT
+      - STREAMER_DRIVE_URI
+      - STREAM_CLIENT_URI
+      - TELEMETRY_CLIENT_URI
     # Uncomment to pass through PS5 DualSense controller.
     # Run ./controller/scripts/find_dualsense.sh on the host to find the hidraw path.
     # devices:

@@ -131,7 +131,7 @@ An agent session that works tickets on its own, with no one answering its questi
 _Avoid_: Unattended session, background agent
 
 **AFK loop**:
-The system that starts an AFK run for each AFK command, and chains a spec's sub-issues and waiting tickets as their blockers close.
+The system that starts an AFK run for each AFK command, implements a spec one child ticket at a time, and starts waiting tickets as their blocking tickets close.
 _Avoid_: Agent swarm, runner, Ralph loop, factory, orchestrator
 
 **AFK command**:
@@ -142,6 +142,10 @@ _Avoid_: Trigger, trigger label, mention
 One run of the AFK loop: an AFK agent session on one ticket or one PR, from its start until it ends, with or without a push.
 _Avoid_: Job, workflow run, agent run, PR run
 
+**AFK spec implementation**:
+The AFK runs that implement one spec, each on the first child ticket of its frontier and each building on the commits of the runs before it.
+_Avoid_: Chain, spec chain, spec run
+
 **Car agent session**:
 An AFK agent session, started at the maintainer's desk with the car connected, that works through every ticket waiting on the car, for its fix or for a DUT run of its PR, while the maintainer stays by it.
 _Avoid_: Car session, hardware session, bench session
@@ -151,8 +155,24 @@ An agent session in which the maintainer and the agent take turns: the agent ask
 _Avoid_: HITL session
 
 **Ticket**:
-One GitHub issue, whatever it asks for.
-_Avoid_: Issue (except in GitHub's own feature names), task, story
+One item on the issue tracker, whatever it asks for.
+_Avoid_: Issue, task, story
+
+**Spec**:
+A ticket that describes one change end to end, and whose child tickets implement it.
+_Avoid_: PRD, epic, parent ticket
+
+**Child ticket**:
+A ticket under a spec or a wayfinder map; the AFK loop works a spec's child tickets only through the spec.
+_Avoid_: Sub-issue, sub-ticket, subtask
+
+**Blocking ticket**:
+A ticket that must close before another can start; while it is open, the AFK loop starts no run on the ticket it blocks.
+_Avoid_: Blocker, dependency, prerequisite
+
+**Frontier**:
+The open child tickets of a parent that have no open blocking ticket.
+_Avoid_: Ready set, unblocked tickets
 
 **Follow-up ticket**:
 A ticket an agent files on its own, without the maintainer reviewing its text, for a problem outside the ticket it is working.

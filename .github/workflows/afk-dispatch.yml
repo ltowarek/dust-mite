@@ -92,7 +92,7 @@ jobs:
             exit 0
           fi
           if jq -e 'index("afk:queued")' <<<"$labels" >/dev/null; then
-            echo "refusal=Refused: this ticket is waiting for its blockers (\`afk:queued\`) and starts when the last one closes." >> "$GITHUB_OUTPUT"
+            echo "refusal=Refused: this ticket is waiting (\`afk:queued\`) and starts when it is unblocked." >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "$KIND" = issue ] && [ "$VERB" = implement ]; then
@@ -124,7 +124,8 @@ jobs:
         run: |
           gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content=eyes
           gh issue edit "$NUMBER" --add-label afk:queued --remove-label afk:blocked
-          gh issue comment "$NUMBER" --body "Queued (\`afk:queued\`) until its blockers close: ${BLOCKERS}. The AFK run starts when the last one closes."
+          # The marker carries the AFK command to the run that afk-promote-queued.yml dispatches.
+          gh issue comment "$NUMBER" --body "Queued (\`afk:queued\`) until its blocking tickets close: ${BLOCKERS}. The AFK run starts when the last one closes. <!-- afk-command: ${COMMENT_ID} -->"
 
       - name: Accept the command
         id: accept

@@ -11,7 +11,7 @@ concurrency:
   queue: max
 
 env:
-  BLOCKER: ${{ github.event.issue.number }}
+  BLOCKING_TICKET: ${{ github.event.issue.number }}
   GH_REPO: ${{ github.repository }}
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
       issues: read
 
     steps:
-      - name: Find the queued tickets that the blocker blocks
+      - name: Find the queued tickets and specs that the blocking ticket unblocks
         id: queued
         shell: bash
         env:
@@ -38,7 +38,7 @@ jobs:
                       number
                       state
                       repository { nameWithOwner }
-                      parent { number }
+                      parent { number labels(first: 100) { nodes { name } } }
                       labels(first: 100) { nodes { name } }
                       blockedBy(first: 100) { nodes { state } }
                     }
@@ -48,12 +48,20 @@ jobs:
             }
         run: |
           queued=$(gh api graphql -f query="$QUERY" \
-            -f owner="${GH_REPO%/*}" -f repo="${GH_REPO#*/}" -F number="$BLOCKER" |
-            jq -c --arg repo "$GH_REPO" '[.data.repository.issue.blocking.nodes[]
+            -f owner="${GH_REPO%/*}" -f repo="${GH_REPO#*/}" -F number="$BLOCKING_TICKET" |
+            jq -c --arg repo "$GH_REPO" '
+              def waiting: index("afk:queued") and (index("afk:in-progress") | not);
+              [.data.repository.issue.blocking.nodes[]
               | select(.state == "OPEN" and .repository.nameWithOwner == $repo)
-              | ([.labels.nodes[].name]) as $labels
-              | select(($labels | index("afk:queued")) and ($labels | index("afk:in-progress") | not))
-              | {number, parent: .parent.number, open_blockers: ([.blockedBy.nodes[] | select(.state == "OPEN")] | length)}]')
+              | ([.blockedBy.nodes[] | select(.state == "OPEN")] | length) as $open_blocking_tickets
+              | if ([.labels.nodes[].name] | waiting) then
+                  if .parent then {number, refused_parent: .parent.number}
+                  elif $open_blocking_tickets == 0 then {number}
+                  else empty end
+                elif .parent and ([.parent.labels.nodes[].name] | waiting) and $open_blocking_tickets == 0 then
+                  {number: .parent.number}
+                else empty end]
+              | unique_by(.number)')
           echo "Queued tickets: $queued"
           echo "tickets=$queued" >> "$GITHUB_OUTPUT"
 
@@ -66,25 +74,32 @@ jobs:
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-issues: write
 
-      - name: Promote the unblocked tickets and refuse sub-issues
+      - name: Promote the unblocked tickets and specs, and refuse child tickets
         if: steps.queued.outputs.tickets != '[]'
         shell: bash
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           ACTIONS_TOKEN: ${{ github.token }}
+          BOT_ID: ${{ vars.AFK_APP_BOT_ID }}
           TICKETS: ${{ steps.queued.outputs.tickets }}
         run: |
           jq -c '.[]' <<<"$TICKETS" | while IFS= read -r ticket; do
             number=$(jq -r .number <<<"$ticket")
-            parent=$(jq -r '.parent // empty' <<<"$ticket")
-            open_blockers=$(jq -r .open_blockers <<<"$ticket")
+            parent=$(jq -r '.refused_parent // empty' <<<"$ticket")
             if [ -n "$parent" ]; then
               gh issue edit "$number" --remove-label afk:queued --add-label afk:blocked
-              gh issue comment "$number" --body "Refused to promote: this ticket is a sub-issue of #${parent}. Sub-issues run only through their spec's chain; comment \`/afk implement\` on #${parent} instead."
-            elif [ "$open_blockers" = 0 ]; then
-              # Dispatch first: a failed dispatch leaves the ticket queued, not stale in progress.
-              GH_TOKEN="$ACTIONS_TOKEN" gh workflow run afk-run.yml -f number="$number"
-              gh issue edit "$number" --remove-label afk:queued --add-label afk:in-progress
-              gh issue comment "$number" --body "Unblocked by #${BLOCKER} closing; promoted from \`afk:queued\` to \`afk:in-progress\`."
+              gh issue comment "$number" --body "Refused to promote: this ticket is a child ticket of #${parent}. Child tickets run only through their spec; comment \`/afk implement\` on #${parent} instead."
+              continue
             fi
+            # The App's latest queued comment names the AFK command that queued the ticket.
+            comment_id=$(gh api --paginate "repos/${GH_REPO}/issues/${number}/comments?per_page=100" \
+              --jq '.[] | select(.user.id == (env.BOT_ID | tonumber)) | .body | capture("<!-- afk-command: (?<id>[0-9]*) -->") | .id' | tail -n 1)
+            inputs=(-f number="$number")
+            if [ -n "$comment_id" ]; then
+              inputs+=(-f comment-id="$comment_id")
+            fi
+            # Dispatch first: a failed dispatch leaves the ticket queued, not stale in progress.
+            GH_TOKEN="$ACTIONS_TOKEN" gh workflow run afk-run.yml "${inputs[@]}"
+            gh issue edit "$number" --remove-label afk:queued --add-label afk:in-progress
+            gh issue comment "$number" --body "Unblocked by #${BLOCKING_TICKET} closing; promoted from \`afk:queued\` to \`afk:in-progress\`."
           done

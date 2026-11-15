@@ -73,6 +73,18 @@ The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRI
 claude plugin install mattpocock-skills@claude-plugins-official --scope project
 ```
 
+To update the plugin, run:
+
+```bash
+claude plugin update mattpocock-skills@claude-plugins-official --scope project
+```
+
+Restart Claude Code, then bring [docs/agents/](docs/agents/) in line with the new version's seed templates by running this in Claude Code:
+
+```text
+/setup-matt-pocock-skills Don't change the issue tracker, the labels or the domain layout. Check docs/agents/ against the current seed templates and report the drift. Take the template text wherever it changed, keep this repo's own additions, and show me the diff before writing.
+```
+
 ## Development environment
 
 This project is designed to be developed in VS Code Dev Containers.
@@ -87,6 +99,8 @@ Available environments:
 - [.devcontainer/observability/](.devcontainer/observability/) for [observability/](observability/) work (datasource/pipeline config, synthetic and real-data pipeline tests)
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
 - [.devcontainer/infrastructure/](.devcontainer/infrastructure/) for GitHub Actions workflows and repository-level scripts (see [Infrastructure](#infrastructure))
+
+Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, so VS Code builds and runs every devcontainer except `docs` as the host uid. Rebuild an existing devcontainer created before these symlinks existed to pick this up.
 
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
 
@@ -1158,23 +1172,24 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on `issue_comment`, which runs on a pull request that conflicts with `main`, with a `zizmor: ignore[dangerous-triggers]` comment whose reason [ADR 0007](docs/adr/0007-start-afk-runs-by-comment-command.md) gives
   - Handles one command at a time in the `afk-dispatch` concurrency group with `queue: max`, so that two commands posted together cannot both pass the `afk:in-progress` check
   - Replies and reacts 😕 to an unknown verb, and to a command on a target labelled `afk:in-progress` or `afk:queued`
-  - Labels a ticket or spec with open blockers `afk:queued` for `/afk implement`, replies with the blockers and reacts 👀
+  - Labels a ticket or spec with open blocking tickets `afk:queued` for `/afk implement`, replies with the blocking tickets and the command's id in a hidden marker, and reacts 👀
   - Otherwise reacts 👀, replaces `afk:blocked` with `afk:in-progress`, and dispatches [afk-run.yml](.github/workflows/afk-run.yml) for `/afk implement` on an issue, [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) for `/afk implement` on a pull request, or [afk-update-branch.yml](.github/workflows/afk-update-branch.yml) for `/afk update-branch`, with the comment's id and, on a pull request, its head commit
   - Labels, reacts and replies as the [AFK GitHub App](#afk-github-app); only the dispatch step uses its own `GITHUB_TOKEN`, which has `actions: write`
   - Times out after 5 minutes
 - [afk-run.yml](.github/workflows/afk-run.yml)
-  - Runs an AFK run on a ticket or on a spec, which is an issue with sub-issues
+  - Runs an AFK run on a ticket or on a spec, which is an issue with child tickets
   - Triggers on `workflow_dispatch` only, with the inputs `number`, the ticket or spec, and `comment-id`, the AFK command, which is empty when the run starts from the Actions tab; the run is named `afk implement #<number>`
-  - Expects the `afk:in-progress`, `afk:blocked` and `source:follow-up` labels to exist in the repository
+  - Expects the `afk:in-progress`, `afk:queued`, `afk:blocked` and `source:follow-up` labels to exist in the repository
   - Queues every AFK run in one concurrency group, `afk-run`, with `queue: max`, so that runs go one at a time in the order that they were requested and no run is cancelled
   - Adds `afk:in-progress` when it starts, so that a run started from the Actions tab is labelled as well
-  - Refuses, with a comment, a sub-issue, which it also labels `afk:blocked`, a ticket that an open pull request already closes, and a spec whose sub-issues are all closed; the refusals are checked when the run starts, so that a run that waited in the queue acts on the current state
-  - Works a spec as a chain, one run per sub-issue:
-    - Each run implements the spec's first open sub-issue, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier sub-issues
-    - The first run opens the spec's draft pull request, which closes the spec; the run on the last sub-issue replaces its title and body with the agent's, written for the branch's whole change
-    - After the push, the run closes the sub-issue with `Implemented in <sha>` and dispatches the next run with its `GITHUB_TOKEN`, passing on the AFK command's id; the spec keeps `afk:in-progress` until the chain ends
-    - Only the run on the last sub-issue marks the pull request ready or labels it `needs-car:<variant>`, so that an incomplete spec never reaches review or a car agent session
-    - A run that fails, finds a spec gap or needs the car to find the fix labels the spec `afk:blocked`, comments on it and starts no further run; the spec gap or the car hand-off lands on the sub-issue as for a ticket
+  - Refuses, with a comment, a child ticket, which it also labels `afk:blocked`, a ticket or spec that has an open blocking ticket, a ticket that an open pull request already closes, and a spec whose child tickets are all closed; the refusals are checked when the run starts, so that a run that waited in the queue acts on the current state
+  - Implements a spec one child ticket per run, as an AFK spec implementation:
+    - Each run implements the first child ticket of the spec's frontier, the open child tickets with no open blocking ticket, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier child tickets
+    - When the frontier is empty, the run labels the spec `afk:queued` and comments with the AFK command's id in a hidden marker, so that [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml) resumes it; when the open child tickets block only each other, it refuses the spec with a comment and labels it `afk:blocked`
+    - The first run opens the spec's draft pull request, which closes the spec; the run on the last child ticket replaces its title and body with the agent's, written for the branch's whole change
+    - After the push, the run closes the child ticket with `Implemented in <sha>` and dispatches the next run with its `GITHUB_TOKEN`, passing on the AFK command's id; the spec keeps `afk:in-progress` until its implementation ends
+    - Only the run on the last child ticket marks the pull request ready or labels it `needs-car:<variant>`, so that an incomplete spec never reaches review or a car agent session
+    - A run that fails, finds a spec gap or needs the car to find the fix labels the spec `afk:blocked`, comments on it and starts no further run; the spec gap or the car hand-off lands on the child ticket as for a ticket
   - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, which holds a read-only token of the [AFK GitHub App](#afk-github-app) and makes its commits as the App's bot
   - Validates the agent's structured output against [afk-run-output.schema.json](.github/afk-run-output.schema.json)
   - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch, or a spec's branch, and opens a draft pull request as the App's bot, so that CI runs on it
@@ -1185,17 +1200,18 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
     - Posts the gaps as a comment on the ticket, with the follow-ups already covered under their own heading
   - Pushes nothing when the agent reports that finding the fix needs the car; instead, with an Issues write token of the App, it labels the ticket `needs-car:<variant>` and comments the agent's reason on it, with the follow-ups already covered under their own heading
   - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
-  - Removes `afk:in-progress` when the run ends, unless it has dispatched the next run of a spec's chain; after a failure, including a failed step in its last job, labels the ticket or spec `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
-  - Reacts 🚀 to the AFK command when the run, or a spec's whole chain, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car
+  - Removes `afk:in-progress` when the run ends, unless it has dispatched the spec's next run; after a failure, including a failed step in its last job, labels the ticket or spec `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
+  - Reacts 🚀 to the AFK command when the run, or a spec's whole implementation, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car; a run that dispatches the spec's next run or queues the spec does not react
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
-  - Starts an AFK run on a ticket labelled `afk:queued` when its last open blocker closes
+  - Starts an AFK run on a ticket labelled `afk:queued`, when its last open blocking ticket closes, and on a spec that [afk-run.yml](.github/workflows/afk-run.yml) labelled `afk:queued`, when the last open blocking ticket of one of its child tickets closes
   - Expects the `afk:queued`, `afk:in-progress` and `afk:blocked` labels to exist in the repository
-  - Counts a blocker closed for any reason, including as not planned, as no longer blocking
-  - Replaces `afk:queued` with `afk:in-progress` as the [AFK GitHub App](#afk-github-app), comments the blocker that unblocked the ticket, and dispatches [afk-run.yml](.github/workflows/afk-run.yml) with its `GITHUB_TOKEN`, which has `actions: write`
-  - Refuses a sub-issue with a comment; it replaces the sub-issue's `afk:queued` label with `afk:blocked`
-  - Skips a ticket that still has `afk:in-progress`
-  - Runs one promotion at a time, so that two blockers closing together promote a ticket once
+  - Counts a blocking ticket closed for any reason, including as not planned, as no longer blocking
+  - Dispatches [afk-run.yml](.github/workflows/afk-run.yml) with its `GITHUB_TOKEN`, which has `actions: write`, passing the AFK command's id from the hidden marker in the App's latest queued comment, so that the run reacts to the command that queued the ticket or spec
+  - Then replaces `afk:queued` with `afk:in-progress` as the [AFK GitHub App](#afk-github-app) and comments the blocking ticket that unblocked the ticket or spec
+  - Refuses a child ticket with a comment; it replaces the child ticket's `afk:queued` label with `afk:blocked`
+  - Skips a ticket or spec that still has `afk:in-progress`
+  - Runs one promotion at a time, so that two blocking tickets closing together promote a ticket or spec once
   - Times out after 5 minutes
 - [afk-run-pr.yml](.github/workflows/afk-run-pr.yml)
   - Runs an AFK run on an open pull request whose branch is in this repository
@@ -1240,7 +1256,7 @@ The maintainer starts an AFK run with an AFK command: a new conversation comment
 
 | Command | On | Starts |
 |---|---|---|
-| `/afk implement` | A ticket or a spec | An AFK run that implements the ticket, or works through the spec's sub-issues one AFK run at a time on one branch |
+| `/afk implement` | A ticket or a spec | An AFK run that implements the ticket, or an AFK spec implementation that works through the spec's child tickets one AFK run at a time on one branch |
 | `/afk implement` | A pull request | An AFK run that addresses the pull request's unresolved conversation |
 | `/afk update-branch` | A pull request | An AFK run that merges `main` into the pull request's branch and resolves the conflicts |
 
@@ -1250,8 +1266,8 @@ Labels record the state of the AFK loop only, and the AFK GitHub App sets them:
 
 | Label | Meaning |
 |---|---|
-| `afk:queued` | The ticket waits for its open blockers; its AFK run starts when the last one closes. A command on it is refused. |
-| `afk:in-progress` | An AFK run is queued or running, or a spec's chain is in progress. A command on it is refused. |
+| `afk:queued` | The ticket waits for its open blocking tickets, or the spec for one of its child tickets to be unblocked; its AFK run starts then and reacts to the command that queued it. A command on it is refused. |
+| `afk:in-progress` | An AFK run is queued or running, or an AFK spec implementation is in progress. A command on it is refused. |
 | `afk:blocked` | The last AFK run failed or was refused; its comment says why. A new command clears it. |
 
 ### AFK GitHub App
@@ -1303,7 +1319,7 @@ Production Dockerfiles are located at the root of each component directory and a
 - [controller/Dockerfile](controller/Dockerfile) — Python streamer image with the controller package installed.
 - [web/Dockerfile](web/Dockerfile) — Node.js image with the frontend dependencies installed.
 
-All production images run as user `dustmite` (uid=1040). This is distinct from the `vscode` user (uid=1050) in devcontainer images, making any file ownership cross-contamination immediately visible.
+All production images run as user `dustmite` (uid=1040). A devcontainer runs as the host uid, or uid 1050 for `docs`, which is distinct from `dustmite`, making any file ownership cross-contamination immediately visible.
 
 ## Pull request titles
 
