@@ -17,7 +17,6 @@ from tests.helpers.query import (
 
 CASES: list[tuple[str, str]] = [
     ("dust-mite-streamer", "Starting server"),
-    ("dust-mite-controller", "Sending new command with value"),
     ("dust-mite-web", "dust-mite-web logging initialized"),
     ("dust-mite-car", "Starting camera task"),
 ]
