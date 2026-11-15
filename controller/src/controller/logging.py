@@ -12,21 +12,24 @@ from opentelemetry.sdk.resources import Resource
 logger = logging.getLogger(__name__)
 
 
-def configure_logging(endpoint: str | None, resource: Resource) -> None:
-    """Export the root logger's records over OTLP/HTTP.
+def configure_logging(endpoint: str | None, resource: Resource) -> logging.Handler:
+    """Send `controller` records from DEBUG to the console and any OTLP `endpoint`.
 
-    Builds a ``LoggerProvider`` exporting to ``endpoint``, the full OTLP/HTTP
-    logs URL, sets it as the global provider and installs its handler,
-    skipping configuration if ``endpoint`` is empty.
+    Returns the console handler.
     """
+    logging.getLogger(__package__).setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+    logging.getLogger().addHandler(console_handler)
     if not endpoint:
         logger.debug("No OTLP logs endpoint, skipping log configuration")
-        return
+        return console_handler
     exporter = OTLPLogExporter(endpoint=endpoint)
     provider = LoggerProvider(resource=resource)
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)
     install_log_handler(provider)
+    return console_handler
 
 
 def install_log_handler(provider: LoggerProvider) -> None:

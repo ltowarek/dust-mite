@@ -25,7 +25,6 @@ from .reconnecting_connection import send_until_lost, stay_connected
 from .senders import send_command
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class DriveConnectionClosedError(Exception):
@@ -48,14 +47,6 @@ class ControllerSettings:
             input_backend=InputBackendName(environ["CONTROLLER_INPUT_BACKEND"]),
             observability=ObservabilitySettings.from_env(environ),
         )
-
-
-def _configure_console_logging() -> logging.Handler:
-    """Attach a plain stream handler for console output and return it."""
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
-    logging.getLogger().addHandler(handler)
-    return handler
 
 
 async def autorepeat(
@@ -115,8 +106,9 @@ async def _send_until_closed_deliberately(
 def main() -> None:
     """Run the main entry point."""
     settings = ControllerSettings.from_env(os.environ)
-    configure_observability("dust-mite-controller", settings.observability)
-    console_handler = _configure_console_logging()
+    console_handler = configure_observability(
+        "dust-mite-controller", settings.observability
+    )
 
     try:
         if settings.input_backend is InputBackendName.KEYBOARD:
