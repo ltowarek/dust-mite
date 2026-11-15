@@ -23,7 +23,7 @@ jobs:
       issues: read
 
     steps:
-      - name: Find the queued tickets that the blocking ticket blocks
+      - name: Find the queued tickets and specs that the blocking ticket unblocks
         id: queued
         shell: bash
         env:
@@ -37,7 +37,7 @@ jobs:
                       number
                       state
                       repository { nameWithOwner }
-                      parent { number }
+                      parent { number labels(first: 100) { nodes { name } } }
                       labels(first: 100) { nodes { name } }
                       blockedBy(first: 100) { nodes { state } }
                     }
@@ -48,11 +48,19 @@ jobs:
         run: |
           queued=$(gh api graphql -f query="$QUERY" \
             -f owner="${GH_REPO%/*}" -f repo="${GH_REPO#*/}" -F number="$BLOCKING_TICKET" |
-            jq -c --arg repo "$GH_REPO" '[.data.repository.issue.blocking.nodes[]
+            jq -c --arg repo "$GH_REPO" '
+              def waiting: index("agent:queued") and (index("agent:implement") | not);
+              [.data.repository.issue.blocking.nodes[]
               | select(.state == "OPEN" and .repository.nameWithOwner == $repo)
-              | ([.labels.nodes[].name]) as $labels
-              | select(($labels | index("agent:queued")) and ($labels | index("agent:implement") | not))
-              | {number, parent: .parent.number, open_blocking_tickets: ([.blockedBy.nodes[] | select(.state == "OPEN")] | length)}]')
+              | ([.blockedBy.nodes[] | select(.state == "OPEN")] | length) as $open_blocking_tickets
+              | if ([.labels.nodes[].name] | waiting) then
+                  if .parent then {number, refused_parent: .parent.number}
+                  elif $open_blocking_tickets == 0 then {number}
+                  else empty end
+                elif .parent and ([.parent.labels.nodes[].name] | waiting) and $open_blocking_tickets == 0 then
+                  {number: .parent.number}
+                else empty end]
+              | unique_by(.number)')
           echo "Queued tickets: $queued"
           echo "tickets=$queued" >> "$GITHUB_OUTPUT"
 
@@ -65,7 +73,7 @@ jobs:
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-issues: write
 
-      - name: Promote the unblocked tickets and refuse child tickets
+      - name: Promote the unblocked tickets and specs, and refuse child tickets
         if: steps.queued.outputs.tickets != '[]'
         shell: bash
         env:
@@ -74,13 +82,11 @@ jobs:
         run: |
           jq -c '.[]' <<<"$TICKETS" | while IFS= read -r ticket; do
             number=$(jq -r .number <<<"$ticket")
-            parent=$(jq -r '.parent // empty' <<<"$ticket")
-            open_blocking_tickets=$(jq -r .open_blocking_tickets <<<"$ticket")
+            parent=$(jq -r '.refused_parent // empty' <<<"$ticket")
             if [ -n "$parent" ]; then
               gh issue edit "$number" --remove-label agent:queued --add-label agent:blocked
               gh issue comment "$number" --body "Refused to promote: this ticket is a child ticket of #${parent}. Child tickets run only through their spec; add \`agent:implement\` to #${parent} instead."
-            elif [ "$open_blocking_tickets" = 0 ]; then
+            else
               gh issue edit "$number" --remove-label agent:queued --add-label agent:implement
-              gh issue comment "$number" --body "Unblocked by #${BLOCKING_TICKET} closing; promoted from \`agent:queued\` to \`agent:implement\`."
             fi
           done

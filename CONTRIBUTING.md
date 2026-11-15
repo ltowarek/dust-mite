@@ -1178,13 +1178,13 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Removes `agent:implement` when the run ends; after a failure, including a failed step in its last job, labels the ticket or spec `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
-  - Starts an AFK run on a ticket that the maintainer labelled `agent:queued`, when its last open blocking ticket closes
+  - Starts an AFK run on a ticket that the maintainer labelled `agent:queued`, when its last open blocking ticket closes, and on a spec that [afk-run.yml](.github/workflows/afk-run.yml) labelled `agent:queued`, when the last open blocking ticket of one of its child tickets closes
   - Expects the `agent:queued`, `agent:implement` and `agent:blocked` labels to exist in the repository
   - Counts a blocking ticket closed for any reason, including as not planned, as no longer blocking
-  - Replaces `agent:queued` with `agent:implement` as the [AFK GitHub App](#afk-github-app), so that [afk-run.yml](.github/workflows/afk-run.yml) starts, and comments the blocking ticket that unblocked the ticket
+  - Replaces `agent:queued` with `agent:implement` as the [AFK GitHub App](#afk-github-app), so that [afk-run.yml](.github/workflows/afk-run.yml) starts, without a comment
   - Refuses a child ticket with a comment; it replaces the child ticket's `agent:queued` label with `agent:blocked`
-  - Skips a ticket that still has `agent:implement`
-  - Runs one promotion at a time, so that two blocking tickets closing together promote a ticket once
+  - Skips a ticket or spec that still has `agent:implement`
+  - Runs one promotion at a time, so that two blocking tickets closing together promote a ticket or spec once
   - Grants its own `GITHUB_TOKEN` no write permission
   - Times out after 5 minutes
 - [afk-run-pr.yml](.github/workflows/afk-run-pr.yml)
