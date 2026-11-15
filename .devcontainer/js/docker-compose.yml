@@ -13,8 +13,10 @@ services:
     user: "${USER_UID:-1050}:${USER_GID:-1050}"
     volumes:
       - ../..:/workspaces/dust-mite:cached
-    env_file:
-      - path: ../../.env
+    environment:
+      - VITE_CAMERA_URL
+      - VITE_OTLP_ENDPOINT
+      - VITE_WS_URL
     ports:
       - "5174:5173"
     command: sleep infinity

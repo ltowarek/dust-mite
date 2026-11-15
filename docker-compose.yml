@@ -6,8 +6,9 @@ services:
   cpp:
     build:
       context: ./car
-    env_file:
-      - path: .env
+    environment:
+      - WIFI_PASSWORD
+      - WIFI_SSID
     # Uncomment to pass through ESP32 device.
     # devices:
     #   - /dev/ttyACM0:/dev/ttyACM0
@@ -21,8 +22,20 @@ services:
       dockerfile: Dockerfile
       additional_contexts:
         root: .
-    env_file:
-      - path: .env
+    environment:
+      - CONTROLLER_INPUT_BACKEND
+      - DRIVE_CLIENT_URI
+      - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
+      - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+      - OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+      - PROFILING_ENABLED
+      - SERVICE_REPOSITORY
+      - STREAMER_CAMERA_PORT
+      - STREAMER_DRIVE_URI
+      - STREAM_CLIENT_URI
+      - TELEMETRY_CLIENT_URI
     # devices:
     #   - /dev/hidraw4:/dev/hidraw4
     ports:
@@ -37,8 +50,10 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
-    env_file:
-      - path: .env
+    environment:
+      - VITE_CAMERA_URL
+      - VITE_OTLP_ENDPOINT
+      - VITE_WS_URL
     ports:
       - "5173:5173"
     command: sleep infinity
@@ -92,8 +107,6 @@ services:
     volumes:
       - .:/workspaces/dust-mite
     working_dir: /workspaces/dust-mite/web
-    env_file:
-      - path: .env
     environment:
       BASE_URL: http://js:5173
       VITE_WS_URL: ws://python:8765
