@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 5
 
     permissions:
+      actions: write
       issues: read
 
     steps:
@@ -51,7 +52,7 @@ jobs:
             jq -c --arg repo "$GH_REPO" '[.data.repository.issue.blocking.nodes[]
               | select(.state == "OPEN" and .repository.nameWithOwner == $repo)
               | ([.labels.nodes[].name]) as $labels
-              | select(($labels | index("agent:queued")) and ($labels | index("agent:implement") | not))
+              | select(($labels | index("afk:queued")) and ($labels | index("afk:in-progress") | not))
               | {number, parent: .parent.number, open_blockers: ([.blockedBy.nodes[] | select(.state == "OPEN")] | length)}]')
           echo "Queued tickets: $queued"
           echo "tickets=$queued" >> "$GITHUB_OUTPUT"
@@ -70,6 +71,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          ACTIONS_TOKEN: ${{ github.token }}
           TICKETS: ${{ steps.queued.outputs.tickets }}
         run: |
           jq -c '.[]' <<<"$TICKETS" | while IFS= read -r ticket; do
@@ -77,10 +79,12 @@ jobs:
             parent=$(jq -r '.parent // empty' <<<"$ticket")
             open_blockers=$(jq -r .open_blockers <<<"$ticket")
             if [ -n "$parent" ]; then
-              gh issue edit "$number" --remove-label agent:queued --add-label agent:blocked
-              gh issue comment "$number" --body "Refused to promote: this ticket is a sub-issue of #${parent}. Sub-issues run only through their spec's chain; add \`agent:implement\` to #${parent} instead."
+              gh issue edit "$number" --remove-label afk:queued --add-label afk:blocked
+              gh issue comment "$number" --body "Refused to promote: this ticket is a sub-issue of #${parent}. Sub-issues run only through their spec's chain; comment \`/afk implement\` on #${parent} instead."
             elif [ "$open_blockers" = 0 ]; then
-              gh issue edit "$number" --remove-label agent:queued --add-label agent:implement
-              gh issue comment "$number" --body "Unblocked by #${BLOCKER} closing; promoted from \`agent:queued\` to \`agent:implement\`."
+              # Dispatch first: a failed dispatch leaves the ticket queued, not stale in progress.
+              GH_TOKEN="$ACTIONS_TOKEN" gh workflow run afk-run.yml -f number="$number"
+              gh issue edit "$number" --remove-label afk:queued --add-label afk:in-progress
+              gh issue comment "$number" --body "Unblocked by #${BLOCKER} closing; promoted from \`afk:queued\` to \`afk:in-progress\`."
             fi
           done
