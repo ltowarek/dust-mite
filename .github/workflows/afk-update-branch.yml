@@ -1,43 +1,91 @@
 name: AFK update branch
+run-name: 'afk update-branch #${{ inputs.number }}'
 
 on:
-  pull_request_target:  # zizmor: ignore[dangerous-triggers] GitHub never fires pull_request on a conflicting PR, and only same-repo PRs run
-    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: The PR
+        required: true
+        type: number
+      comment-id:
+        description: The AFK command's comment; empty when started from the Actions tab
+        required: false
+        type: string
+      head-sha:
+        description: The PR's head when the AFK command was accepted; empty for the current head
+        required: false
+        type: string
 
 permissions: {}
 
-# Shares afk-run.yml's queue; runs for other labels get a group of their own.
+# Shares afk-run.yml's queue.
 concurrency:
-  group: ${{ github.event.label.name == 'agent:update-branch' && 'afk-run' || format('afk-run-{0}', github.run_id) }}
+  group: afk-run
   queue: max
 
 env:
-  PR: ${{ github.event.pull_request.number }}
+  PR: ${{ inputs.number }}
+  COMMENT_ID: ${{ inputs.comment-id }}
   GH_REPO: ${{ github.repository }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
   ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
 
 jobs:
   check:
-    if: github.event.label.name == 'agent:update-branch' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     permissions:
+      issues: read
       pull-requests: read
 
     outputs:
       refusal: ${{ steps.state.outputs.refusal }}
+      url: ${{ steps.state.outputs.url }}
+      branch: ${{ steps.state.outputs.branch }}
+      head-sha: ${{ steps.state.outputs.head-sha }}
 
     steps:
+      - name: Mint the App's write token for the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      # A run started from the Actions tab has no dispatcher to add it; gh issue also labels a PR.
+      - name: Mark the target in progress
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh issue edit "$PR" --add-label afk:in-progress
+
       - name: Read the PR's state
         id: state
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head-sha }}
         run: |
-          state=$(gh pr view "$PR" --json state --jq .state)
+          if [ "$(gh api "repos/${GH_REPO}/issues/${PR}" --jq '.pull_request != null')" != true ]; then
+            echo "refusal=Refused to run: this is not a PR, and \`/afk update-branch\` works only on a PR." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh pr view "$PR" --json state,url,isCrossRepository,headRefName,headRefOid > "$RUNNER_TEMP/pr.json"
+          state=$(jq -r .state "$RUNNER_TEMP/pr.json")
           if [ "$state" != OPEN ]; then
             echo "refusal=Refused to run: this PR is ${state,,}." >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          if [ "$(jq -r .isCrossRepository "$RUNNER_TEMP/pr.json")" = true ]; then
+            echo "refusal=Refused to run: this PR's branch is in a fork, and an AFK run never runs a fork's code with the repository's secrets." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "url=$(jq -r .url "$RUNNER_TEMP/pr.json")"
+            echo "branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")"
+            echo "head-sha=${HEAD_SHA:-$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")}"
+          } >> "$GITHUB_OUTPUT"
 
   update-branch:
     needs: check
@@ -58,14 +106,13 @@ jobs:
       car-variant: ${{ steps.agent-result.outputs.car_variant }}
 
     env:
-      BRANCH: ${{ github.event.pull_request.head.ref }}
+      BRANCH: ${{ needs.check.outputs.branch }}
 
     steps:
-      # The branch's tip when the run starts, not when it was labelled: runs wait in the queue.
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ needs.check.outputs.head-sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -123,7 +170,7 @@ jobs:
           bot_name: ${{ vars.AFK_APP_SLUG }}[bot]
           bot_id: ${{ vars.AFK_APP_BOT_ID }}
           prompt: |
-            ${{ github.event.pull_request.html_url }} (branch `${{ github.event.pull_request.head.ref }}`) conflicts with `main`. `git merge --no-edit origin/main` has already run and left its conflicts in the working tree.
+            ${{ needs.check.outputs.url }} (branch `${{ needs.check.outputs.branch }}`) conflicts with `main`. `git merge --no-edit origin/main` has already run and left its conflicts in the working tree.
 
             This is an AFK agent session: no one will answer questions. Follow CLAUDE.md.
             Resolve every conflict and finish the merge with one commit whose body says how and why you resolved each conflict. Never abort the merge or rewrite the branch's existing commits.
@@ -202,7 +249,7 @@ jobs:
 
   finish:
     needs: [check, update-branch]
-    if: always() && needs.check.result != 'skipped'
+    if: always()
     runs-on: ubuntu-latest
 
     permissions:
@@ -223,7 +270,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           REFUSAL: ${{ needs.check.outputs.refusal }}
-        run: gh pr comment "$PR" --body "$REFUSAL"
+        run: gh issue comment "$PR" --body "$REFUSAL"
 
       - name: Comment the merge
         if: always() && needs.update-branch.result == 'success'
@@ -280,14 +327,14 @@ jobs:
               --label "$labels"
           done
 
-      - name: Clear agent:blocked after a successful run
+      - name: Clear afk:blocked after a successful run
         if: always() && needs.update-branch.result == 'success'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh pr edit "$PR" --remove-label agent:blocked
+        run: gh issue edit "$PR" --remove-label afk:blocked
 
       - name: Report the failure
-        if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+        if: always() && (failure() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           ACTIONS_TOKEN: ${{ github.token }}
@@ -304,19 +351,31 @@ jobs:
             reason="${reason} The agent reported: ${AGENT_ERROR}"
           fi
           cat > "$RUNNER_TEMP/failure.md" <<EOF
-          \`agent:update-branch\` run failed.
+          The AFK run that updates this PR's branch failed.
 
           **Reason:** ${reason}
 
           **Run:** ${RUN_URL}
 
-          Re-add \`agent:update-branch\` to retry.
+          Comment \`/afk update-branch\` to retry.
           EOF
-          gh pr edit "$PR" --add-label agent:blocked
-          gh pr comment "$PR" --body-file "$RUNNER_TEMP/failure.md"
+          gh issue edit "$PR" --add-label afk:blocked
+          gh issue comment "$PR" --body-file "$RUNNER_TEMP/failure.md"
 
-      - name: Remove the trigger label
+      - name: Clear afk:in-progress
         if: always()
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh pr edit "$PR" --remove-label agent:update-branch
+        run: gh issue edit "$PR" --remove-label afk:in-progress
+
+      - name: React to the AFK command
+        if: always() && inputs.comment-id != ''
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          SUCCEEDED: ${{ needs.check.outputs.refusal == '' && needs.update-branch.result == 'success' && job.status == 'success' }}
+        run: |
+          content=confused
+          if [ "$SUCCEEDED" = true ]; then
+            content=rocket
+          fi
+          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="$content"
