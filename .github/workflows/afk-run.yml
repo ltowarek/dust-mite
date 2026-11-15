@@ -21,11 +21,7 @@ jobs:
     timeout-minutes: 180
 
     permissions:
-      contents: write
-      issues: read
-      pull-requests: read
-      id-token: write  # Exchanged for the Claude app token, whose pushes start CI
-      actions: read
+      contents: read
 
     env:
       TICKET: ${{ inputs.ticket }}
@@ -44,11 +40,24 @@ jobs:
       - name: Write .env
         run: ./scripts/dump_env.sh
 
+      - name: Mint the App's read-only token for the agent
+        id: read-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+
       - name: Run the AFK agent session
         id: agent
         uses: anthropics/claude-code-action@v1.0.266
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.read-token.outputs.token }}
+          bot_name: ${{ vars.AFK_APP_SLUG }}[bot]
+          bot_id: ${{ vars.AFK_APP_BOT_ID }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: mattpocock-skills@claude-plugins-official
           prompt: |
@@ -64,16 +73,26 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
             --json-schema '{"type":"object","properties":{"outcome":{"enum":["done","spec_gap"]},"pr_title":{"type":"string"},"pr_body":{"type":"string"},"spec_gaps":{"type":"string"}},"required":["outcome"]}'
 
+      - name: Mint the App's write token for the push and PR
+        id: write-token
+        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Push the branch
         if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
         env:
-          GH_TOKEN: ${{ steps.agent.outputs.github_token }}
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
         run: git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
 
       - name: Open the draft PR
         if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
         env:
-          GH_TOKEN: ${{ steps.agent.outputs.github_token }}
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
           PR_TITLE: ${{ fromJSON(steps.agent.outputs.structured_output).pr_title }}
           PR_BODY: ${{ fromJSON(steps.agent.outputs.structured_output).pr_body }}
         run: |
