@@ -88,6 +88,10 @@ jobs:
       - name: Write .env
         run: ./scripts/dump_env.sh
 
+      - name: Read the agent's output schema
+        id: schema
+        run: echo "json=$(jq -c . .github/afk-run-output.schema.json)" >> "$GITHUB_OUTPUT"
+
       - name: Mint the App's read-only token for the agent
         id: read-token
         uses: actions/create-github-app-token@v3.3.0
@@ -116,16 +120,13 @@ jobs:
             Commit to the current branch. Do not push, open or edit pull requests, file tickets, comment, or change labels.
             Follow docs/agents/follow-up-tickets.md: list follow-up tickets in follow_ups and follow-ups already covered in already_covered.
             At a spec gap, follow docs/agents/spec-gaps.md: make no commits, set outcome to spec_gap, and write the comment in spec_gaps.
+            If finding the fix needs the car (flashing it, or watching how it behaves), make no commits, set outcome to needs_car, set car_variant to the variant on which the ticket's code runs, and explain why in needs_car_reason.
             Otherwise set outcome to done, write a Conventional Commits PR title in pr_title, and write the PR body with the pr skill in pr_body.
+            Set needs_dut_run to whether your change can only be confirmed by a DUT run on the car, judged from the change itself; if it can, set car_variant.
           claude_args: >-
             --model claude-opus-5-5 --effort medium
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
-            --json-schema '{"type":"object","properties":{"outcome":{"enum":["done","spec_gap"]},"pr_title":{"type":"string"},"pr_body":{"type":"string"},"spec_gaps":{"type":"string"},
-            "follow_ups":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"type":{"enum":["bug","enhancement","documentation"]},
-            "components":{"type":"array","minItems":1,"items":{"enum":["web","camera","telemetry","infrastructure","observability","drive","teleop"]}},"body":{"type":"string"}},
-            "required":["title","type","components","body"]}},
-            "already_covered":{"type":"array","items":{"type":"object","properties":{"problem":{"type":"string"},"covered_by":{"type":"integer"}},"required":["problem","covered_by"]}}},
-            "required":["outcome"]}'
+            --json-schema '${{ steps.schema.outputs.json }}'
 
       - name: Read the agent's error
         id: agent-error
@@ -149,23 +150,50 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Push the branch
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
-
-      - name: Open the draft PR
+      - name: Push the branch and open the PR
         id: pr
         if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           PR_TITLE: ${{ fromJSON(steps.agent.outputs.structured_output).pr_title }}
           PR_BODY: ${{ fromJSON(steps.agent.outputs.structured_output).pr_body }}
+          NEEDS_DUT_RUN: ${{ fromJSON(steps.agent.outputs.structured_output).needs_dut_run }}
+          CAR_VARIANT: ${{ fromJSON(steps.agent.outputs.structured_output).car_variant }}
         run: |
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
           printf 'Closes #%s\n\n%s\n\n[AFK run](%s)\n' "$TICKET" "$PR_BODY" "$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
           url=$(gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md")
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          if [ "$NEEDS_DUT_RUN" = true ]; then
+            gh pr edit "$url" --add-label "needs-car:${CAR_VARIANT}"
+          else
+            gh pr ready "$url"
+          fi
+
+      - name: Mint the App's write token for handing the ticket to the car
+        id: car-token
+        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'needs_car'
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+
+      - name: Hand the ticket to a car agent session
+        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'needs_car'
+        env:
+          GH_TOKEN: ${{ steps.car-token.outputs.token }}
+          CAR_VARIANT: ${{ fromJSON(steps.agent.outputs.structured_output).car_variant }}
+          REASON: ${{ fromJSON(steps.agent.outputs.structured_output).needs_car_reason }}
+          OUTPUT: ${{ steps.agent.outputs.structured_output }}
+        run: |
+          printf 'Finding the fix needs the car, so this AFK run pushed nothing.\n\n**Reason:** %s\n\n**Run:** %s\n' "$REASON" "$RUN_URL" > "$RUNNER_TEMP/needs-car.md"
+          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
+          if [ -n "$already_covered" ]; then
+            printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered" >> "$RUNNER_TEMP/needs-car.md"
+          fi
+          gh issue edit "$TICKET" --add-label "needs-car:${CAR_VARIANT}"
+          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/needs-car.md"
 
       - name: Mint the App's write token for handing the ticket back
         id: issues-token

@@ -44,6 +44,8 @@ Every issue should carry one type label and at least one component label.
 - **Type** — `bug`, `enhancement`, `documentation`.
 - **Component** — `web`, `camera`, `telemetry`, `infrastructure`, `observability`, `drive`, `teleop`. Each names a functional subsystem, not a root directory, so a subsystem can move between [car/](car/) and [controller/](controller/) across variants without invalidating its label.
 
+An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json).
+
 See each label's description on the [GitHub labels page](https://github.com/ltowarek/dust-mite/labels) for what it covers.
 
 Don't add a new label without a recurring, evidenced need — an unused label is noise.
@@ -1151,11 +1153,14 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Skips a ticket that has sub-issues, without a comment
   - Refuses, with a comment, a sub-issue, which it also labels `agent:blocked`, and a ticket that an open pull request already closes
   - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, which holds a read-only token of the [AFK GitHub App](#afk-github-app) and makes its commits as the App's bot
+  - Validates the agent's structured output against [afk-run-output.schema.json](.github/afk-run-output.schema.json)
   - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch and opens a draft pull request as the App's bot, so that CI runs on it
   - Grants its own `GITHUB_TOKEN` no write permission
+  - Marks the pull request ready for review when the agent judges that the change needs no DUT run; otherwise labels it `needs-car:<variant>` and leaves it as a draft
   - Pushes nothing when the agent reports a spec gap, as described in [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md); instead, with an Issues write token of the App, it:
     - Replaces the ticket's `ready-for-agent` label with `needs-triage`
     - Posts the gaps as a comment on the ticket, with the follow-ups already covered under their own heading
+  - Pushes nothing when the agent reports that finding the fix needs the car; instead, with an Issues write token of the App, it labels the ticket `needs-car:<variant>` and comments the agent's reason on it, with the follow-ups already covered under their own heading
   - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
   - Removes `agent:implement` when the run ends; after a failure, labels the ticket `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
   - Times out after 180 minutes
