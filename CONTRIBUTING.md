@@ -1164,6 +1164,16 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
   - Removes `agent:implement` when the run ends; after a failure, labels the ticket `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
   - Times out after 180 minutes
+- [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
+  - Starts an AFK run on a ticket that the maintainer labelled `agent:queued`, when its last open blocker closes
+  - Expects the `agent:queued`, `agent:implement` and `agent:blocked` labels to exist in the repository
+  - Counts a blocker closed for any reason, including as not planned, as no longer blocking
+  - Replaces `agent:queued` with `agent:implement` as the [AFK GitHub App](#afk-github-app), so that [afk-run.yml](.github/workflows/afk-run.yml) starts, and comments the blocker that unblocked the ticket
+  - Refuses a sub-issue with a comment; it replaces the sub-issue's `agent:queued` label with `agent:blocked`
+  - Skips a ticket that still has `agent:implement`
+  - Runs one promotion at a time, so that two blockers closing together promote a ticket once
+  - Grants its own `GITHUB_TOKEN` no write permission
+  - Times out after 5 minutes
 - [claude.yml](.github/workflows/claude.yml)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 

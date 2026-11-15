@@ -1,0 +1,86 @@
+name: AFK promote queued
+
+on:
+  issues:
+    types: [closed]
+
+permissions: {}
+
+concurrency:
+  group: afk-promote-queued
+  queue: max
+
+env:
+  BLOCKER: ${{ github.event.issue.number }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      issues: read
+
+    steps:
+      - name: Find the queued tickets that the blocker blocks
+        id: queued
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUERY: |
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $number) {
+                  blocking(first: 100) {
+                    nodes {
+                      number
+                      state
+                      repository { nameWithOwner }
+                      parent { number }
+                      labels(first: 100) { nodes { name } }
+                      blockedBy(first: 100) { nodes { state } }
+                    }
+                  }
+                }
+              }
+            }
+        run: |
+          queued=$(gh api graphql -f query="$QUERY" \
+            -f owner="${GH_REPO%/*}" -f repo="${GH_REPO#*/}" -F number="$BLOCKER" |
+            jq -c --arg repo "$GH_REPO" '[.data.repository.issue.blocking.nodes[]
+              | select(.state == "OPEN" and .repository.nameWithOwner == $repo)
+              | ([.labels.nodes[].name]) as $labels
+              | select(($labels | index("agent:queued")) and ($labels | index("agent:implement") | not))
+              | {number, parent: .parent.number, open_blockers: ([.blockedBy.nodes[] | select(.state == "OPEN")] | length)}]')
+          echo "Queued tickets: $queued"
+          echo "tickets=$queued" >> "$GITHUB_OUTPUT"
+
+      - name: Mint the App's write token for labels and comments
+        id: write-token
+        if: steps.queued.outputs.tickets != '[]'
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+
+      - name: Promote the unblocked tickets and refuse sub-issues
+        if: steps.queued.outputs.tickets != '[]'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          TICKETS: ${{ steps.queued.outputs.tickets }}
+        run: |
+          jq -c '.[]' <<<"$TICKETS" | while IFS= read -r ticket; do
+            number=$(jq -r .number <<<"$ticket")
+            parent=$(jq -r '.parent // empty' <<<"$ticket")
+            open_blockers=$(jq -r .open_blockers <<<"$ticket")
+            if [ -n "$parent" ]; then
+              gh issue edit "$number" --remove-label agent:queued --add-label agent:blocked
+              gh issue comment "$number" --body "Refused to promote: this ticket is a sub-issue of #${parent}. Sub-issues run only through their spec's chain; add \`agent:implement\` to #${parent} instead."
+            elif [ "$open_blockers" = 0 ]; then
+              gh issue edit "$number" --remove-label agent:queued --add-label agent:implement
+              gh issue comment "$number" --body "Unblocked by #${BLOCKER} closing; promoted from \`agent:queued\` to \`agent:implement\`."
+            fi
+          done
