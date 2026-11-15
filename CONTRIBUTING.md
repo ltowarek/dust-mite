@@ -1162,7 +1162,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
   - Starts an AFK run on a ticket that the maintainer labelled `agent:queued`, when its last open blocker closes
   - Expects the `agent:queued`, `agent:implement` and `agent:blocked` labels to exist in the repository
-  - Promotes nothing when a blocker closes as not planned, so the ticket stays queued
+  - Counts a blocker closed for any reason, including as not planned, as no longer blocking
   - Replaces `agent:queued` with `agent:implement` as the [AFK GitHub App](#afk-github-app), so that [afk-run.yml](.github/workflows/afk-run.yml) starts, and comments the blocker that unblocked the ticket
   - Refuses a sub-issue with a comment; it replaces the sub-issue's `agent:queued` label with `agent:blocked`
   - Skips a ticket that still has `agent:implement`
