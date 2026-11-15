@@ -28,6 +28,10 @@ jobs:
 
     outputs:
       spec: ${{ steps.shape.outputs.spec }}
+      sub-issue: ${{ steps.shape.outputs.sub-issue }}
+      sub-issue-url: ${{ steps.shape.outputs.sub-issue-url }}
+      branch: ${{ steps.shape.outputs.branch }}
+      last-run: ${{ steps.shape.outputs.last-run }}
       refusal: ${{ steps.shape.outputs.refusal || steps.open-pr.outputs.refusal }}
       block: ${{ steps.shape.outputs.block }}
 
@@ -36,16 +40,35 @@ jobs:
         id: shape
         env:
           GH_TOKEN: ${{ github.token }}
+          TICKET_TITLE: ${{ github.event.issue.title }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           shape=$(gh issue view "$TICKET" --json subIssuesSummary,parent --jq '"\(.subIssuesSummary.total) \(.parent.number // "")"')
           read -r sub_issues parent <<<"$shape"
-          # A spec is skipped without a comment; the spec chain will run it.
           if [ "$sub_issues" != 0 ]; then
-            echo "spec=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$parent" ]; then
+            open=$(gh api "repos/${GH_REPO}/issues/${TICKET}/sub_issues?per_page=100" --jq '[.[] | select(.state == "open")]')
+            if [ "$(jq length <<<"$open")" = 0 ]; then
+              echo "refusal=Refused to run: every sub-issue of this spec is closed, so there is nothing to implement." >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            slug=$(jq -rn 'env.TICKET_TITLE | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | .[0:50] | rtrimstr("-")')
+            {
+              echo "spec=true"
+              echo "sub-issue=$(jq '.[0].number' <<<"$open")"
+              echo "sub-issue-url=$(jq -r '.[0].html_url' <<<"$open")"
+              echo "branch=agent/prd-${TICKET}-${slug}"
+              echo "last-run=$(jq 'length == 1' <<<"$open")"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$parent" ]; then
             echo "block=true" >> "$GITHUB_OUTPUT"
             echo "refusal=Refused to run: this ticket is a sub-issue of #${parent}. Sub-issues run only through their spec's chain; add \`agent:implement\` to #${parent} instead." >> "$GITHUB_OUTPUT"
           fi
+          {
+            echo "branch=afk/issue-${TICKET}-${RUN_ID}"
+            echo "last-run=true"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Look for an open PR that closes the ticket
         id: open-pr
@@ -61,29 +84,32 @@ jobs:
 
   implement:
     needs: check
-    if: needs.check.outputs.spec != 'true' && needs.check.outputs.refusal == ''
+    if: needs.check.outputs.refusal == ''
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
     permissions:
       contents: read
 
+    env:
+      WORKED_TICKET: ${{ needs.check.outputs.sub-issue || github.event.issue.number }}
+      BRANCH: ${{ needs.check.outputs.branch }}
+
     outputs:
       agent-error: ${{ steps.agent-error.outputs.result }}
       agent-output: ${{ steps.agent.outputs.structured_output }}
       pr-url: ${{ steps.pr.outputs.url }}
-
-    env:
-      BRANCH: afk/issue-${{ github.event.issue.number }}-${{ github.run_id }}
+      sha: ${{ steps.pr.outputs.sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      - name: Create the branch
-        run: git switch -c "$BRANCH"
+      - name: Switch to the branch
+        run: git switch "$BRANCH" || git switch -c "$BRANCH"
 
       - name: Write .env
         run: ./scripts/dump_env.sh
@@ -113,7 +139,7 @@ jobs:
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: mattpocock-skills@claude-plugins-official
           prompt: |
-            /mattpocock-skills:implement ${{ github.event.issue.html_url }}
+            /mattpocock-skills:implement ${{ needs.check.outputs.sub-issue-url || github.event.issue.html_url }}
             Every step `implement` names is mandatory in an AFK agent session; never skip one because the change is small.
 
             This is an AFK agent session: no one will answer questions. Follow CLAUDE.md, including running every check inside the devcontainer it names; Docker is available.
@@ -123,6 +149,7 @@ jobs:
             If finding the fix needs the car (flashing it, or watching how it behaves), make no commits, set outcome to needs_car, set car_variant to the variant on which the ticket's code runs, and explain why in needs_car_reason.
             Otherwise set outcome to done, write a Conventional Commits PR title in pr_title, and write the PR body with the pr skill in pr_body.
             Set needs_dut_run to whether your change can only be confirmed by a DUT run on the car, judged from the change itself; if it can, set car_variant.
+            ${{ needs.check.outputs.spec == 'true' && format('This ticket is a sub-issue of the spec #{0}, and the current branch already holds the commits of its earlier sub-issues. Review only your own commits, but write pr_title and pr_body and judge needs_dut_run for the branch''s whole change against main.', github.event.issue.number) || '' }}
           claude_args: >-
             --model claude-opus-5-5 --effort medium
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
@@ -159,11 +186,21 @@ jobs:
           PR_BODY: ${{ fromJSON(steps.agent.outputs.structured_output).pr_body }}
           NEEDS_DUT_RUN: ${{ fromJSON(steps.agent.outputs.structured_output).needs_dut_run }}
           CAR_VARIANT: ${{ fromJSON(steps.agent.outputs.structured_output).car_variant }}
+          LAST_RUN: ${{ needs.check.outputs.last-run }}
         run: |
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
           printf 'Closes #%s\n\n%s\n\n[AFK run](%s)\n' "$TICKET" "$PR_BODY" "$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
-          url=$(gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md")
+          url=$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty')
+          if [ -z "$url" ]; then
+            url=$(gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md")
+          elif [ "$LAST_RUN" = true ]; then
+            gh pr edit "$url" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ "$LAST_RUN" != true ]; then
+            exit 0
+          fi
           if [ "$NEEDS_DUT_RUN" = true ]; then
             gh pr edit "$url" --add-label "needs-car:${CAR_VARIANT}"
           else
@@ -192,8 +229,8 @@ jobs:
           if [ -n "$already_covered" ]; then
             printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered" >> "$RUNNER_TEMP/needs-car.md"
           fi
-          gh issue edit "$TICKET" --add-label "needs-car:${CAR_VARIANT}"
-          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/needs-car.md"
+          gh issue edit "$WORKED_TICKET" --add-label "needs-car:${CAR_VARIANT}"
+          gh issue comment "$WORKED_TICKET" --body-file "$RUNNER_TEMP/needs-car.md"
 
       - name: Mint the App's write token for handing the ticket back
         id: issues-token
@@ -216,16 +253,19 @@ jobs:
           if [ -n "$already_covered" ]; then
             printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered" >> "$RUNNER_TEMP/spec-gaps.md"
           fi
-          gh issue edit "$TICKET" --remove-label ready-for-agent --add-label needs-triage
-          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/spec-gaps.md"
+          gh issue edit "$WORKED_TICKET" --remove-label ready-for-agent --add-label needs-triage
+          gh issue comment "$WORKED_TICKET" --body-file "$RUNNER_TEMP/spec-gaps.md"
 
   finish:
     needs: [check, implement]
-    if: always() && github.event.label.name == 'agent:implement' && needs.check.outputs.spec != 'true'
+    if: always() && github.event.label.name == 'agent:implement'
     runs-on: ubuntu-latest
 
     permissions:
       actions: read
+
+    env:
+      WORKED_TICKET: ${{ needs.check.outputs.sub-issue || github.event.issue.number }}
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments
@@ -260,7 +300,7 @@ jobs:
             title=$(jq -r .title <<<"$follow_up")
             labels=$(jq -r '[.type] + .components | join(",")' <<<"$follow_up")
             {
-              printf '> *Follow-up ticket filed by an AFK agent session while working #%s.* ([run](%s))\n\n' "$TICKET" "$RUN_URL"
+              printf '> *Follow-up ticket filed by an AFK agent session while working #%s.* ([run](%s))\n\n' "$WORKED_TICKET" "$RUN_URL"
               jq -r .body <<<"$follow_up"
             } > "$RUNNER_TEMP/follow-up.md"
             gh issue create \
@@ -283,31 +323,62 @@ jobs:
             printf '## Follow-ups already covered\n\n%s\n' "$already_covered" | gh pr comment "$PR_URL" --body-file -
           fi
 
+      - name: Close the spec's sub-issue
+        if: always() && needs.check.outputs.spec == 'true' && needs.implement.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          SHA: ${{ needs.implement.outputs.sha }}
+        run: gh issue close "$WORKED_TICKET" --comment "Implemented in ${SHA}"
+
       - name: Clear agent:blocked after a successful run
         if: always() && needs.implement.result == 'success'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
         run: gh issue edit "$TICKET" --remove-label agent:blocked
 
+      - name: Stop the chain at a spec gap or a needs-car stop
+        if: always() && needs.check.outputs.spec == 'true' && needs.implement.result == 'success' && needs.implement.outputs.sha == ''
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          OUTPUT: ${{ needs.implement.outputs.agent-output }}
+        run: |
+          reason=$(jq -r 'if .outcome == "needs_car" then "Finding the fix needs the car: \(.needs_car_reason)" else "It has a spec gap, whose questions are on it." end' <<<"$OUTPUT")
+          cat > "$RUNNER_TEMP/chain-stop.md" <<EOF
+          \`agent:implement\` chain stopped at sub-issue #${WORKED_TICKET}.
+
+          **Reason:** ${reason}
+
+          **Run:** ${RUN_URL}
+
+          Re-add \`agent:implement\` to resume the chain.
+          EOF
+          gh issue edit "$TICKET" --add-label agent:blocked
+          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/chain-stop.md"
+
       - name: Report the failure
-        if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+        if: always() && (failure() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           ACTIONS_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           AGENT_ERROR: ${{ needs.implement.outputs.agent-error }}
+          SPEC: ${{ needs.check.outputs.spec }}
         run: |
           failed_step=$(GH_TOKEN="$ACTIONS_TOKEN" gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
-            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
+            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or any(.steps[]?; .conclusion == "failure"))
               | [.name, first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name)] | join(" › ")]
               | first // "unknown step"')
           reason="\`${failed_step}\` failed."
           if [ -n "$AGENT_ERROR" ]; then
             reason="${reason} The agent reported: ${AGENT_ERROR}"
           fi
+          failed="run failed"
+          if [ "$SPEC" = true ]; then
+            failed="run failed on sub-issue #${WORKED_TICKET}"
+          fi
           cat > "$RUNNER_TEMP/failure.md" <<EOF
-          \`agent:implement\` run failed.
+          \`agent:implement\` ${failed}.
 
           **Reason:** ${reason}
 
@@ -323,3 +394,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
         run: gh issue edit "$TICKET" --remove-label agent:implement
+
+      - name: Re-label the spec for its next sub-issue
+        if: needs.check.outputs.spec == 'true' && needs.implement.outputs.sha != '' && needs.check.outputs.last-run != 'true'
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh issue edit "$TICKET" --add-label agent:implement
