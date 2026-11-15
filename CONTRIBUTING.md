@@ -44,7 +44,7 @@ Every issue should carry one type label and at least one component label.
 - **Type** — `bug`, `enhancement`, `documentation`.
 - **Component** — `web`, `camera`, `telemetry`, `infrastructure`, `observability`, `drive`, `teleop`. Each names a functional subsystem, not a root directory, so a subsystem can move between [car/](car/) and [controller/](controller/) across variants without invalidating its label.
 
-An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json).
+An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json) and [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json).
 
 See each label's description on the [GitHub labels page](https://github.com/ltowarek/dust-mite/labels) for what it covers.
 
@@ -1174,6 +1174,19 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Runs one promotion at a time, so that two blockers closing together promote a ticket once
   - Grants its own `GITHUB_TOKEN` no write permission
   - Times out after 5 minutes
+- [afk-run-pr.yml](.github/workflows/afk-run-pr.yml)
+  - Starts an AFK run when the maintainer adds the `agent:implement` label to an open pull request, whatever its head branch
+  - Triggers on `pull_request_target`, because a `pull_request` run does not start on a pull request that conflicts with `main`
+  - Shares the `afk-run` concurrency group with [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in label order
+  - Refuses, with a comment, a closed pull request and one with no unresolved review threads, review summaries or top-level comments
+  - Runs Matt Pocock's `implement-pr` prompt on the unresolved conversation through `claude-code-action`, with a read-only token of the [AFK GitHub App](#afk-github-app); the agent changes code, replies, or neither, per comment, and never resolves a thread
+  - Validates the agent's structured output against [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json)
+  - Fails when the agent neither commits nor comments
+  - Mints a write token of the App after the agent step, pushes the agent's commits with lease to the pull request's branch only, and posts the agent's thread replies, inline comments and top-level comments
+  - Labels the pull request `needs-car:<variant>` when the agent judges that its commits need a DUT run, and leaves the draft or ready state untouched
+  - Files follow-up tickets and comments the follow-ups already covered, as [afk-run.yml](.github/workflows/afk-run.yml) does
+  - Removes `agent:implement` when the run ends; after a failure, labels the pull request `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
+  - Times out after 180 minutes
 - [claude.yml](.github/workflows/claude.yml)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 

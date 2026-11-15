@@ -1,0 +1,333 @@
+name: AFK run on a PR
+
+on:
+  pull_request_target:  # zizmor: ignore[dangerous-triggers] a pull_request run does not start on a PR that conflicts with main, and only the maintainer applies the trigger label
+    types: [labeled]
+
+permissions: {}
+
+# Shares the AFK queue with afk-run.yml; runs for other labels get a group of their own.
+concurrency:
+  group: ${{ github.event.label.name == 'agent:implement' && 'afk-run' || format('afk-run-pr-{0}', github.run_id) }}
+  queue: max
+
+env:
+  PR: ${{ github.event.pull_request.number }}
+  GH_REPO: ${{ github.repository }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
+
+jobs:
+  check:
+    if: github.event.label.name == 'agent:implement'
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: read
+
+    outputs:
+      refusal: ${{ steps.conversation.outputs.refusal }}
+      head-sha: ${{ steps.conversation.outputs.head-sha }}
+      conversation: ${{ steps.conversation.outputs.conversation }}
+
+    steps:
+      - name: Read the PR and its unresolved conversation
+        id: conversation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUERY: >-
+            query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){
+            reviewThreads(first:100){nodes{isResolved comments(first:100){nodes{databaseId path line originalLine body author{login}}}}}}}}
+        run: |
+          gh pr view "$PR" --json state,headRefOid,comments,reviews > "$RUNNER_TEMP/pr.json"
+          if [ "$(jq -r .state "$RUNNER_TEMP/pr.json")" != OPEN ]; then
+            echo "refusal=Refused to run: this PR is not open." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A reply goes to a thread's first comment; the REST API rejects replies to replies.
+          threads=$(gh api graphql -F owner="${GH_REPO%/*}" -F repo="${GH_REPO#*/}" -F number="$PR" \
+            -f query="$QUERY" \
+            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | .comments.nodes
+              | {comment_id: .[0].databaseId, path: .[0].path, line: (.[0].line // .[0].originalLine),
+                 comments: [.[] | {author: .author.login, body}]}]')
+          conversation=$(jq -c --argjson threads "$threads" '{
+            issue_comments: [.comments[] | {author: .author.login, body}],
+            review_summaries: [.reviews[] | select(.body != "") | {author: .author.login, state, body}],
+            review_threads: $threads}' "$RUNNER_TEMP/pr.json")
+          if [ "$(jq '[.[] | length] | add' <<<"$conversation")" = 0 ]; then
+            echo "refusal=Refused to run: this PR has no unresolved review threads, review summaries or top-level comments to act on." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "head-sha=$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")"
+            echo "conversation=$conversation"
+          } >> "$GITHUB_OUTPUT"
+
+  implement:
+    needs: check
+    if: needs.check.outputs.refusal == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    permissions:
+      contents: read
+
+    outputs:
+      agent-error: ${{ steps.agent-error.outputs.result }}
+      agent-output: ${{ steps.agent.outputs.structured_output }}
+
+    env:
+      BRANCH: ${{ github.event.pull_request.head.ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      HEAD_SHA: ${{ needs.check.outputs.head-sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.head-sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Switch to the PR's branch
+        run: git switch -c "$BRANCH"
+
+      - name: Write .env
+        run: ./scripts/dump_env.sh
+
+      - name: Write the unresolved conversation for the agent
+        env:
+          CONVERSATION: ${{ needs.check.outputs.conversation }}
+        run: jq . <<<"$CONVERSATION" > "$RUNNER_TEMP/pr-conversation.json"
+
+      - name: Read the agent's output schema
+        id: schema
+        run: echo "json=$(jq -c . .github/afk-run-pr-output.schema.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Mint the App's read-only token for the agent
+        id: read-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+
+      # Matt Pocock's implement-pr prompt, adapted to a read-only agent and structured output.
+      - name: Run the AFK agent session
+        id: agent
+        uses: anthropics/claude-code-action@v1.0.266
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.read-token.outputs.token }}
+          bot_name: ${{ vars.AFK_APP_SLUG }}[bot]
+          bot_id: ${{ vars.AFK_APP_BOT_ID }}
+          prompt: |
+            # TASK
+
+            You are addressing reviewer feedback on PR ${{ github.event.pull_request.html_url }}, checked out on the current branch.
+
+            Unlike a review, your job is **not** to compare the code against a spec or coding standards. Your job is to read the unresolved conversation on this PR, decide what (if anything) to change in the code, make those changes, and explain yourself by commenting back where useful.
+
+            # CONTEXT
+
+            Read `GLOSSARY.md` and any relevant ADRs under `docs/adr/` if you need domain context for a comment. Don't go deeper than the comments demand.
+            Read the PR with `gh pr view`, and the ticket it closes, if any, with `gh issue view <number> --comments`. `git diff origin/main...HEAD --stat` shows the PR's diff.
+
+            The unresolved conversation on this PR is in `${{ runner.temp }}/pr-conversation.json`. Tagged by surface:
+
+            - `issue_comments`: top-level PR conversation comments.
+            - `review_threads`: inline threads anchored to a file and line. Only **unresolved** threads are included. Reply to a thread with its `comment_id`.
+            - `review_summaries`: top-level bodies of submitted reviews.
+
+            Not everything in here is necessarily actionable: reviewers may leave context, questions, asides, or things they meant to resolve. Use your judgement. **Do not treat unresolved == must-action.**
+
+            # PROCESS
+
+            1. Read the conversation. For each item, classify it in your head as: code change needed, reply needed (question / disagreement / clarification), or neither.
+            2. Make the code changes you decided on. Follow CLAUDE.md, including running every check inside the devcontainer it names before committing; Docker is available. Use Conventional Commits messages, with a body that says why.
+            3. If you made no changes that's fine: only commit when there's a real diff.
+
+            You do not have to reply to every thread. Reply only where a reply adds value: confirming what you changed, explaining why you chose not to make a requested change, answering a question, or pointing out something the reviewer should look at. Silence is fine for context-only comments.
+
+            You cannot resolve threads. Resolution is the reviewer's job.
+
+            # OUTPUT
+
+            This is an AFK agent session: no one will answer questions. Commit to the current branch. Do not push, comment, file tickets, or change labels; the workflow posts your output.
+            - `thread_replies`: replies in a thread, by its `comment_id` from the conversation file.
+            - `inline_comments`: new inline comments on a line of the PR's diff at HEAD, when a thread reply isn't the right surface.
+            - `top_level_comments`: new top-level PR comments, for cross-cutting summaries.
+            A comment that raises a spec gap, as docs/agents/spec-gaps.md defines it, gets your question as a thread reply, or as a top-level comment when it is not in a thread; make no change for it.
+            Follow docs/agents/follow-up-tickets.md: list follow-up tickets in follow_ups and follow-ups already covered in already_covered.
+            Set needs_dut_run to whether your commits can only be confirmed by a DUT run on the car, judged from the change itself; if they can, set car_variant.
+          claude_args: >-
+            --model claude-opus-5-5 --effort medium
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,Task,TodoWrite
+            --json-schema '${{ steps.schema.outputs.json }}'
+
+      - name: Read the agent's error
+        id: agent-error
+        if: failure() && steps.agent.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        run: |
+          {
+            echo 'result<<AGENT_ERROR_EOF'
+            jq -r 'last | select(.type == "result" and .is_error) | .result // empty' "$EXECUTION_FILE"
+            echo 'AGENT_ERROR_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check that the agent committed or commented
+        id: acted
+        env:
+          OUTPUT: ${{ steps.agent.outputs.structured_output }}
+        run: |
+          commits=$(git rev-list --count "${HEAD_SHA}..HEAD")
+          comments=$(jq '(.thread_replies + .inline_comments + .top_level_comments) | length' <<<"$OUTPUT")
+          echo "commits=$commits" >> "$GITHUB_OUTPUT"
+          [ "$commits" != 0 ] || [ "$comments" != 0 ]
+
+      - name: Mint the App's write token for the push and comments
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Push to the PR's branch
+        if: steps.acted.outputs.commits != '0'
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: |
+          git push --force-with-lease="refs/heads/${BRANCH}:${HEAD_SHA}" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:refs/heads/${BRANCH}"
+
+      - name: Post the thread replies, inline and top-level comments
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          OUTPUT: ${{ steps.agent.outputs.structured_output }}
+        run: |
+          jq -c '.thread_replies[]' <<<"$OUTPUT" | while IFS= read -r reply; do
+            jq '{body}' <<<"$reply" | gh api --method POST \
+              "repos/${GH_REPO}/pulls/${PR}/comments/$(jq -r .comment_id <<<"$reply")/replies" --input -
+          done
+          commit=$(git rev-parse HEAD)
+          jq -c '.inline_comments[]' <<<"$OUTPUT" | while IFS= read -r comment; do
+            # GitHub rejects a line outside the diff; that comment is dropped with a warning.
+            jq --arg commit "$commit" '{body, path, line, side: "RIGHT", commit_id: $commit}' <<<"$comment" |
+              gh api --method POST "repos/${GH_REPO}/pulls/${PR}/comments" --input - ||
+              echo "::warning::Dropped the inline comment on $(jq -r '"\(.path):\(.line)"' <<<"$comment")"
+          done
+          jq -r '.top_level_comments[] | @json' <<<"$OUTPUT" | while IFS= read -r body; do
+            jq -r . <<<"$body" | gh pr comment "$PR" --body-file -
+          done
+
+      - name: Hand the PR to a car agent session
+        if: steps.acted.outputs.commits != '0' && fromJSON(steps.agent.outputs.structured_output).needs_dut_run
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          CAR_VARIANT: ${{ fromJSON(steps.agent.outputs.structured_output).car_variant }}
+        run: gh pr edit "$PR" --add-label "needs-car:${CAR_VARIANT}"
+
+  finish:
+    needs: [check, implement]
+    if: always() && github.event.label.name == 'agent:implement'
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+
+    steps:
+      - name: Mint the App's write token for tickets, labels and comments
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Refuse the PR
+        if: always() && needs.check.outputs.refusal != ''
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          REFUSAL: ${{ needs.check.outputs.refusal }}
+        run: gh pr comment "$PR" --body "$REFUSAL"
+
+      - name: File the follow-up tickets
+        if: always() && needs.implement.outputs.agent-output != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          OUTPUT: ${{ needs.implement.outputs.agent-output }}
+        run: |
+          jq -c '.follow_ups // [] | .[]' <<<"$OUTPUT" | while IFS= read -r follow_up; do
+            title=$(jq -r .title <<<"$follow_up")
+            labels=$(jq -r '[.type] + .components | join(",")' <<<"$follow_up")
+            {
+              printf '> *Follow-up ticket filed by an AFK agent session while working #%s.* ([run](%s))\n\n' "$PR" "$RUN_URL"
+              jq -r .body <<<"$follow_up"
+            } > "$RUNNER_TEMP/follow-up.md"
+            gh issue create \
+              --title "$title" \
+              --body-file "$RUNNER_TEMP/follow-up.md" \
+              --label needs-triage,source:follow-up \
+              --label "$labels"
+          done
+
+      - name: Comment the follow-ups already covered
+        if: always() && needs.implement.outputs.agent-output != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          OUTPUT: ${{ needs.implement.outputs.agent-output }}
+        run: |
+          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
+          if [ -n "$already_covered" ]; then
+            printf '## Follow-ups already covered\n\n%s\n' "$already_covered" | gh pr comment "$PR" --body-file -
+          fi
+
+      - name: Clear agent:blocked after a successful run
+        if: always() && needs.implement.result == 'success'
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh pr edit "$PR" --remove-label agent:blocked
+
+      - name: Report the failure
+        if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          ACTIONS_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          AGENT_ERROR: ${{ needs.implement.outputs.agent-error }}
+        run: |
+          failed_step=$(GH_TOKEN="$ACTIONS_TOKEN" gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
+            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
+              | [.name, first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name)] | join(" › ")]
+              | first // "unknown step"')
+          reason="\`${failed_step}\` failed."
+          if [ -n "$AGENT_ERROR" ]; then
+            reason="${reason} The agent reported: ${AGENT_ERROR}"
+          fi
+          cat > "$RUNNER_TEMP/failure.md" <<EOF
+          \`agent:implement\` run on this PR failed.
+
+          **Reason:** ${reason}
+
+          **Run:** ${RUN_URL}
+
+          Re-add \`agent:implement\` to retry.
+          EOF
+          gh pr edit "$PR" --add-label agent:blocked
+          gh pr comment "$PR" --body-file "$RUNNER_TEMP/failure.md"
+
+      - name: Remove the trigger label
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh pr edit "$PR" --remove-label agent:implement
