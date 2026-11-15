@@ -111,7 +111,7 @@ jobs:
 
             This is an AFK agent session: no one will answer questions. Follow CLAUDE.md, including running every check inside the devcontainer it names; Docker is available.
             Commit to the current branch. Do not push, open or edit pull requests, comment, or change labels.
-            If the ticket leaves open what the change does, make no commits, set outcome to spec_gap, and list every open question in spec_gaps.
+            At a spec gap, follow docs/agents/spec-gaps.md: make no commits, set outcome to spec_gap, and write the comment in spec_gaps.
             Otherwise set outcome to done, write a Conventional Commits PR title in pr_title, and write the PR body with the pr skill in pr_body.
           claude_args: >-
             --model claude-opus-5-5 --effort medium
@@ -156,11 +156,24 @@ jobs:
           printf 'Closes #%s\n\n%s\n\n[AFK run](%s)\n' "$TICKET" "$PR_BODY" "$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
           gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
 
-      - name: Report spec gaps
+      - name: Mint the App's write token for handing the ticket back
+        id: issues-token
+        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'spec_gap'
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+
+      - name: Hand the ticket back to triage
         if: fromJSON(steps.agent.outputs.structured_output).outcome == 'spec_gap'
         env:
+          GH_TOKEN: ${{ steps.issues-token.outputs.token }}
           SPEC_GAPS: ${{ fromJSON(steps.agent.outputs.structured_output).spec_gaps }}
-        run: printf '## Spec gaps\n\n%s\n' "$SPEC_GAPS" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          printf '> *Spec gap found by an AFK agent session while working this ticket.* ([run](%s))\n\n%s\n' "$RUN_URL" "$SPEC_GAPS" > "$RUNNER_TEMP/spec-gaps.md"
+          gh issue edit "$TICKET" --remove-label ready-for-agent --add-label needs-triage
+          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/spec-gaps.md"
 
   finish:
     needs: [check, implement]
