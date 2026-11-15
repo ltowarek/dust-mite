@@ -98,6 +98,8 @@ jobs:
     outputs:
       agent-error: ${{ steps.agent-error.outputs.result }}
       agent-output: ${{ steps.agent.outputs.structured_output }}
+      outcome: ${{ steps.agent-result.outputs.outcome }}
+      needs-car-reason: ${{ steps.agent-result.outputs.needs_car_reason }}
       pr-url: ${{ steps.pr.outputs.url }}
       sha: ${{ steps.pr.outputs.sha }}
 
@@ -160,6 +162,21 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
+      - name: Read the agent's output
+        id: agent-result
+        env:
+          OUTPUT: ${{ steps.agent.outputs.structured_output }}
+        run: |
+          # Random, so no field's value can end its own output early.
+          eof="EOF_$(openssl rand -hex 16)"
+          for field in outcome pr_title pr_body spec_gaps needs_car_reason needs_dut_run car_variant; do
+            {
+              echo "${field}<<${eof}"
+              jq -r --arg field "$field" '.[$field] | values' <<<"$OUTPUT"
+              echo "$eof"
+            } >> "$GITHUB_OUTPUT"
+          done
+
       - name: Read the agent's error
         id: agent-error
         if: failure() && steps.agent.outputs.execution_file != ''
@@ -174,7 +191,7 @@ jobs:
 
       - name: Mint the App's write token for the push and PR
         id: write-token
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
+        if: steps.agent-result.outputs.outcome == 'done'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -184,13 +201,13 @@ jobs:
 
       - name: Push the branch and open the PR
         id: pr
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
+        if: steps.agent-result.outputs.outcome == 'done'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          PR_TITLE: ${{ fromJSON(steps.agent.outputs.structured_output).pr_title }}
-          PR_BODY: ${{ fromJSON(steps.agent.outputs.structured_output).pr_body }}
-          NEEDS_DUT_RUN: ${{ fromJSON(steps.agent.outputs.structured_output).needs_dut_run }}
-          CAR_VARIANT: ${{ fromJSON(steps.agent.outputs.structured_output).car_variant }}
+          PR_TITLE: ${{ steps.agent-result.outputs.pr_title }}
+          PR_BODY: ${{ steps.agent-result.outputs.pr_body }}
+          NEEDS_DUT_RUN: ${{ steps.agent-result.outputs.needs_dut_run }}
+          CAR_VARIANT: ${{ steps.agent-result.outputs.car_variant }}
           LAST_RUN: ${{ needs.check.outputs.last-run }}
         run: |
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
@@ -214,7 +231,7 @@ jobs:
 
       - name: Mint the App's write token for handing the ticket to the car
         id: car-token
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'needs_car'
+        if: steps.agent-result.outputs.outcome == 'needs_car'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -222,11 +239,11 @@ jobs:
           permission-issues: write
 
       - name: Hand the ticket to a car agent session
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'needs_car'
+        if: steps.agent-result.outputs.outcome == 'needs_car'
         env:
           GH_TOKEN: ${{ steps.car-token.outputs.token }}
-          CAR_VARIANT: ${{ fromJSON(steps.agent.outputs.structured_output).car_variant }}
-          REASON: ${{ fromJSON(steps.agent.outputs.structured_output).needs_car_reason }}
+          CAR_VARIANT: ${{ steps.agent-result.outputs.car_variant }}
+          REASON: ${{ steps.agent-result.outputs.needs_car_reason }}
           OUTPUT: ${{ steps.agent.outputs.structured_output }}
         run: |
           printf 'Finding the fix needs the car, so this AFK run pushed nothing.\n\n**Reason:** %s\n\n**Run:** %s\n' "$REASON" "$RUN_URL" > "$RUNNER_TEMP/needs-car.md"
@@ -239,7 +256,7 @@ jobs:
 
       - name: Mint the App's write token for handing the ticket back
         id: issues-token
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'spec_gap'
+        if: steps.agent-result.outputs.outcome == 'spec_gap'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -247,10 +264,10 @@ jobs:
           permission-issues: write
 
       - name: Hand the ticket back to triage
-        if: fromJSON(steps.agent.outputs.structured_output).outcome == 'spec_gap'
+        if: steps.agent-result.outputs.outcome == 'spec_gap'
         env:
           GH_TOKEN: ${{ steps.issues-token.outputs.token }}
-          SPEC_GAPS: ${{ fromJSON(steps.agent.outputs.structured_output).spec_gaps }}
+          SPEC_GAPS: ${{ steps.agent-result.outputs.spec_gaps }}
           OUTPUT: ${{ steps.agent.outputs.structured_output }}
         run: |
           printf '> *Spec gap found by an AFK agent session while working this ticket.* ([run](%s))\n\n%s\n' "$RUN_URL" "$SPEC_GAPS" > "$RUNNER_TEMP/spec-gaps.md"
@@ -345,9 +362,14 @@ jobs:
         if: always() && needs.check.outputs.spec == 'true' && needs.implement.result == 'success' && needs.implement.outputs.sha == ''
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTPUT: ${{ needs.implement.outputs.agent-output }}
+          OUTCOME: ${{ needs.implement.outputs.outcome }}
+          NEEDS_CAR_REASON: ${{ needs.implement.outputs.needs-car-reason }}
         run: |
-          reason=$(jq -r 'if .outcome == "needs_car" then "Finding the fix needs the car: \(.needs_car_reason)" else "It has a spec gap, whose questions are on it." end' <<<"$OUTPUT")
+          if [ "$OUTCOME" = needs_car ]; then
+            reason="Finding the fix needs the car: ${NEEDS_CAR_REASON}"
+          else
+            reason="It has a spec gap, whose questions are on it."
+          fi
           cat > "$RUNNER_TEMP/chain-stop.md" <<EOF
           \`agent:implement\` chain stopped at sub-issue #${WORKED_TICKET}.
 
