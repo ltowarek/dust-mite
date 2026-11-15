@@ -6,23 +6,13 @@ from typing import override
 
 import pytest
 
-from controller.controller import ControllerSettings, _configure_console_logging
+from controller.controller import ControllerSettings
 from controller.curses_logging import (
     LogWindow,
     queued_console_logging,
     queued_log_writer,
 )
 from controller.input_backends import InputBackendName, KeyboardInputBackend
-
-
-class TestConfigureConsoleLogging:
-    def test_attaches_a_stream_handler_to_the_root_logger(
-        self, root_logger: logging.Logger
-    ) -> None:
-        handler = _configure_console_logging()
-
-        assert handler in root_logger.handlers
-        assert isinstance(handler, logging.StreamHandler)
 
 
 class LoggingKeyboardWindowSpy(LogWindow):

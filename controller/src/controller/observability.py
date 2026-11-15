@@ -69,16 +69,17 @@ class ObservabilitySettings:
 
 
 def configure_observability(service_name: str, settings: ObservabilitySettings) -> None:
-    """Configure tracing, logging, metrics and profiling for `service_name`.
+    """Configure logging, tracing, metrics and profiling for `service_name`.
 
+    Logging comes first, so the other signals' setup records are not lost.
     Profiling is opt-in, unlike the other signals: it only starts if
     ``settings.profiling_enabled`` is true.
     """
     resource = service_resource(service_name, settings.repository)
-    configure_tracing(settings.traces_endpoint, resource)
     configure_logging(settings.logs_endpoint, resource)
+    configure_tracing(settings.traces_endpoint, resource)
     configure_metrics(settings.metrics_endpoint, resource)
-    if not settings.profiling_enabled:
+    if settings.profiling_enabled:
+        configure_profiling(settings.profiles_endpoint, resource)
+    else:
         logger.debug("Profiling not enabled, skipping profiler configuration")
-        return
-    configure_profiling(settings.profiles_endpoint, resource)

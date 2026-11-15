@@ -15,7 +15,6 @@ from .outbox import Broadcast, send_json, send_until_closed
 from .websocket_message import WebSocketMessage
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 def deliberate_close_reason(code: int | None, reason: str | None) -> str | None:

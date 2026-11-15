@@ -247,15 +247,22 @@ The Python controller package bridges its existing standard-library `logging` ou
 rather than introducing a separate structured logging vocabulary. `configure_logging(endpoint, resource)` in
 [controller/src/controller/logging.py](controller/src/controller/logging.py) attaches an
 `opentelemetry-instrumentation-logging` `LoggingHandler` to the root logger, so every existing
-`logging.getLogger(...)` call site is bridged with no change to call sites or log levels. Both
+`logging.getLogger(...)` call site is bridged with no change to call sites. Both
 `controller.py` (the Terminal app) and `streamer.py` (always-on service) set it up, with every other
 signal, through `configure_observability`. Log records share the resource tracing uses, and route
 through the same collector as traces, at `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else
-`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs` (not the metrics bypass-to-Mimir pattern). No
-log-level filtering is added — both entry points already run at `DEBUG`, and
-everything already being logged, including `DEBUG`, ships as-is. The handler is constructed with
-`log_code_attributes=True`, which is off by default: without it records reach Loki with no `code.*`
+`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs` (not the metrics bypass-to-Mimir pattern). The
+`LoggingHandler` is constructed with `log_code_attributes=True`, which is off by default: without it records reach Loki with no `code.*`
 attributes, so nothing there says which call site produced a line.
+
+Logging is configured once, in `configure_logging`, before the other signals. It sets the `controller`
+package logger to `DEBUG` and attaches a console handler named `console` to the root logger, whether or not a logs
+endpoint is set. The Terminal app finds that handler with `logging.getHandlerByName("console")` for its curses console logging. Modules only
+call `logging.getLogger(__name__)`; none sets its own level or calls `basicConfig()`. The root logger
+stays at `WARNING`, so third-party libraries such as `websockets` and `aiohttp` send only `WARNING`
+and above. The exception is the Terminal app: importing `pydualsense` sets the root logger to `INFO`
+and attaches its own console handler. The Raspberry Pi camera service runs without OpenTelemetry and calls
+`logging.basicConfig(level=logging.DEBUG)` in its `__main__` block instead.
 
 The web frontend has no existing logging to bridge, so `setupLogging()` in
 [web/src/logging.js](web/src/logging.js) initializes a `LoggerProvider` directly, matching the

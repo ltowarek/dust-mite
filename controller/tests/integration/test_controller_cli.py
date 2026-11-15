@@ -73,6 +73,7 @@ def held_then_released(
     car_control: CarEndpointSpy,
     caplog: pytest.LogCaptureFixture,
 ) -> HeldThenReleased:
+    caplog.set_level(logging.INFO, logger="controller")
     return asyncio.run(
         _hold_then_release(camera_feed, telemetry_feed, car_control, caplog)
     )
@@ -253,6 +254,7 @@ async def test_connects_to_a_wrong_path_only_once(
     car_control: CarEndpointSpy,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    caplog.set_level(logging.INFO, logger="controller")
     settings = local_streamer_settings(camera_feed, telemetry_feed, car_control)
     async with asyncio.timeout(WAIT_TIMEOUT_S), serve_streamer(settings) as streamer:
         wrong_path = urllib.parse.urljoin(streamer.drive, "/")
