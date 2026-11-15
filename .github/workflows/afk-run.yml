@@ -34,6 +34,7 @@ jobs:
       last-run: ${{ steps.shape.outputs.last-run }}
       refusal: ${{ steps.shape.outputs.refusal || steps.open-pr.outputs.refusal }}
       block: ${{ steps.shape.outputs.block }}
+      queue: ${{ steps.shape.outputs.queue }}
 
     steps:
       - name: Read the ticket's child tickets and parent
@@ -51,11 +52,25 @@ jobs:
               echo "refusal=Refused to run: every child ticket of this spec is closed, so there is nothing to implement." >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            frontier=$(jq '[.[] | select(.issue_dependencies_summary.blocked_by == 0)]' <<<"$open")
+            if [ "$(jq length <<<"$frontier")" = 0 ]; then
+              blocking=$(jq -r '.[].number' <<<"$open" | while read -r child; do
+                gh api "repos/${GH_REPO}/issues/${child}/dependencies/blocked_by?per_page=100" --jq '[.[] | select(.state == "open") | .html_url]'
+              done | jq -s 'add')
+              loop=$(jq -n --argjson open "$open" --argjson blocking "$blocking" '($open | map(.html_url)) as $urls | $blocking | all(. as $url | $urls | index($url))')
+              if [ "$loop" = true ]; then
+                echo "block=true" >> "$GITHUB_OUTPUT"
+                echo "refusal=Refused to run: the open child tickets of this spec block only each other, so none can start. Remove a blocking link from the loop, then re-add \`agent:implement\`." >> "$GITHUB_OUTPUT"
+              else
+                echo "queue=true" >> "$GITHUB_OUTPUT"
+              fi
+              exit 0
+            fi
             slug=$(jq -rn 'env.TICKET_TITLE | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | .[0:50] | rtrimstr("-")')
             {
               echo "spec=true"
-              echo "child-ticket=$(jq '.[0].number' <<<"$open")"
-              echo "child-ticket-url=$(jq -r '.[0].html_url' <<<"$open")"
+              echo "child-ticket=$(jq '.[0].number' <<<"$frontier")"
+              echo "child-ticket-url=$(jq -r '.[0].html_url' <<<"$frontier")"
               echo "branch=agent/prd-${TICKET}-${slug}"
               echo "last-run=$(jq 'length == 1' <<<"$open")"
             } >> "$GITHUB_OUTPUT"
@@ -84,7 +99,7 @@ jobs:
 
   implement:
     needs: check
-    if: needs.check.outputs.refusal == ''
+    if: needs.check.outputs.refusal == '' && needs.check.outputs.queue != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -421,6 +436,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
         run: gh issue edit "$TICKET" --remove-label agent:implement
+
+      - name: Queue the spec until a child ticket is unblocked
+        if: needs.check.outputs.queue == 'true'
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh issue edit "$TICKET" --add-label agent:queued
 
       - name: Re-label the spec for its next child ticket
         if: needs.check.outputs.spec == 'true' && needs.implement.outputs.sha != '' && needs.check.outputs.last-run != 'true'

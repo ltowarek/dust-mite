@@ -1155,11 +1155,12 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-run.yml](.github/workflows/afk-run.yml)
   - Starts an AFK run when the maintainer adds the `agent:implement` label to a ticket or to a spec
-  - Expects the `agent:implement`, `agent:blocked` and `source:follow-up` labels to exist in the repository
+  - Expects the `agent:implement`, `agent:blocked`, `agent:queued` and `source:follow-up` labels to exist in the repository
   - Queues every AFK run in one concurrency group with `queue: max`, so that runs go one at a time in label order and no labelled ticket is cancelled
   - Refuses, with a comment, a child ticket, which it also labels `agent:blocked`, a ticket that an open pull request already closes, and a spec whose child tickets are all closed
   - Implements a spec one child ticket per run, as an AFK spec implementation:
-    - Each run implements the spec's first open child ticket, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier child tickets
+    - Each run implements the first child ticket of the spec's frontier, the open child tickets with no open blocking ticket, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier child tickets
+    - When the frontier is empty, the run labels the spec `agent:queued` without a comment, so that [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml) resumes it; when the open child tickets block only each other, it refuses the spec with a comment and labels it `agent:blocked`
     - The first run opens the spec's draft pull request, which closes the spec; the run on the last child ticket replaces its title and body with the agent's, written for the branch's whole change
     - After the push, the run closes the child ticket with `Implemented in <sha>` and re-adds `agent:implement` to the spec with the App's token, which starts the next run
     - Only the run on the last child ticket marks the pull request ready or labels it `needs-car:<variant>`, so that an incomplete spec never reaches review or a car agent session
