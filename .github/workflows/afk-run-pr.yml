@@ -102,7 +102,11 @@ jobs:
 
       - name: Read the agent's output schema
         id: schema
-        run: echo "json=$(jq -c . .github/afk-run-pr-output.schema.json)" >> "$GITHUB_OUTPUT"
+        # The workflow's own commit, not the checkout.
+        run: |
+          schema=$(git show "${GITHUB_SHA}:.github/afk-run-pr-output.schema.json")
+          json=$(jq -c . <<<"$schema")
+          echo "json=$json" >> "$GITHUB_OUTPUT"
 
       - name: Mint the App's read-only token for the agent
         id: read-token
