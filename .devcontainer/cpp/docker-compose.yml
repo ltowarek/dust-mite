@@ -14,12 +14,9 @@ services:
     volumes:
       - ../..:/workspaces/dust-mite:cached
     environment:
-      - ESP32_DEVICE
+      - CAR_SERIAL_PORT
       - WIFI_PASSWORD
       - WIFI_SSID
-    # Uncomment to pass through ESP32 device.
-    # devices:
-    #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
     networks:
       - dust-mite-observability

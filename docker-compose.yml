@@ -7,11 +7,9 @@ services:
     build:
       context: ./car
     environment:
+      - CAR_SERIAL_PORT
       - WIFI_PASSWORD
       - WIFI_SSID
-    # Uncomment to pass through ESP32 device.
-    # devices:
-    #   - /dev/ttyACM0:/dev/ttyACM0
     command: sleep infinity
     networks:
       - dust-mite-observability

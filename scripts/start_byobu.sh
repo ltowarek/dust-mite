@@ -2,7 +2,7 @@
 
 set -e
 
-docker compose up --build -d
+docker compose -f docker-compose.yml -f docker-compose.car.yml up --build -d
 
 byobu new-session -d -s dust-mite
 

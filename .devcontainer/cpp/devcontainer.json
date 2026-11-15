@@ -20,7 +20,7 @@
                 "idf.toolsPath": "${containerEnv:IDF_TOOLS_PATH}",
                 "idf.espIdfPath": "${containerEnv:IDF_PATH}",
                 "idf.pythonBinPath": "${containerEnv:IDF_TOOLS_PATH}/python_env/idf6.1_py3.12_env/bin/python",
-                "idf.port": "${containerEnv:ESP32_DEVICE}",
+                "idf.port": "${containerEnv:CAR_SERIAL_PORT}",
                 "idf.flashType": "UART",
                 "idf.adapterTargetName": "esp32s3",
                 "cmake.generator": "Ninja",

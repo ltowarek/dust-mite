@@ -141,9 +141,9 @@ Container-internal ports (`python:8765`, `python:8766`, `js:5173`) are unchanged
      1. Run `File: Open Workspace from File...`.
      2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work, [js.code-workspace](js.code-workspace) for [web/](web/) work, or [observability.code-workspace](observability.code-workspace) for [observability/](observability/) work.
    - For docs or infrastructure work: no additional action is required; continue with the repository root opened in step 1.
-5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `devices:` entries in:
-   - [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml)
-   - [.devcontainer/cpp/docker-compose.yml](.devcontainer/cpp/docker-compose.yml)
+5. If you need hardware passthrough:
+   - For the controller's `hidraw` device, manually uncomment the `devices:` entry in [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml).
+   - To flash the car from VS Code, add `../../docker-compose.car.yml` to `dockerComposeFile` in [.devcontainer/cpp/devcontainer.json](.devcontainer/cpp/devcontainer.json). See [The car's serial port](#the-cars-serial-port).
 6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, `JavaScript`, `Observability`, `Docs`, or `Infrastructure`).
 
 The container image includes project dependencies and VS Code extensions required for that stack. On first open, the devcontainer installs the controller package into the virtual environment via `postCreateCommand`.
@@ -158,6 +158,14 @@ The container image includes project dependencies and VS Code extensions require
 ## Full stack development session
 
 [docker-compose.yml](docker-compose.yml) at the repository root combines all devcontainer and observability services into a single compose project using [extends](https://docs.docker.com/compose/how-tos/multiple-compose-files/extends/).
+
+### The car's serial port
+
+The car's serial port is set once, as `CAR_SERIAL_PORT` in `.env`, with the default `/dev/ttyACM0`. The port has the same path on the host and inside every container. The overlay [docker-compose.car.yml](docker-compose.car.yml) passes it to the `cpp` service as a device, and applies both to the root compose project and to the C++ devcontainer.
+
+- The headless stack and the byobu session take the overlay, so both need the car connected. The headless serial monitor connects without resetting the car.
+- The DUT run's one-off C++ container takes the overlay.
+- The VS Code C++ devcontainer does not take the overlay, so it starts without the car. To flash from VS Code, add the overlay to its `dockerComposeFile`. `idf.port` reads `CAR_SERIAL_PORT`.
 
 ### Byobu session
 

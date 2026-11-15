@@ -34,7 +34,7 @@ This file is a lightweight navigation guide for coding agents.
 
 ## Running the Full Stack (Headless)
 
-Run `./scripts/start_headless.sh` to build and start all services in the background.
+Run `./scripts/start_headless.sh` to build and start all services in the background. The stack needs the car connected, because the script passes `docker-compose.car.yml`, which gives `cpp` the car's serial port.
 Run `./scripts/stop_headless.sh` to stop and remove all containers.
 Run `./scripts/run_dut_tests.sh` on the host, with the car connected, to run every DUT-gated test; a DUT run of an issue or pull request labelled `needs-car:<variant>` starts with it ([CONTRIBUTING.md#dut-run](CONTRIBUTING.md#dut-run)).
 
@@ -96,6 +96,8 @@ docker compose -f .devcontainer/observability/docker-compose.yml up -d --build o
 docker compose -f .devcontainer/infrastructure/docker-compose.yml up -d --build infrastructure
 ```
 
+When the car is needed, add `-f docker-compose.car.yml` to the C++ bring-up, which passes the car's serial port `CAR_SERIAL_PORT` through to the container.
+
 Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, and falls back to uid `1050` without one.
 
 **Isolation from VS Code:** all five are the same containers VS Code's Dev Containers extension attaches to (e.g. `cpp-cpp-1`, `python-python-1`, `js-js-1`, `observability-observability-1`, `infrastructure-infrastructure-1`). Recreating/rebuilding one, or installing packages into it, drops an attached VS Code window's remote connection and can leave the workspace owned by a different uid until it reconnects. Give agent runs their own instance instead of reusing a container a human may be attached to, by adding a distinct `-p` project name to any of the bring-up commands above, e.g.:
@@ -132,7 +134,7 @@ to provide a pseudo-TTY, then read the output file.
 
 Example (inside the C++ devcontainer):
 ```bash
-script -q -c "idf.py -p /dev/ttyACM0 monitor" /tmp/monitor.txt
+script -q -c "idf.py -p \"$CAR_SERIAL_PORT\" monitor" /tmp/monitor.txt
 # wait for desired output, then Ctrl-C
 cat /tmp/monitor.txt
 ```

@@ -3,7 +3,6 @@ set -e
 # shellcheck source=/dev/null # ESP-IDF's export script is installed in the devcontainer image
 source "$IDF_PATH/export.sh"
 
-PORT="${PORT:-/dev/ttyACM0}"
 CAR_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLEAN=0
 
@@ -51,7 +50,7 @@ for project in "${COMPONENT_TEST_PROJECTS[@]}"; do
     echo "=== Testing $project ==="
     pushd "$CAR_ROOT/$project" >/dev/null
     pytest pytest_*.py --ignore-glob '*_qemu.py' \
-        --embedded-services idf,esp --port "$PORT" -v || FAILED=1
+        --embedded-services idf,esp --port "$CAR_SERIAL_PORT" -v || FAILED=1
     popd >/dev/null
 done
 
@@ -60,7 +59,7 @@ build_overlay "$WEB_SERVER_TEST_APP" debug
 echo "=== Testing components/web_server/test_apps with sdkconfig.defaults.debug ==="
 pushd "$WEB_SERVER_TEST_APP" >/dev/null
 pytest pytest_web_server_debug.py --build-dir build_debug \
-    --embedded-services idf,esp --port "$PORT" -v || FAILED=1
+    --embedded-services idf,esp --port "$CAR_SERIAL_PORT" -v || FAILED=1
 popd >/dev/null
 
 echo "=== Building integration tests ==="
@@ -68,7 +67,7 @@ build "$CAR_ROOT/test_apps/integration"
 
 echo "=== Running integration tests ==="
 pushd "$CAR_ROOT/test_apps/integration" >/dev/null
-pytest pytest_integration.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
+pytest pytest_integration.py --port "$CAR_SERIAL_PORT" --embedded-services idf,esp -v || FAILED=1
 popd >/dev/null
 
 echo "=== Building production firmware for E2E ==="
@@ -76,7 +75,7 @@ build "$CAR_ROOT"
 
 echo "=== Running E2E tests ==="
 pushd "$CAR_ROOT/test_apps/e2e" >/dev/null
-pytest pytest_e2e.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
+pytest pytest_e2e.py --port "$CAR_SERIAL_PORT" --embedded-services idf,esp -v || FAILED=1
 popd >/dev/null
 
 # pytest_smoke.py finds the same overlays; "build" is the base build above.
@@ -86,7 +85,7 @@ done
 
 echo "=== Running smoke tests ==="
 pushd "$CAR_ROOT/test_apps/e2e" >/dev/null
-pytest pytest_smoke.py --port "$PORT" --embedded-services idf,esp -v || FAILED=1
+pytest pytest_smoke.py --port "$CAR_SERIAL_PORT" --embedded-services idf,esp -v || FAILED=1
 popd >/dev/null
 
 if [ "$FAILED" -ne 0 ]; then
