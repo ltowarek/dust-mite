@@ -104,10 +104,3 @@ jobs:
         env:
           SPEC_GAPS: ${{ fromJSON(steps.agent.outputs.structured_output).spec_gaps }}
         run: printf '## Spec gaps\n\n%s\n' "$SPEC_GAPS" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload the transcript
-        if: always()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: afk-run-transcript
-          path: ${{ steps.agent.outputs.execution_file }}

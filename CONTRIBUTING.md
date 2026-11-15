@@ -1150,7 +1150,6 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch and opens a draft pull request as the App's bot, so that CI runs on it
   - Grants its own `GITHUB_TOKEN` only `contents: read`
   - Opens no pull request when the agent reports a spec gap; the run summary lists the gaps instead
-  - Uploads the agent's transcript as the `afk-run-transcript` artifact
 - [claude.yml](.github/workflows/claude.yml)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 
