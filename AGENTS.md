@@ -48,7 +48,7 @@ Grafana is available at `http://localhost:3000` for trace exploration.
 
 ## Environment Variables
 
-All environment variables used anywhere in the project must be declared in [scripts/dump_env.sh](scripts/dump_env.sh) with a sensible default. That script regenerates the root `.env` file; it is the single source of truth for the variable catalogue.
+All environment variables used anywhere in the project must be declared in [scripts/dump_env.sh](scripts/dump_env.sh) with a sensible default. That script regenerates the root `.env` file; it is the single source of truth for the variable catalogue. A container sees a variable only when its compose service lists it under `environment:`.
 
 Each variable falls back to `${VAR:-default}` from the *current shell environment*, not from the existing `.env` file. Running the script in a fresh shell silently resets every previously-set value (e.g. real `WIFI_SSID`/`WIFI_PASSWORD`) back to its placeholder default. Load the existing `.env` first with [scripts/load_env.sh](scripts/load_env.sh) so already-defined values survive the regeneration:
 
