@@ -1146,7 +1146,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-run.yml](.github/workflows/afk-run.yml)
   - Starts an AFK run when the maintainer adds the `agent:implement` label to a ticket
-  - Expects the `agent:implement` and `agent:blocked` labels to exist in the repository
+  - Expects the `agent:implement`, `agent:blocked` and `source:follow-up` labels to exist in the repository
   - Queues every AFK run in one concurrency group with `queue: max`, so that runs go one at a time in label order and no labelled ticket is cancelled
   - Skips a ticket that has sub-issues, without a comment
   - Refuses, with a comment, a sub-issue, which it also labels `agent:blocked`, and a ticket that an open pull request already closes
@@ -1155,7 +1155,8 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Grants its own `GITHUB_TOKEN` no write permission
   - Pushes nothing when the agent reports a spec gap, as described in [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md); instead, with an Issues write token of the App, it:
     - Replaces the ticket's `ready-for-agent` label with `needs-triage`
-    - Posts the gaps as a comment on the ticket
+    - Posts the gaps as a comment on the ticket, with the follow-ups already covered under their own heading
+  - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
   - Removes `agent:implement` when the run ends; after a failure, labels the ticket `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
   - Times out after 180 minutes
 - [claude.yml](.github/workflows/claude.yml)
