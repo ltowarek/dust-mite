@@ -131,8 +131,12 @@ An agent session that works tickets on its own, with no one answering its questi
 _Avoid_: Unattended session, background agent
 
 **AFK loop**:
-The system that starts an AFK run on each ticket or PR the maintainer labels for one, and chains a spec's sub-issues and waiting tickets as their blockers close.
+The system that starts an AFK run for each AFK command, and chains a spec's sub-issues and waiting tickets as their blockers close.
 _Avoid_: Agent swarm, runner, Ralph loop, factory, orchestrator
+
+**AFK command**:
+The maintainer's request to the AFK loop for one AFK run on a ticket or PR.
+_Avoid_: Trigger, trigger label, mention
 
 **AFK run**:
 One run of the AFK loop: an AFK agent session on one ticket or one PR, from its start until it ends, with or without a push.
