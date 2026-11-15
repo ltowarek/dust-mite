@@ -185,8 +185,13 @@ jobs:
           GH_TOKEN: ${{ steps.car-token.outputs.token }}
           CAR_VARIANT: ${{ fromJSON(steps.agent.outputs.structured_output).car_variant }}
           REASON: ${{ fromJSON(steps.agent.outputs.structured_output).needs_car_reason }}
+          OUTPUT: ${{ steps.agent.outputs.structured_output }}
         run: |
           printf 'Finding the fix needs the car, so this AFK run pushed nothing.\n\n**Reason:** %s\n\n**Run:** %s\n' "$REASON" "$RUN_URL" > "$RUNNER_TEMP/needs-car.md"
+          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
+          if [ -n "$already_covered" ]; then
+            printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered" >> "$RUNNER_TEMP/needs-car.md"
+          fi
           gh issue edit "$TICKET" --add-label "needs-car:${CAR_VARIANT}"
           gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/needs-car.md"
 

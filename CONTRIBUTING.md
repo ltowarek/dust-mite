@@ -1160,7 +1160,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Pushes nothing when the agent reports a spec gap, as described in [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md); instead, with an Issues write token of the App, it:
     - Replaces the ticket's `ready-for-agent` label with `needs-triage`
     - Posts the gaps as a comment on the ticket, with the follow-ups already covered under their own heading
-  - Pushes nothing when the agent reports that finding the fix needs the car; instead, with an Issues write token of the App, it labels the ticket `needs-car:<variant>` and comments the agent's reason on it
+  - Pushes nothing when the agent reports that finding the fix needs the car; instead, with an Issues write token of the App, it labels the ticket `needs-car:<variant>` and comments the agent's reason on it, with the follow-ups already covered under their own heading
   - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
   - Removes `agent:implement` when the run ends; after a failure, labels the ticket `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
   - Times out after 180 minutes
