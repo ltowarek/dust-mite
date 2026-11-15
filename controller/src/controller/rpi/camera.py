@@ -8,12 +8,11 @@ from picamera2 import Picamera2
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.server import ServerConnection, serve
 
-logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     picam2 = Picamera2()
     picam2.start()
     time.sleep(1)
