@@ -68,7 +68,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - Never skip or silence linters, formatters, or type checkers: fix the finding. The only exception, and how to mark it, is in [CONTRIBUTING.md#ground-rules](CONTRIBUTING.md#ground-rules).
 - Keep comments and docstrings **terse**: one line by default, saying only what the code can't, such as an invariant, a constraint or an ordering rule. A module or test docstring states in one sentence what it guards. Each reason lives in one place: when CONTRIBUTING.md, a docstring or a nearby comment already gives it, add nothing. Write the fact itself, not how it was found ("measured", "confirmed this session"), and leave imports and includes unannotated.
 - Hardware-affecting actions are manual-only unless explicitly requested by the user.
-- When implementation hits behaviour the spec or ticket does not decide, stop and ask the user; never guess. After the user decides, amend the spec issue and any affected tickets before continuing. An AFK agent session follows [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md) instead.
+- When implementation hits behaviour the spec or ticket does not decide, stop and ask the user; never guess. After the user decides, amend the spec and any affected tickets before continuing. An AFK agent session follows [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md) instead.
 - Title every pull request as [CONTRIBUTING.md#pull-request-titles](CONTRIBUTING.md#pull-request-titles) describes.
 - Open every pull request as a draft. CI runs on drafts too.
 

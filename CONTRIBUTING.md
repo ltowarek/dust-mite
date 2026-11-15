@@ -1166,16 +1166,17 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Enables auto-merge and approves the pull request as described in [Dependency updates](#dependency-updates)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-run.yml](.github/workflows/afk-run.yml)
-  - Starts an AFK run when the maintainer adds the `agent:implement` label to a ticket or to a spec, which is an issue with sub-issues
-  - Expects the `agent:implement`, `agent:blocked` and `source:follow-up` labels to exist in the repository
+  - Starts an AFK run when the maintainer adds the `agent:implement` label to a ticket or to a spec
+  - Expects the `agent:implement`, `agent:blocked`, `agent:queued` and `source:follow-up` labels to exist in the repository
   - Queues every AFK run in one concurrency group with `queue: max`, so that runs go one at a time in label order and no labelled ticket is cancelled
-  - Refuses, with a comment, a sub-issue, which it also labels `agent:blocked`, a ticket that an open pull request already closes, and a spec whose sub-issues are all closed
-  - Works a spec as a chain, one run per sub-issue:
-    - Each run implements the spec's first open sub-issue, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier sub-issues
-    - The first run opens the spec's draft pull request, which closes the spec; the run on the last sub-issue replaces its title and body with the agent's, written for the branch's whole change
-    - After the push, the run closes the sub-issue with `Implemented in <sha>` and re-adds `agent:implement` to the spec with the App's token, which starts the next run
-    - Only the run on the last sub-issue marks the pull request ready or labels it `needs-car:<variant>`, so that an incomplete spec never reaches review or a car agent session
-    - A run that fails, finds a spec gap or needs the car to find the fix labels the spec `agent:blocked`, comments on it and starts no further run; the spec gap or the car hand-off lands on the sub-issue as for a ticket
+  - Refuses, with a comment, a child ticket, which it also labels `agent:blocked`, a ticket or spec that has an open blocking ticket, pointing to `agent:queued`, a ticket that an open pull request already closes, and a spec whose child tickets are all closed
+  - Implements a spec one child ticket per run, as an AFK spec implementation:
+    - Each run implements the first child ticket of the spec's frontier, the open child tickets with no open blocking ticket, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier child tickets
+    - When the frontier is empty, the run labels the spec `agent:queued` without a comment, so that [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml) resumes it; when the open child tickets block only each other, it refuses the spec with a comment and labels it `agent:blocked`
+    - The first run opens the spec's draft pull request, which closes the spec; the run on the last child ticket replaces its title and body with the agent's, written for the branch's whole change
+    - After the push, the run closes the child ticket with `Implemented in <sha>` and re-adds `agent:implement` to the spec with the App's token, which starts the next run
+    - Only the run on the last child ticket marks the pull request ready or labels it `needs-car:<variant>`, so that an incomplete spec never reaches review or a car agent session
+    - A run that fails, finds a spec gap or needs the car to find the fix labels the spec `agent:blocked`, comments on it and starts no further run; the spec gap or the car hand-off lands on the child ticket as for a ticket
   - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, which holds a read-only token of the [AFK GitHub App](#afk-github-app) and makes its commits as the App's bot
   - Validates the agent's structured output against [afk-run-output.schema.json](.github/afk-run-output.schema.json)
   - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch, or a spec's branch, and opens a draft pull request as the App's bot, so that CI runs on it
@@ -1189,13 +1190,13 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Removes `agent:implement` when the run ends; after a failure, including a failed step in its last job, labels the ticket or spec `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
-  - Starts an AFK run on a ticket that the maintainer labelled `agent:queued`, when its last open blocker closes
+  - Starts an AFK run on a ticket that the maintainer labelled `agent:queued`, when its last open blocking ticket closes, and on a spec that [afk-run.yml](.github/workflows/afk-run.yml) labelled `agent:queued`, when the last open blocking ticket of one of its child tickets closes
   - Expects the `agent:queued`, `agent:implement` and `agent:blocked` labels to exist in the repository
-  - Counts a blocker closed for any reason, including as not planned, as no longer blocking
-  - Replaces `agent:queued` with `agent:implement` as the [AFK GitHub App](#afk-github-app), so that [afk-run.yml](.github/workflows/afk-run.yml) starts, and comments the blocker that unblocked the ticket
-  - Refuses a sub-issue with a comment; it replaces the sub-issue's `agent:queued` label with `agent:blocked`
-  - Skips a ticket that still has `agent:implement`
-  - Runs one promotion at a time, so that two blockers closing together promote a ticket once
+  - Counts a blocking ticket closed for any reason, including as not planned, as no longer blocking
+  - Replaces `agent:queued` with `agent:implement` as the [AFK GitHub App](#afk-github-app), so that [afk-run.yml](.github/workflows/afk-run.yml) starts, without a comment
+  - Refuses a child ticket with a comment; it replaces the child ticket's `agent:queued` label with `agent:blocked`
+  - Skips a ticket or spec that still has `agent:implement`
+  - Runs one promotion at a time, so that two blocking tickets closing together promote a ticket or spec once
   - Grants its own `GITHUB_TOKEN` no write permission
   - Times out after 5 minutes
 - [afk-run-pr.yml](.github/workflows/afk-run-pr.yml)
