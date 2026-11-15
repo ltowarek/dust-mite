@@ -44,7 +44,7 @@ Every issue should carry one type label and at least one component label.
 - **Type** — `bug`, `enhancement`, `documentation`.
 - **Component** — `web`, `camera`, `telemetry`, `infrastructure`, `observability`, `drive`, `teleop`. Each names a functional subsystem, not a root directory, so a subsystem can move between [car/](car/) and [controller/](controller/) across variants without invalidating its label.
 
-An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json) and [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json).
+An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json), [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json) and [afk-update-branch-output.schema.json](.github/afk-update-branch-output.schema.json).
 
 See each label's description on the [GitHub labels page](https://github.com/ltowarek/dust-mite/labels) for what it covers.
 
@@ -1186,6 +1186,21 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Labels the pull request `needs-car:<variant>` when the agent judges that its commits need a DUT run, and leaves the draft or ready state untouched
   - Files follow-up tickets and comments the follow-ups already covered, as [afk-run.yml](.github/workflows/afk-run.yml) does
   - Removes `agent:implement` when the run ends; after a failure, labels the pull request `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
+- [afk-update-branch.yml](.github/workflows/afk-update-branch.yml)
+  - Starts an AFK run when the maintainer adds the `agent:update-branch` label to an open pull request whose branch is in this repository
+  - Expects the `agent:update-branch`, `agent:blocked` and `source:follow-up` labels to exist in the repository
+  - Triggers on `pull_request_target`, because a `pull_request` run does not start on a pull request that conflicts with `main`
+  - Queues in the same concurrency group as [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in label order
+  - Refuses a closed pull request with a comment
+  - Merges `origin/main` into the branch's tip as the [AFK GitHub App](#afk-github-app)'s bot; it pushes nothing when the branch already contains `main`, and pushes a merge without conflicts without running the agent
+  - On conflicts, runs `claude-code-action` with a read-only token of the App; the agent resolves each conflict keeping both intents, or the intent that best matches the pull request's goal when they are incompatible, and commits the merge
+  - Validates the agent's structured output against [afk-update-branch-output.schema.json](.github/afk-update-branch-output.schema.json), and fails when the agent leaves changes uncommitted, does not commit the merge, or rewrites the branch's existing commits
+  - Mints a write token of the App after the agent step and pushes to the pull request's branch with a lease on the tip that it checked out
+  - Comments the merge on the pull request; after conflicts, the comment is the agent's explanation of each resolution, with the follow-ups already covered under their own heading
+  - Labels the pull request `needs-car:<variant>` when the agent judges that its resolutions need a DUT run, and leaves its draft or ready state unchanged
+  - Files the follow-up tickets that the agent lists, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes
+  - Grants its own `GITHUB_TOKEN` no write permission
+  - Removes `agent:update-branch` when the run ends; after a failure, labels the pull request `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
   - Times out after 180 minutes
 - [claude.yml](.github/workflows/claude.yml)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it

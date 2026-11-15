@@ -13,6 +13,10 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
         - 'anthropics/claude-code-action@v1.0.266'
+    '.github/workflows/afk-update-branch.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'actions/create-github-app-token@v3.3.0'
+        - 'anthropics/claude-code-action@v1.0.266'
     '.github/workflows/ci.yml': []
     '.github/workflows/claude.yml':
         - 'actions/checkout@v7.0.1'
