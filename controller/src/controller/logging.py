@@ -11,25 +11,24 @@ from opentelemetry.sdk.resources import Resource
 
 logger = logging.getLogger(__name__)
 
+CONSOLE_HANDLER_NAME = "console"
 
-def configure_logging(endpoint: str | None, resource: Resource) -> logging.Handler:
-    """Send `controller` records from DEBUG to the console and any OTLP `endpoint`.
 
-    Returns the console handler.
-    """
+def configure_logging(endpoint: str | None, resource: Resource) -> None:
+    """Send `controller` records from DEBUG to the console and any OTLP `endpoint`."""
     logging.getLogger(__package__).setLevel(logging.DEBUG)
     console_handler = logging.StreamHandler()
+    console_handler.name = CONSOLE_HANDLER_NAME
     console_handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
     logging.getLogger().addHandler(console_handler)
     if not endpoint:
         logger.debug("No OTLP logs endpoint, skipping log configuration")
-        return console_handler
+        return
     exporter = OTLPLogExporter(endpoint=endpoint)
     provider = LoggerProvider(resource=resource)
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)
     install_log_handler(provider)
-    return console_handler
 
 
 def install_log_handler(provider: LoggerProvider) -> None:

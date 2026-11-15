@@ -256,8 +256,8 @@ through the same collector as traces, at `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, els
 attributes, so nothing there says which call site produced a line.
 
 Logging is configured once, in `configure_logging`, before the other signals. It sets the `controller`
-package logger to `DEBUG` and attaches a console handler to the root logger, whether or not a logs
-endpoint is set, and returns that handler for the Terminal app's curses console logging. Modules only
+package logger to `DEBUG` and attaches a console handler named `console` to the root logger, whether or not a logs
+endpoint is set. The Terminal app finds that handler with `logging.getHandlerByName("console")` for its curses console logging. Modules only
 call `logging.getLogger(__name__)`; none sets its own level or calls `basicConfig()`. The root logger
 stays at `WARNING`, so third-party libraries such as `websockets` and `aiohttp` send only `WARNING`
 and above. The exception is the Terminal app: importing `pydualsense` sets the root logger to `INFO`
