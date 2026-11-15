@@ -8,19 +8,19 @@ workflows:
     '.github/workflows/afk-run-pr.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
-        - 'anthropics/claude-code-action@v1.0.266'
+        - 'anthropics/claude-code-action@v1.0.269'
     '.github/workflows/afk-run.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
-        - 'anthropics/claude-code-action@v1.0.266'
+        - 'anthropics/claude-code-action@v1.0.269'
     '.github/workflows/afk-update-branch.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
-        - 'anthropics/claude-code-action@v1.0.266'
+        - 'anthropics/claude-code-action@v1.0.269'
     '.github/workflows/ci.yml': []
     '.github/workflows/claude.yml':
         - 'actions/checkout@v7.0.1'
-        - 'anthropics/claude-code-action@v1.0.266'
+        - 'anthropics/claude-code-action@v1.0.269'
     '.github/workflows/cpp-car.yml':
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
@@ -29,13 +29,13 @@ workflows:
         - 'dependabot/fetch-metadata@v3.1.0'
     '.github/workflows/devcontainer-image.yml':
         - 'docker/build-push-action@v7.4.0'
-        - 'docker/login-action@v4.7.0'
+        - 'docker/login-action@v4.8.0'
         - 'docker/metadata-action@v6.2.0'
         - 'docker/setup-buildx-action@v4.4.1'
     '.github/workflows/docker.yml':
         - 'actions/checkout@v7.0.1'
         - 'docker/build-push-action@v7.4.0'
-        - 'docker/login-action@v4.7.0'
+        - 'docker/login-action@v4.8.0'
         - 'docker/setup-buildx-action@v4.4.1'
     '.github/workflows/infrastructure.yml':
         - 'actions/checkout@v7.0.1'
@@ -83,9 +83,9 @@ dependencies:
         commit: 'sha1-6d4fd22b20465ccc0f7354476588e8df7c9ca0e0'
         owner_id: 44036562
         repo_id: 192625525
-    'anthropics/claude-code-action@v1.0.266':
-        ref: 'v1.0.266'
-        commit: 'sha1-d535f5172dec02b204866b393d6b20b9b2aaf98d'
+    'anthropics/claude-code-action@v1.0.269':
+        ref: 'v1.0.269'
+        commit: 'sha1-61a9c274fa7110a66dfafc1bbbced03833eb25fe'
         owner_id: 76263028
         repo_id: 986421638
         uses:
@@ -107,9 +107,9 @@ dependencies:
         commit: 'sha1-c3c9e263c25d99ce0380d002d59b67737d91b0dc'
         owner_id: 5429470
         repo_id: 241092383
-    'docker/login-action@v4.7.0':
-        ref: 'v4.7.0'
-        commit: 'sha1-81c6f93d4bc991e510b342a00b419b3bb4efc5c6'
+    'docker/login-action@v4.8.0':
+        ref: 'v4.8.0'
+        commit: 'sha1-8aa5831fb8d48d8f76594c7ddde61ae58019f550'
         owner_id: 5429470
         repo_id: 287743349
     'docker/metadata-action@v6.2.0':

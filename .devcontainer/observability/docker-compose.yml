@@ -13,8 +13,11 @@ services:
     user: "${USER_UID:-1050}:${USER_GID:-1050}"
     volumes:
       - ../..:/workspaces/dust-mite:cached
-    env_file:
-      - path: ../../.env
+    environment:
+      - GRAFANA_URL
+      - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+      - STREAMER_CAMERA_URI
     command: sleep infinity
     networks:
       - dust-mite-observability
