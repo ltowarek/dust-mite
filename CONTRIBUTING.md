@@ -1153,75 +1153,110 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Triggers on pull requests opened by Dependabot
   - Enables auto-merge and approves the pull request as described in [Dependency updates](#dependency-updates)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
+- [afk-dispatch.yml](.github/workflows/afk-dispatch.yml)
+  - Triggers on each new issue or pull request conversation comment, and acts only on an [AFK command](#afk-commands) whose author's account id is the repository owner's; it ignores every other comment without a reply or a reaction
+  - Triggers on `issue_comment`, which runs on a pull request that conflicts with `main`, with a `zizmor: ignore[dangerous-triggers]` comment whose reason [ADR 0007](docs/adr/0007-start-afk-runs-by-comment-command.md) gives
+  - Handles one command at a time in the `afk-dispatch` concurrency group with `queue: max`, so that two commands posted together cannot both pass the `afk:in-progress` check
+  - Replies and reacts 😕 to an unknown verb, and to a command on a target labelled `afk:in-progress` or `afk:queued`
+  - Labels a ticket or spec with open blockers `afk:queued` for `/afk implement`, replies with the blockers and reacts 👀
+  - Otherwise reacts 👀, replaces `afk:blocked` with `afk:in-progress`, and dispatches [afk-run.yml](.github/workflows/afk-run.yml) for `/afk implement` on an issue, [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) for `/afk implement` on a pull request, or [afk-update-branch.yml](.github/workflows/afk-update-branch.yml) for `/afk update-branch`, with the comment's id and, on a pull request, its head commit
+  - Labels, reacts and replies as the [AFK GitHub App](#afk-github-app); only the dispatch step uses its own `GITHUB_TOKEN`, which has `actions: write`
+  - Times out after 5 minutes
 - [afk-run.yml](.github/workflows/afk-run.yml)
-  - Starts an AFK run when the maintainer adds the `agent:implement` label to a ticket or to a spec, which is an issue with sub-issues
-  - Expects the `agent:implement`, `agent:blocked` and `source:follow-up` labels to exist in the repository
-  - Queues every AFK run in one concurrency group with `queue: max`, so that runs go one at a time in label order and no labelled ticket is cancelled
-  - Refuses, with a comment, a sub-issue, which it also labels `agent:blocked`, a ticket that an open pull request already closes, and a spec whose sub-issues are all closed
+  - Runs an AFK run on a ticket or on a spec, which is an issue with sub-issues
+  - Triggers on `workflow_dispatch` only, with the inputs `number`, the ticket or spec, and `comment-id`, the AFK command, which is empty when the run starts from the Actions tab; the run is named `afk implement #<number>`
+  - Expects the `afk:in-progress`, `afk:blocked` and `source:follow-up` labels to exist in the repository
+  - Queues every AFK run in one concurrency group, `afk-run`, with `queue: max`, so that runs go one at a time in the order that they were requested and no run is cancelled
+  - Adds `afk:in-progress` when it starts, so that a run started from the Actions tab is labelled as well
+  - Refuses, with a comment, a sub-issue, which it also labels `afk:blocked`, a ticket that an open pull request already closes, and a spec whose sub-issues are all closed; the refusals are checked when the run starts, so that a run that waited in the queue acts on the current state
   - Works a spec as a chain, one run per sub-issue:
     - Each run implements the spec's first open sub-issue, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier sub-issues
     - The first run opens the spec's draft pull request, which closes the spec; the run on the last sub-issue replaces its title and body with the agent's, written for the branch's whole change
-    - After the push, the run closes the sub-issue with `Implemented in <sha>` and re-adds `agent:implement` to the spec with the App's token, which starts the next run
+    - After the push, the run closes the sub-issue with `Implemented in <sha>` and dispatches the next run with its `GITHUB_TOKEN`, passing on the AFK command's id; the spec keeps `afk:in-progress` until the chain ends
     - Only the run on the last sub-issue marks the pull request ready or labels it `needs-car:<variant>`, so that an incomplete spec never reaches review or a car agent session
-    - A run that fails, finds a spec gap or needs the car to find the fix labels the spec `agent:blocked`, comments on it and starts no further run; the spec gap or the car hand-off lands on the sub-issue as for a ticket
+    - A run that fails, finds a spec gap or needs the car to find the fix labels the spec `afk:blocked`, comments on it and starts no further run; the spec gap or the car hand-off lands on the sub-issue as for a ticket
   - Runs Matt Pocock's `implement` skill on the ticket through `claude-code-action`, which holds a read-only token of the [AFK GitHub App](#afk-github-app) and makes its commits as the App's bot
   - Validates the agent's structured output against [afk-run-output.schema.json](.github/afk-run-output.schema.json)
   - Mints a write token of the App after the agent step, then pushes the run's `afk/issue-<ticket>-<run id>` branch, or a spec's branch, and opens a draft pull request as the App's bot, so that CI runs on it
-  - Grants its own `GITHUB_TOKEN` no write permission
+  - Grants its own `GITHUB_TOKEN` no write permission, except `actions: write` in its last job, which dispatches a spec's next run
   - Marks the pull request ready for review when the agent judges that the change needs no DUT run; otherwise labels it `needs-car:<variant>` and leaves it as a draft
   - Pushes nothing when the agent reports a spec gap, as described in [docs/agents/spec-gaps.md](docs/agents/spec-gaps.md); instead, with an Issues write token of the App, it:
     - Replaces the ticket's `ready-for-agent` label with `needs-triage`
     - Posts the gaps as a comment on the ticket, with the follow-ups already covered under their own heading
   - Pushes nothing when the agent reports that finding the fix needs the car; instead, with an Issues write token of the App, it labels the ticket `needs-car:<variant>` and comments the agent's reason on it, with the follow-ups already covered under their own heading
   - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
-  - Removes `agent:implement` when the run ends; after a failure, including a failed step in its last job, labels the ticket or spec `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
+  - Removes `afk:in-progress` when the run ends, unless it has dispatched the next run of a spec's chain; after a failure, including a failed step in its last job, labels the ticket or spec `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
+  - Reacts 🚀 to the AFK command when the run, or a spec's whole chain, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
-  - Starts an AFK run on a ticket that the maintainer labelled `agent:queued`, when its last open blocker closes
-  - Expects the `agent:queued`, `agent:implement` and `agent:blocked` labels to exist in the repository
+  - Starts an AFK run on a ticket labelled `afk:queued` when its last open blocker closes
+  - Expects the `afk:queued`, `afk:in-progress` and `afk:blocked` labels to exist in the repository
   - Counts a blocker closed for any reason, including as not planned, as no longer blocking
-  - Replaces `agent:queued` with `agent:implement` as the [AFK GitHub App](#afk-github-app), so that [afk-run.yml](.github/workflows/afk-run.yml) starts, and comments the blocker that unblocked the ticket
-  - Refuses a sub-issue with a comment; it replaces the sub-issue's `agent:queued` label with `agent:blocked`
-  - Skips a ticket that still has `agent:implement`
+  - Replaces `afk:queued` with `afk:in-progress` as the [AFK GitHub App](#afk-github-app), comments the blocker that unblocked the ticket, and dispatches [afk-run.yml](.github/workflows/afk-run.yml) with its `GITHUB_TOKEN`, which has `actions: write`
+  - Refuses a sub-issue with a comment; it replaces the sub-issue's `afk:queued` label with `afk:blocked`
+  - Skips a ticket that still has `afk:in-progress`
   - Runs one promotion at a time, so that two blockers closing together promote a ticket once
-  - Grants its own `GITHUB_TOKEN` no write permission
   - Times out after 5 minutes
 - [afk-run-pr.yml](.github/workflows/afk-run-pr.yml)
-  - Starts an AFK run when the maintainer adds the `agent:implement` label to an open pull request, whatever its head branch
-  - Triggers on `pull_request_target`, because a `pull_request` run does not start on a pull request that conflicts with `main`
-  - Shares the `afk-run` concurrency group with [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in label order
-  - Refuses, with a comment, a closed pull request and one with no unresolved review threads, review summaries or top-level comments
+  - Runs an AFK run on an open pull request whose branch is in this repository
+  - Triggers on `workflow_dispatch` only, with the inputs `number`, `comment-id` and `head-sha`, the pull request's head when the AFK command was accepted; without `head-sha`, the run reads the current head; the run is named `afk implement #<number>`
+  - Shares the `afk-run` concurrency group with [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in the order that they were requested
+  - Adds `afk:in-progress` when it starts
+  - Refuses, with a comment, a closed pull request, a pull request whose branch is in a fork, and one with no unresolved review threads, review summaries or top-level comments other than AFK commands
   - Runs Matt Pocock's `implement-pr` prompt on the unresolved conversation through `claude-code-action`, with a read-only token of the [AFK GitHub App](#afk-github-app); the agent changes code, replies, or neither, per comment, and never resolves a thread
   - Validates the agent's structured output against [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json)
   - Fails when the agent neither commits nor comments
-  - Mints a write token of the App after the agent step, pushes the agent's commits with lease to the pull request's branch only, and posts the agent's thread replies, inline comments and top-level comments
+  - Mints a write token of the App after the agent step, pushes the agent's commits to the pull request's branch with a lease on `head-sha`, and posts the agent's thread replies, inline comments and top-level comments
   - Labels the pull request `needs-car:<variant>` when the agent judges that its commits need a DUT run, and leaves the draft or ready state untouched
   - Files follow-up tickets and comments the follow-ups already covered, as [afk-run.yml](.github/workflows/afk-run.yml) does
-  - Removes `agent:implement` when the run ends; after a failure, labels the pull request `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
+  - Removes `afk:in-progress` when the run ends; after a failure, labels the pull request `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
+  - Reacts 🚀 to the AFK command when the run succeeds, and 😕 when it fails or is refused
 - [afk-update-branch.yml](.github/workflows/afk-update-branch.yml)
-  - Starts an AFK run when the maintainer adds the `agent:update-branch` label to an open pull request whose branch is in this repository
-  - Expects the `agent:update-branch`, `agent:blocked` and `source:follow-up` labels to exist in the repository
-  - Triggers on `pull_request_target`, because a `pull_request` run does not start on a pull request that conflicts with `main`
-  - Queues in the same concurrency group as [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in label order
-  - Refuses a closed pull request with a comment
-  - Merges `origin/main` into the branch's tip as the [AFK GitHub App](#afk-github-app)'s bot; it pushes nothing when the branch already contains `main`, and pushes a merge without conflicts without running the agent
+  - Runs an AFK run that merges `main` into an open pull request's branch
+  - Triggers on `workflow_dispatch` only, with the same inputs as [afk-run-pr.yml](.github/workflows/afk-run-pr.yml); the run is named `afk update-branch #<number>`
+  - Expects the `afk:in-progress`, `afk:blocked` and `source:follow-up` labels to exist in the repository
+  - Queues in the same concurrency group as [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in the order that they were requested
+  - Adds `afk:in-progress` when it starts
+  - Refuses, with a comment, an issue, a closed pull request and a pull request whose branch is in a fork
+  - Merges `origin/main` into `head-sha` as the [AFK GitHub App](#afk-github-app)'s bot; it pushes nothing when the branch already contains `main`, and pushes a merge without conflicts without running the agent
   - On conflicts, runs `claude-code-action` with a read-only token of the App; the agent resolves each conflict keeping both intents, or the intent that best matches the pull request's goal when they are incompatible, and commits the merge
   - Validates the agent's structured output against [afk-update-branch-output.schema.json](.github/afk-update-branch-output.schema.json), and fails when the agent leaves changes uncommitted, does not commit the merge, or rewrites the branch's existing commits
-  - Mints a write token of the App after the agent step and pushes to the pull request's branch with a lease on the tip that it checked out
+  - Mints a write token of the App after the agent step and pushes to the pull request's branch with a lease on `head-sha`
   - Comments the merge on the pull request; after conflicts, the comment is the agent's explanation of each resolution, with the follow-ups already covered under their own heading
   - Labels the pull request `needs-car:<variant>` when the agent judges that its resolutions need a DUT run, and leaves its draft or ready state unchanged
   - Files the follow-up tickets that the agent lists, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes
   - Grants its own `GITHUB_TOKEN` no write permission
-  - Removes `agent:update-branch` when the run ends; after a failure, labels the pull request `agent:blocked` and comments the failed step, the agent's error when it reports one, and the run link
+  - Removes `afk:in-progress` when the run ends; after a failure, labels the pull request `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
+  - Reacts 🚀 to the AFK command when the run succeeds, and 😕 when it fails or is refused
   - Times out after 180 minutes
 - [claude.yml](.github/workflows/claude.yml)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
 
+### AFK commands
+
+The maintainer starts an AFK run with an AFK command: a new conversation comment on an issue or pull request whose first line is exactly one of the following commands. The rest of the comment is ignored, so a ticket's agent brief remains the only instruction to the AFK run.
+
+| Command | On | Starts |
+|---|---|---|
+| `/afk implement` | A ticket or a spec | An AFK run that implements the ticket, or works through the spec's sub-issues one AFK run at a time on one branch |
+| `/afk implement` | A pull request | An AFK run that addresses the pull request's unresolved conversation |
+| `/afk update-branch` | A pull request | An AFK run that merges `main` into the pull request's branch and resolves the conflicts |
+
+Only the repository owner's commands are accepted. An edited comment, a review comment and a review summary are not commands. [afk-dispatch.yml](.github/workflows/afk-dispatch.yml) reacts 👀 to an accepted command, and the AFK run reacts 🚀 when it succeeds or 😕 when it fails or is refused. To start an AFK run without a comment, run the workflow from the Actions tab with only the target's number. [ADR 0007](docs/adr/0007-start-afk-runs-by-comment-command.md) explains why commands are comments.
+
+Labels record the state of the AFK loop only, and the AFK GitHub App sets them:
+
+| Label | Meaning |
+|---|---|
+| `afk:queued` | The ticket waits for its open blockers; its AFK run starts when the last one closes. A command on it is refused. |
+| `afk:in-progress` | An AFK run is queued or running, or a spec's chain is in progress. A command on it is refused. |
+| `afk:blocked` | The last AFK run failed or was refused; its comment says why. A new command clears it. |
+
 ### AFK GitHub App
 
-AFK agent sessions act as one GitHub App, installed only on dust-mite. The App has Contents, Pull requests, Issues and Checks write, Actions and Metadata read, and no Workflows permission. To create the App, run [scripts/setup_afk_github_app.sh](scripts/setup_afk_github_app.sh) on the host, where `gh` is authenticated. The wizard stores the App's slug, Client ID and bot id in the `AFK_APP_SLUG`, `AFK_APP_CLIENT_ID` and `AFK_APP_BOT_ID` Actions variables, and its private key in the `AFK_APP_PRIVATE_KEY` Actions secret.
+AFK agent sessions act as one GitHub App, installed only on dust-mite. The App has Contents, Pull requests, Issues and Checks write, Actions and Metadata read, and no Workflows permission. Because it has no Actions write permission, a leaked App token cannot start a workflow, and the AFK workflows dispatch AFK runs with their own `GITHUB_TOKEN`. To create the App, run [scripts/setup_afk_github_app.sh](scripts/setup_afk_github_app.sh) on the host, where `gh` is authenticated. The wizard stores the App's slug, Client ID and bot id in the `AFK_APP_SLUG`, `AFK_APP_CLIENT_ID` and `AFK_APP_BOT_ID` Actions variables, and its private key in the `AFK_APP_PRIVATE_KEY` Actions secret.
 
 Car agent sessions use a second private key of the same App, which is stored on the host outside the repository. To add the Checks permission and the second key, run [scripts/setup_afk_car_key.sh](scripts/setup_afk_car_key.sh) on the host. The wizard moves the key to a path that you choose, writes that path to `AFK_APP_KEY_FILE` in `.env`, and checks the installation's permissions with the new key.
 
