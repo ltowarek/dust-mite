@@ -46,6 +46,14 @@ Every issue should carry one type label and at least one component label.
 
 An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json), [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json) and [afk-update-branch-output.schema.json](.github/afk-update-branch-output.schema.json).
 
+A DUT run of an issue or pull request labelled `needs-car:<variant>` starts with one command on the host, with the car connected:
+
+```bash
+./scripts/run_dut_tests.sh
+```
+
+The script runs every DUT-gated test, each suite through its area's own test runner, in this order: the car's tests in a one-off C++ devcontainer, the controller's DUT integration tests in a one-off Python devcontainer, the full-stack tests in the headless stack's `test-runner`, and the observability E2E tests in a one-off Observability devcontainer. It starts the headless stack after the controller's tests, stops at the first failing suite with a non-zero exit status, and always stops the headless stack on exit. The one-off containers run under the project name `dust-mite-dut` and publish no ports, so they leave the editor's devcontainers untouched. The car's tests leave the debug build flashed.
+
 See each label's description on the [GitHub labels page](https://github.com/ltowarek/dust-mite/labels) for what it covers.
 
 Don't add a new label without a recurring, evidenced need — an unused label is noise.
@@ -1032,8 +1040,8 @@ overlay (`sdkconfig.defaults.debug`) but never runs it, so the script builds the
 `car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
 Camera endpoint for a minute, and fails when the frames stop for more than a few seconds. Run it
 before merging a firmware change that touches an overlay or the observability setup. The debug
-build is still flashed when the script ends; then run `test_car_has_profile_samples` from [observability/tests/e2e/](observability/tests/e2e/) (see
-[Observability tests](#observability-tests)) to check that its profiles reached Pyroscope.
+build is still flashed when the script ends, so in a DUT run (see [Issue labels](#issue-labels)) the
+observability E2E tests that follow check that its profiles reached Pyroscope.
 
 ### Feature flags
 

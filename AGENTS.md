@@ -36,6 +36,7 @@ This file is a lightweight navigation guide for coding agents.
 
 Run `./scripts/start_headless.sh` to build and start all services in the background.
 Run `./scripts/stop_headless.sh` to stop and remove all containers.
+Run `./scripts/run_dut_tests.sh` on the host, with the car connected, to run every DUT-gated test; a DUT run of an issue or pull request labelled `needs-car:<variant>` starts with it ([CONTRIBUTING.md#issue-labels](CONTRIBUTING.md#issue-labels)).
 
 Docker Compose services: `cpp`, `python`, `js`, `otel-collector`, `tempo`, `mimir`, `loki`, `pyroscope`, `profiling-symbolizer`, `grafana`. Use standard docker compose commands to manage them:
 
