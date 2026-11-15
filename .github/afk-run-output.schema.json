@@ -1,10 +1,13 @@
 {
   "type": "object",
   "properties": {
-    "outcome": { "enum": ["done", "spec_gap"] },
+    "outcome": { "enum": ["done", "spec_gap", "needs_car"] },
     "pr_title": { "type": "string" },
     "pr_body": { "type": "string" },
-    "spec_gaps": { "type": "string" }
+    "spec_gaps": { "type": "string" },
+    "needs_dut_run": { "type": "boolean" },
+    "car_variant": { "enum": ["copper"] },
+    "needs_car_reason": { "type": "string" }
   },
-  "required": ["outcome"]
+  "required": ["outcome", "needs_dut_run"]
 }
