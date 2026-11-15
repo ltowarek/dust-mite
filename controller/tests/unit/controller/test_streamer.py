@@ -42,7 +42,6 @@ _STREAMER_ENV = {
     "STREAM_CLIENT_URI": "http://car.invalid/stream",
     "TELEMETRY_CLIENT_URI": "ws://car.invalid/telemetry",
     "DRIVE_CLIENT_URI": "ws://car.invalid/drive",
-    "PROFILING_ENABLED": "1",
 }
 
 
@@ -76,9 +75,14 @@ def test_settings_default_the_camera_port() -> None:
 
 
 def test_settings_read_the_observability_settings() -> None:
-    settings = StreamerSettings.from_env(_STREAMER_ENV)
+    settings = StreamerSettings.from_env(
+        {**_STREAMER_ENV, "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.invalid"}
+    )
 
-    assert settings.observability.profiling_enabled is True
+    assert (
+        settings.observability.profiles_endpoint
+        == "http://collector.invalid/v1development/profiles"
+    )
 
 
 @pytest.mark.parametrize(

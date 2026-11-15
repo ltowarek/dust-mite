@@ -192,7 +192,7 @@ flowchart LR
     FW -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP traces" --> OC
     STR -- "OTLP/HTTP metrics" --> MIMIR
-    STR -- "OTLP/HTTP profiles (opt-in)" --> OC
+    STR -- "OTLP/HTTP profiles" --> OC
     WEB -- "OTLP/HTTP traces" --> OC
     OC -- "OTLP/gRPC" --> TEMPO
     OC -- "OTLP/HTTP profiles" --> PYRO
@@ -466,16 +466,15 @@ stack snapshot, not a computed CPU-time delta, and it doesn't factor in GIL owne
 contending for the GIL is typically in `S` state and gets filtered out even though it's using CPU.
 See `controller/src/otlp_profiler/sampler.py`'s module docstring for the full detail.
 
-Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off unless
-`PROFILING_ENABLED` is set to `1`. Profiles go to `OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT`, else
-`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1development/profiles`: the profiles signal is still in
-development, so the pinned collector serves it under the development version rather than `v1`.
+Profiling is on whenever the profiles endpoint is set, like tracing and logs. Profiles go to
+`OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` +
+`/v1development/profiles`: the profiles signal is still in development, so the pinned collector
+serves it under the development version rather than `v1`. The headless stack's streamer therefore
+always profiles ([ADR 0007](docs/adr/0007-streamer-always-profiles-car-profiles-in-debug-build.md)).
 
 To profile a run:
 
-1. `./scripts/enable_profiling.sh && ./scripts/start_headless.sh` — sets `PROFILING_ENABLED=1`
-   in `.env` (preserving any other already-set variables, e.g. `WIFI_SSID`/`WIFI_PASSWORD`),
-   then brings up the stack.
+1. Bring up the stack (`./scripts/start_headless.sh`).
 2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-streamer"}`, optionally split by `thread_name`. Splitting by thread
    name separates the event loop, which serves every connection, from worker threads such as those
@@ -562,10 +561,10 @@ Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
 - **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI.
-Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the debug firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
+Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; the debug firmware overlay for the car profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 
 ```bash
-source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh
+./scripts/start_headless.sh
 ```
 
 Run from the Observability devcontainer with `--dut`:
