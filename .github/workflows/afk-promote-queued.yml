@@ -11,7 +11,7 @@ concurrency:
   queue: max
 
 env:
-  BLOCKER: ${{ github.event.issue.number }}
+  BLOCKING_TICKET: ${{ github.event.issue.number }}
   GH_REPO: ${{ github.repository }}
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
       issues: read
 
     steps:
-      - name: Find the queued tickets that the blocker blocks
+      - name: Find the queued tickets that the blocking ticket blocks
         id: queued
         shell: bash
         env:
@@ -47,12 +47,12 @@ jobs:
             }
         run: |
           queued=$(gh api graphql -f query="$QUERY" \
-            -f owner="${GH_REPO%/*}" -f repo="${GH_REPO#*/}" -F number="$BLOCKER" |
+            -f owner="${GH_REPO%/*}" -f repo="${GH_REPO#*/}" -F number="$BLOCKING_TICKET" |
             jq -c --arg repo "$GH_REPO" '[.data.repository.issue.blocking.nodes[]
               | select(.state == "OPEN" and .repository.nameWithOwner == $repo)
               | ([.labels.nodes[].name]) as $labels
               | select(($labels | index("agent:queued")) and ($labels | index("agent:implement") | not))
-              | {number, parent: .parent.number, open_blockers: ([.blockedBy.nodes[] | select(.state == "OPEN")] | length)}]')
+              | {number, parent: .parent.number, open_blocking_tickets: ([.blockedBy.nodes[] | select(.state == "OPEN")] | length)}]')
           echo "Queued tickets: $queued"
           echo "tickets=$queued" >> "$GITHUB_OUTPUT"
 
@@ -65,7 +65,7 @@ jobs:
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-issues: write
 
-      - name: Promote the unblocked tickets and refuse sub-issues
+      - name: Promote the unblocked tickets and refuse child tickets
         if: steps.queued.outputs.tickets != '[]'
         shell: bash
         env:
@@ -75,12 +75,12 @@ jobs:
           jq -c '.[]' <<<"$TICKETS" | while IFS= read -r ticket; do
             number=$(jq -r .number <<<"$ticket")
             parent=$(jq -r '.parent // empty' <<<"$ticket")
-            open_blockers=$(jq -r .open_blockers <<<"$ticket")
+            open_blocking_tickets=$(jq -r .open_blocking_tickets <<<"$ticket")
             if [ -n "$parent" ]; then
               gh issue edit "$number" --remove-label agent:queued --add-label agent:blocked
-              gh issue comment "$number" --body "Refused to promote: this ticket is a sub-issue of #${parent}. Sub-issues run only through their spec's chain; add \`agent:implement\` to #${parent} instead."
-            elif [ "$open_blockers" = 0 ]; then
+              gh issue comment "$number" --body "Refused to promote: this ticket is a child ticket of #${parent}. Child tickets run only through their spec; add \`agent:implement\` to #${parent} instead."
+            elif [ "$open_blocking_tickets" = 0 ]; then
               gh issue edit "$number" --remove-label agent:queued --add-label agent:implement
-              gh issue comment "$number" --body "Unblocked by #${BLOCKER} closing; promoted from \`agent:queued\` to \`agent:implement\`."
+              gh issue comment "$number" --body "Unblocked by #${BLOCKING_TICKET} closing; promoted from \`agent:queued\` to \`agent:implement\`."
             fi
           done

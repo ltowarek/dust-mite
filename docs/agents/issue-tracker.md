@@ -11,6 +11,8 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
+In [GLOSSARY.md](../../GLOSSARY.md) terms, a **ticket** is an issue, a **child ticket** a sub-issue, and a **blocking ticket** an issue another is blocked by (stored as in **Blocking** below).
+
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
 ## Pull requests as a triage surface
