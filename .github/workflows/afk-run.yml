@@ -15,6 +15,7 @@ env:
   TICKET: ${{ github.event.issue.number }}
   GH_REPO: ${{ github.repository }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
 
 jobs:
   check:
@@ -69,6 +70,8 @@ jobs:
 
     outputs:
       agent-error: ${{ steps.agent-error.outputs.result }}
+      agent-output: ${{ steps.agent.outputs.structured_output }}
+      pr-url: ${{ steps.pr.outputs.url }}
 
     env:
       BRANCH: afk/issue-${{ github.event.issue.number }}-${{ github.run_id }}
@@ -114,7 +117,8 @@ jobs:
             Every step `implement` names is mandatory in an AFK agent session; never skip one because the change is small.
 
             This is an AFK agent session: no one will answer questions. Follow CLAUDE.md, including running every check inside the devcontainer it names; Docker is available.
-            Commit to the current branch. Do not push, open or edit pull requests, comment, or change labels.
+            Commit to the current branch. Do not push, open or edit pull requests, file tickets, comment, or change labels.
+            Follow docs/agents/follow-up-tickets.md: list follow-up tickets in follow_ups and follow-ups already covered in already_covered.
             At a spec gap, follow docs/agents/spec-gaps.md: make no commits, set outcome to spec_gap, and write the comment in spec_gaps.
             If finding the fix needs the car (flashing it, or watching how it behaves), make no commits, set outcome to needs_car, set car_variant to the variant on which the ticket's code runs, and explain why in needs_car_reason.
             Otherwise set outcome to done, write a Conventional Commits PR title in pr_title, and write the PR body with the pr skill in pr_body.
@@ -147,6 +151,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Push the branch and open the PR
+        id: pr
         if: fromJSON(steps.agent.outputs.structured_output).outcome == 'done'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
@@ -157,11 +162,12 @@ jobs:
         run: |
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
           printf 'Closes #%s\n\n%s\n\n[AFK run](%s)\n' "$TICKET" "$PR_BODY" "$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
-          gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
+          url=$(gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
           if [ "$NEEDS_DUT_RUN" = true ]; then
-            gh pr edit "$BRANCH" --add-label "needs-car:${CAR_VARIANT}"
+            gh pr edit "$url" --add-label "needs-car:${CAR_VARIANT}"
           else
-            gh pr ready "$BRANCH"
+            gh pr ready "$url"
           fi
 
       - name: Mint the App's write token for handing the ticket to the car
@@ -198,8 +204,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.issues-token.outputs.token }}
           SPEC_GAPS: ${{ fromJSON(steps.agent.outputs.structured_output).spec_gaps }}
+          OUTPUT: ${{ steps.agent.outputs.structured_output }}
         run: |
           printf '> *Spec gap found by an AFK agent session while working this ticket.* ([run](%s))\n\n%s\n' "$RUN_URL" "$SPEC_GAPS" > "$RUNNER_TEMP/spec-gaps.md"
+          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
+          if [ -n "$already_covered" ]; then
+            printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered" >> "$RUNNER_TEMP/spec-gaps.md"
+          fi
           gh issue edit "$TICKET" --remove-label ready-for-agent --add-label needs-triage
           gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/spec-gaps.md"
 
@@ -212,13 +223,14 @@ jobs:
       actions: read
 
     steps:
-      - name: Mint the App's write token for labels and comments
+      - name: Mint the App's write token for tickets, labels and comments
         id: write-token
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-issues: write
+          permission-pull-requests: write
 
       - name: Refuse the ticket
         if: always() && needs.check.outputs.refusal != ''
@@ -231,6 +243,40 @@ jobs:
             gh issue edit "$TICKET" --add-label agent:blocked
           fi
           gh issue comment "$TICKET" --body "$REFUSAL"
+
+      - name: File the follow-up tickets
+        if: always() && needs.implement.outputs.agent-output != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          OUTPUT: ${{ needs.implement.outputs.agent-output }}
+        run: |
+          jq -c '.follow_ups // [] | .[]' <<<"$OUTPUT" | while IFS= read -r follow_up; do
+            title=$(jq -r .title <<<"$follow_up")
+            labels=$(jq -r '[.type] + .components | join(",")' <<<"$follow_up")
+            {
+              printf '> *Follow-up ticket filed by an AFK agent session while working #%s.* ([run](%s))\n\n' "$TICKET" "$RUN_URL"
+              jq -r .body <<<"$follow_up"
+            } > "$RUNNER_TEMP/follow-up.md"
+            gh issue create \
+              --title "$title" \
+              --body-file "$RUNNER_TEMP/follow-up.md" \
+              --label needs-triage,source:follow-up \
+              --label "$labels"
+          done
+
+      - name: Comment the follow-ups already covered
+        if: always() && needs.implement.outputs.pr-url != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          OUTPUT: ${{ needs.implement.outputs.agent-output }}
+          PR_URL: ${{ needs.implement.outputs.pr-url }}
+        run: |
+          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
+          if [ -n "$already_covered" ]; then
+            printf '## Follow-ups already covered\n\n%s\n' "$already_covered" | gh pr comment "$PR_URL" --body-file -
+          fi
 
       - name: Clear agent:blocked after a successful run
         if: always() && needs.implement.result == 'success'
