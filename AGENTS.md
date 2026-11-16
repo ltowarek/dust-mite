@@ -82,7 +82,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - For observability changes, use scripts under [observability/scripts/](observability/scripts/). `observability/tests/integration/` (synthetic data) always runs, including in CI; `observability/tests/e2e/` (real data, requires headless stack running) is DUT-gated and on-demand only. See [CONTRIBUTING.md#observability-tests](CONTRIBUTING.md#observability-tests).
 - For repo-wide checks/hooks, use [scripts/](scripts/).
 - For workflow changes, regenerate and verify the actions lockfile: see [CONTRIBUTING.md#actions-lockfile](CONTRIBUTING.md#actions-lockfile).
-- For full-stack E2E tests (requires headless stack running), exec into the `test-runner` container: `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack`. The test-runner starts with the headless stack in standby mode; no separate devcontainer session is needed. These on-demand tests do not run in CI.
+- For full-stack E2E tests (requires headless stack running), exec into the `test-runner` container, first `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner npm ci` to install the web's packages, then `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack`. The test-runner starts with the headless stack in standby mode; no separate devcontainer session is needed. These on-demand tests do not run in CI.
 
 ## Starting Devcontainers
 
