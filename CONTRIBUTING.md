@@ -252,13 +252,13 @@ All three services export traces via OTLP/HTTP to the OTel Collector; the firmwa
 
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
-| ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
+| ESP32 firmware | `dust-mite-car` | `http://$CAR_OTLP_HOST:4318` | `http://$CAR_OTLP_HOST:8080/otlp` + `/v1/metrics` |
 | Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces` (default `http://otel-collector:4318/v1/traces`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
 | Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | none |
 
-The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
+The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name. Set that IP as `CAR_OTLP_HOST` in `.env`. The C++ devcontainer passes it to the firmware build, which [car/main/main.cpp](car/main/main.cpp) uses for traces, logs (port 4318), metrics (port 8080) and profiles (port 4319), in the same way that `WIFI_SSID` reaches the firmware. The build reads it when CMake configures, so after changing it run `idf.py reconfigure` or `idf.py fullclean` before the next build.
 
-The firmware's logs endpoint (`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL`) reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
+The firmware's logs endpoint reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
 
 ### Metrics
 
@@ -318,8 +318,8 @@ to ship ([camera.cpp](car/components/camera/camera.cpp),
 [telemetry.cpp](car/components/telemetry/telemetry.cpp)). `ESP_LOGD`/`V` are not wrapped — they're
 already compiled out of this build (`CONFIG_LOG_MAXIMUM_LEVEL` follows the default `Info` level),
 matching what the fork's macro deliberately excludes. Reuses the same `vcs.*` resource attributes
-tracing/metrics already build in `main.cpp`, routed through
-`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL` (same collector endpoint as tracing).
+tracing/metrics already build in `main.cpp`, routed to the same collector endpoint as tracing
+(`CAR_OTLP_HOST`).
 
 One structural gap: `esp_opentelemetry_logs_setup()` must run after `sync_time()` (SNTP) or every
 record is stamped 1970 and Loki drops it — but `wifi_setup()`'s own `ESP_LOGI(TAG, "wifi_init_sta

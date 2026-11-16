@@ -8,3 +8,8 @@ idf_component_register(SRCS "main.cpp"
                     telemetry
                     tracing
                     )
+target_compile_definitions(
+    ${COMPONENT_LIB}
+    PRIVATE
+    CAR_OTLP_HOST="$ENV{CAR_OTLP_HOST}"
+)
