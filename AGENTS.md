@@ -36,7 +36,7 @@ This file is a lightweight navigation guide for coding agents.
 
 Run `./scripts/start_headless.sh` to build and start all services in the background. The stack needs the car connected, because the script passes `docker-compose.car.yml`, which gives `cpp` the car's serial port.
 Run `./scripts/stop_headless.sh` to stop and remove all containers.
-Run `./scripts/run_dut_tests.sh` on the host, with the car connected, to run every DUT-gated test; a DUT run of an issue or pull request labelled `needs-car:<variant>` starts with it ([CONTRIBUTING.md#dut-run](CONTRIBUTING.md#dut-run)).
+Run `./scripts/run_dut_tests.sh` on the host, with the car connected, from the main checkout (not a git worktree), to run every DUT-gated test; a DUT run of an issue or pull request labelled `needs-car:<variant>` starts with it ([CONTRIBUTING.md#dut-run](CONTRIBUTING.md#dut-run)).
 
 Docker Compose services: `cpp`, `python`, `js`, `otel-collector`, `tempo`, `mimir`, `loki`, `pyroscope`, `profiling-symbolizer`, `grafana`. Use standard docker compose commands to manage them:
 
