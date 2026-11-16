@@ -1,13 +1,11 @@
 import asyncio
-import base64
 import json
-import time
 
 import pytest
 import websockets
 from pytest_embedded import Dut
 
-from helpers import car_endpoints, get_dut_ip
+from helpers import car_endpoints, get_dut_ip, open_stream, read_part
 
 
 def test_command_pipeline(dut: Dut) -> None:
@@ -34,7 +32,7 @@ def test_telemetry_disconnect(dut: Dut) -> None:
     socket, logging an ERROR. After the fix it handles this gracefully.
     """
     car = car_endpoints(get_dut_ip(dut))
-    dut.expect(r'Starting telemetry task', timeout=70)
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
         async with websockets.connect(car.telemetry.uri) as ws:
@@ -59,7 +57,7 @@ def test_telemetry_disconnect(dut: Dut) -> None:
 def test_telemetry_pipeline(dut: Dut) -> None:
     """Sensors -> telemetry task -> web server -> WebSocket client."""
     car = car_endpoints(get_dut_ip(dut))
-    dut.expect(r'Starting telemetry task', timeout=70)
+    dut.expect(r'Serving every endpoint', timeout=70)
 
     async def run():
         messages = []
@@ -85,22 +83,12 @@ def test_telemetry_pipeline(dut: Dut) -> None:
 
 
 def test_stream_pipeline(dut: Dut) -> None:
-    """Camera -> frame queue -> web server -> Base64 JPEG WebSocket frames."""
+    """Camera -> frame queue -> web server -> MJPEG parts over HTTP."""
     car = car_endpoints(get_dut_ip(dut))
     dut.expect(r'Serving every endpoint', timeout=70)
-    frame_count = 10
 
-    async def run():
-        frames = []
-        start = time.monotonic()
-        async with websockets.connect(car.camera.uri) as ws:
-            while len(frames) < frame_count:
-                raw = await asyncio.wait_for(ws.recv(), timeout=5)
-                frames.append(base64.b64decode(json.loads(raw)['data']))
-        elapsed = time.monotonic() - start
-        return frames, elapsed
-
-    frames, elapsed = asyncio.run(run())
+    with open_stream(car.camera) as stream:
+        frames = [read_part(stream)[1] for _ in range(10)]
 
     for i, frame in enumerate(frames):
         assert frame[:2] == b'\xff\xd8', f'frame {i}: missing JPEG SOI'
