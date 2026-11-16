@@ -783,6 +783,8 @@ idf.py flash
 idf.py monitor
 ```
 
+Build firmware that will be flashed from the main checkout, not a git worktree. In a worktree, ESP-IDF cannot read the git metadata inside the container, so the firmware records the version `1` instead of its commit, and Grafana cannot link its profiles to the source.
+
 ### Run quality checks
 
 ```bash
