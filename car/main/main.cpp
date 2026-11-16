@@ -62,14 +62,11 @@ extern "C" void app_main() {
   // and tracing's provider both must be installed before the first span is created.
   const opentelemetry::sdk::resource::ResourceAttributes resource_attrs =
       otel_resource_attributes();
-  // Ports of the headless stack's otel-collector, mimir and profiling-symbolizer.
-  auto span_exporter = esp_opentelemetry::MakeOtlpHttpSpanExporter("http://" CAR_OTLP_HOST ":4318");
-  auto metric_exporter =
-      esp_opentelemetry::MakeOtlpHttpMetricExporter("http://" CAR_OTLP_HOST ":8080/otlp");
-  auto log_exporter =
-      esp_opentelemetry::MakeOtlpHttpLogRecordExporter("http://" CAR_OTLP_HOST ":4318");
+  auto span_exporter = esp_opentelemetry::MakeOtlpHttpSpanExporter(CAR_OTLP_TRACES_BASE_URL);
+  auto metric_exporter = esp_opentelemetry::MakeOtlpHttpMetricExporter(CAR_OTLP_METRICS_BASE_URL);
+  auto log_exporter = esp_opentelemetry::MakeOtlpHttpLogRecordExporter(CAR_OTLP_LOGS_BASE_URL);
   auto profiles_exporter =
-      esp_opentelemetry::MakeOtlpHttpProfilesExporter("http://" CAR_OTLP_HOST ":4319");
+      esp_opentelemetry::MakeOtlpHttpProfilesExporter(CAR_OTLP_PROFILES_BASE_URL);
 
   esp_opentelemetry_tracing_setup(std::move(span_exporter), resource_attrs);
   esp_opentelemetry_metrics_setup(std::move(metric_exporter), resource_attrs);

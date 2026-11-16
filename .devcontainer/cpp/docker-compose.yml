@@ -13,7 +13,10 @@ services:
     volumes:
       - ../..:/workspaces/dust-mite:cached
     environment:
-      - CAR_OTLP_HOST
+      - CAR_OTLP_LOGS_BASE_URL
+      - CAR_OTLP_METRICS_BASE_URL
+      - CAR_OTLP_PROFILES_BASE_URL
+      - CAR_OTLP_TRACES_BASE_URL
       - CAR_SERIAL_PORT
       - WIFI_PASSWORD
       - WIFI_SSID
