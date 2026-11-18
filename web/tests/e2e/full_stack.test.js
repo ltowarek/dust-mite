@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { Command } from "../../src/command.js";
+
 // In the headless stack, the js service sets VITE_WS_URL=ws://python:8765 and
 // VITE_CAMERA_URL=http://python:8766/camera.
 // Traces and logs go to otel-collector:4318 via VITE_OTLP_ENDPOINT.
@@ -40,6 +42,27 @@ test("receives live telemetry", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.locator("#rssi")).not.toHaveText("", { timeout: 10000 });
+});
+
+// Also gives the observability suite its drive-command traffic.
+test("driving from the keyboard sends drive commands", async ({ page }) => {
+  const driveSocket = page.waitForEvent("websocket", (ws) => ws.url().endsWith("/drive"));
+  await page.goto("/");
+  const socket = await driveSocket;
+  const sent = (command) =>
+    socket.waitForEvent("framesent", {
+      predicate: (frame) => JSON.parse(frame.payload).command === command,
+      timeout: 10000,
+    });
+
+  await page.locator("body").focus();
+  const advance = sent(Command.ADVANCE);
+  await page.keyboard.down("KeyW");
+  await advance;
+
+  const brake = sent(Command.BRAKE);
+  await page.keyboard.up("KeyW");
+  await brake;
 });
 
 // Requires the car to be connected and sending telemetry, with its motors powered.
