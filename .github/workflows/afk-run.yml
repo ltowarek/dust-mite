@@ -1,25 +1,33 @@
 name: AFK run
+run-name: 'afk implement #${{ inputs.number }}'
 
 on:
-  issues:
-    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: The ticket or spec
+        required: true
+        type: number
+      comment-id:
+        description: The AFK command's comment; empty when started from the Actions tab
+        required: false
+        type: string
 
 permissions: {}
 
-# Runs for other labels get a group of their own, so they never wait in the AFK queue.
 concurrency:
-  group: ${{ github.event.label.name == 'agent:implement' && 'afk-run' || format('afk-run-{0}', github.run_id) }}
+  group: afk-run
   queue: max
 
 env:
-  TICKET: ${{ github.event.issue.number }}
+  TICKET: ${{ inputs.number }}
+  COMMENT_ID: ${{ inputs.comment-id }}
   GH_REPO: ${{ github.repository }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
   ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
 
 jobs:
   check:
-    if: github.event.label.name == 'agent:implement'
     runs-on: ubuntu-latest
 
     permissions:
@@ -27,6 +35,7 @@ jobs:
       pull-requests: read
 
     outputs:
+      url: ${{ steps.shape.outputs.url }}
       spec: ${{ steps.shape.outputs.spec }}
       child-ticket: ${{ steps.shape.outputs.child-ticket }}
       child-ticket-url: ${{ steps.shape.outputs.child-ticket-url }}
@@ -37,18 +46,33 @@ jobs:
       queue: ${{ steps.shape.outputs.queue }}
 
     steps:
+      - name: Mint the App's write token for the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+
+      # A run started from the Actions tab has no dispatcher to add it.
+      - name: Mark the ticket in progress
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh issue edit "$TICKET" --add-label afk:in-progress
+
       - name: Read the ticket's child tickets and parent
         id: shape
         env:
           GH_TOKEN: ${{ github.token }}
-          TICKET_TITLE: ${{ github.event.issue.title }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          shape=$(gh issue view "$TICKET" --json subIssuesSummary,parent --jq '"\(.subIssuesSummary.total) \(.parent.number // "")"')
-          read -r child_tickets parent <<<"$shape"
+          gh issue view "$TICKET" --json title,url,subIssuesSummary,parent > "$RUNNER_TEMP/ticket.json"
+          echo "url=$(jq -r .url "$RUNNER_TEMP/ticket.json")" >> "$GITHUB_OUTPUT"
+          child_tickets=$(jq .subIssuesSummary.total "$RUNNER_TEMP/ticket.json")
+          parent=$(jq -r '.parent.number // empty' "$RUNNER_TEMP/ticket.json")
           open_blocking_tickets=$(gh api "repos/${GH_REPO}/issues/${TICKET}" --jq .issue_dependencies_summary.blocked_by)
           if [ -z "$parent" ] && [ "$open_blocking_tickets" != 0 ]; then
-            echo "refusal=Refused to run: this ticket has an open blocking ticket. Label it \`agent:queued\` instead, and it starts when its last blocking ticket closes." >> "$GITHUB_OUTPUT"
+            echo "refusal=Refused to run: this ticket has an open blocking ticket. Comment \`/afk implement\` to queue it until its last blocking ticket closes." >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "$child_tickets" != 0 ]; then
@@ -65,13 +89,13 @@ jobs:
               loop=$(jq -n --argjson open "$open" --argjson blocking "$blocking" '($open | map(.html_url)) as $urls | $blocking | all(. as $url | $urls | index($url))')
               if [ "$loop" = true ]; then
                 echo "block=true" >> "$GITHUB_OUTPUT"
-                echo "refusal=Refused to run: the open child tickets of this spec block only each other, so none can start. Remove a blocking link from the loop, then re-add \`agent:implement\`." >> "$GITHUB_OUTPUT"
+                echo "refusal=Refused to run: the open child tickets of this spec block only each other, so none can start. Remove a blocking link from the loop, then comment \`/afk implement\` again." >> "$GITHUB_OUTPUT"
               else
                 echo "queue=true" >> "$GITHUB_OUTPUT"
               fi
               exit 0
             fi
-            slug=$(jq -rn 'env.TICKET_TITLE | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | .[0:50] | rtrimstr("-")')
+            slug=$(jq -r '.title | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | .[0:50] | rtrimstr("-")' "$RUNNER_TEMP/ticket.json")
             {
               echo "spec=true"
               echo "child-ticket=$(jq '.[0].number' <<<"$frontier")"
@@ -83,7 +107,7 @@ jobs:
           fi
           if [ -n "$parent" ]; then
             echo "block=true" >> "$GITHUB_OUTPUT"
-            echo "refusal=Refused to run: this ticket is a child ticket of #${parent}. Child tickets run only through their spec; add \`agent:implement\` to #${parent} instead." >> "$GITHUB_OUTPUT"
+            echo "refusal=Refused to run: this ticket is a child ticket of #${parent}. Child tickets run only through their spec; comment \`/afk implement\` on #${parent} instead." >> "$GITHUB_OUTPUT"
           fi
           {
             echo "branch=afk/issue-${TICKET}-${RUN_ID}"
@@ -99,7 +123,7 @@ jobs:
           pr=$(gh pr list --state open --search "in:body \"#${TICKET}\"" --json url,body \
             --jq "[.[] | select(.body | test(\"(?i)(closes|fixes|resolves)\\\\s+#${TICKET}\\\\b\"))][0].url // empty")
           if [ -n "$pr" ]; then
-            echo "refusal=Refused to run: PR $pr already targets this ticket. Close it first, then re-add \`agent:implement\`." >> "$GITHUB_OUTPUT"
+            echo "refusal=Refused to run: PR $pr already targets this ticket. Close it first, then comment \`/afk implement\` again." >> "$GITHUB_OUTPUT"
           fi
 
   implement:
@@ -112,7 +136,7 @@ jobs:
       contents: read
 
     env:
-      WORKED_TICKET: ${{ needs.check.outputs.child-ticket || github.event.issue.number }}
+      WORKED_TICKET: ${{ needs.check.outputs.child-ticket || inputs.number }}
       BRANCH: ${{ needs.check.outputs.branch }}
 
     outputs:
@@ -166,7 +190,7 @@ jobs:
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: mattpocock-skills@claude-plugins-official
           prompt: |
-            /mattpocock-skills:implement ${{ needs.check.outputs.child-ticket-url || github.event.issue.html_url }}
+            /mattpocock-skills:implement ${{ needs.check.outputs.child-ticket-url || needs.check.outputs.url }}
             Every step `implement` names is mandatory in an AFK agent session; never skip one because the change is small.
 
             This is an AFK agent session: no one will answer questions. Follow CLAUDE.md, including running every check inside the devcontainer it names; Docker is available.
@@ -176,7 +200,7 @@ jobs:
             If finding the fix needs the car (flashing it, or watching how it behaves), make no commits, set outcome to needs_car, set car_variant to the variant on which the ticket's code runs, and explain why in needs_car_reason.
             Otherwise set outcome to done, write a Conventional Commits PR title in pr_title, and write the PR body with the pr skill in pr_body.
             Set needs_dut_run to whether your change can only be confirmed by a DUT run on the car, judged from the change itself; if it can, set car_variant.
-            ${{ needs.check.outputs.spec == 'true' && format('This ticket is a child ticket of the spec #{0}, and the current branch already holds the commits of its earlier child tickets. Review only your own commits, but write pr_title and pr_body and judge needs_dut_run for the branch''s whole change against main.', github.event.issue.number) || '' }}
+            ${{ needs.check.outputs.spec == 'true' && format('This ticket is a child ticket of the spec #{0}, and the current branch already holds the commits of its earlier child tickets. Review only your own commits, but write pr_title and pr_body and judge needs_dut_run for the branch''s whole change against main.', inputs.number) || '' }}
           claude_args: >-
             --model claude-opus-5-5 --effort medium
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
@@ -300,14 +324,14 @@ jobs:
 
   finish:
     needs: [check, implement]
-    if: always() && github.event.label.name == 'agent:implement'
+    if: always()
     runs-on: ubuntu-latest
 
     permissions:
-      actions: read
+      actions: write
 
     env:
-      WORKED_TICKET: ${{ needs.check.outputs.child-ticket || github.event.issue.number }}
+      WORKED_TICKET: ${{ needs.check.outputs.child-ticket || inputs.number }}
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments
@@ -327,7 +351,7 @@ jobs:
           BLOCK: ${{ needs.check.outputs.block }}
         run: |
           if [ "$BLOCK" = true ]; then
-            gh issue edit "$TICKET" --add-label agent:blocked
+            gh issue edit "$TICKET" --add-label afk:blocked
           fi
           gh issue comment "$TICKET" --body "$REFUSAL"
 
@@ -372,11 +396,11 @@ jobs:
           SHA: ${{ needs.implement.outputs.sha }}
         run: gh issue close "$WORKED_TICKET" --comment "Implemented in ${SHA}"
 
-      - name: Clear agent:blocked after a successful run
+      - name: Clear afk:blocked after a successful run
         if: always() && needs.implement.result == 'success'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$TICKET" --remove-label agent:blocked
+        run: gh issue edit "$TICKET" --remove-label afk:blocked
 
       - name: Stop the spec's implementation at a spec gap or a needs-car stop
         if: always() && needs.check.outputs.spec == 'true' && needs.implement.result == 'success' && needs.implement.outputs.sha == ''
@@ -397,9 +421,9 @@ jobs:
 
           **Run:** ${RUN_URL}
 
-          Re-add \`agent:implement\` to resume it.
+          Comment \`/afk implement\` to resume it.
           EOF
-          gh issue edit "$TICKET" --add-label agent:blocked
+          gh issue edit "$TICKET" --add-label afk:blocked
           gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/implementation-stop.md"
 
       - name: Report the failure
@@ -420,36 +444,59 @@ jobs:
           if [ -n "$AGENT_ERROR" ]; then
             reason="${reason} The agent reported: ${AGENT_ERROR}"
           fi
-          failed="run failed"
+          failed="The AFK run failed"
           if [ "$SPEC" = true ]; then
-            failed="run failed on child ticket #${WORKED_TICKET}"
+            failed="The AFK run failed on child ticket #${WORKED_TICKET}"
           fi
           cat > "$RUNNER_TEMP/failure.md" <<EOF
-          \`agent:implement\` ${failed}.
+          ${failed}.
 
           **Reason:** ${reason}
 
           **Run:** ${RUN_URL}
 
-          Re-add \`agent:implement\` to retry.
+          Comment \`/afk implement\` to retry.
           EOF
-          gh issue edit "$TICKET" --add-label agent:blocked
+          gh issue edit "$TICKET" --add-label afk:blocked
           gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/failure.md"
 
-      - name: Remove the trigger label
-        if: always()
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$TICKET" --remove-label agent:implement
-
+      # The marker carries the AFK command to the run that afk-promote-queued.yml dispatches.
       - name: Queue the spec until a child ticket is unblocked
+        id: queue
         if: needs.check.outputs.queue == 'true'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$TICKET" --add-label agent:queued
+        run: |
+          gh issue edit "$TICKET" --add-label afk:queued
+          gh issue comment "$TICKET" --body "Queued (\`afk:queued\`) until one of its child tickets is unblocked. <!-- afk-command: ${COMMENT_ID} -->"
 
-      - name: Re-label the spec for its next child ticket
+      # The spec keeps afk:in-progress, and the command its reaction, until its implementation ends.
+      - name: Dispatch the spec's next run
+        id: next
         if: needs.check.outputs.spec == 'true' && needs.implement.outputs.sha != '' && needs.check.outputs.last-run != 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          inputs=(-f number="$TICKET")
+          if [ -n "$COMMENT_ID" ]; then
+            inputs+=(-f comment-id="$COMMENT_ID")
+          fi
+          gh workflow run afk-run.yml --ref "$GITHUB_REF_NAME" "${inputs[@]}"
+
+      - name: Clear afk:in-progress
+        if: always() && steps.next.outcome != 'success'
+        env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$TICKET" --add-label agent:implement
+        run: gh issue edit "$TICKET" --remove-label afk:in-progress
+
+      - name: React to the AFK command
+        if: always() && inputs.comment-id != '' && steps.next.outcome != 'success' && steps.queue.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          SUCCEEDED: ${{ needs.check.outputs.refusal == '' && needs.implement.result == 'success' && needs.implement.outputs.outcome == 'done' && job.status == 'success' }}
+        run: |
+          content=confused
+          if [ "$SUCCEEDED" = true ]; then
+            content=rocket
+          fi
+          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="$content"

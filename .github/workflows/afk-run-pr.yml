@@ -1,25 +1,38 @@
 name: AFK run on a PR
+run-name: 'afk implement #${{ inputs.number }}'
 
 on:
-  pull_request_target:  # zizmor: ignore[dangerous-triggers] a pull_request run does not start on a PR that conflicts with main, and only the maintainer applies the trigger label
-    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: The PR
+        required: true
+        type: number
+      comment-id:
+        description: The AFK command's comment; empty when started from the Actions tab
+        required: false
+        type: string
+      head-sha:
+        description: The PR's head when the AFK command was accepted; empty for the current head
+        required: false
+        type: string
 
 permissions: {}
 
-# Shares the AFK queue with afk-run.yml; runs for other labels get a group of their own.
+# Shares the AFK queue with afk-run.yml.
 concurrency:
-  group: ${{ github.event.label.name == 'agent:implement' && 'afk-run' || format('afk-run-pr-{0}', github.run_id) }}
+  group: afk-run
   queue: max
 
 env:
-  PR: ${{ github.event.pull_request.number }}
+  PR: ${{ inputs.number }}
+  COMMENT_ID: ${{ inputs.comment-id }}
   GH_REPO: ${{ github.repository }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
   ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
 
 jobs:
   check:
-    if: github.event.label.name == 'agent:implement'
     runs-on: ubuntu-latest
 
     permissions:
@@ -27,21 +40,43 @@ jobs:
 
     outputs:
       refusal: ${{ steps.conversation.outputs.refusal }}
+      url: ${{ steps.conversation.outputs.url }}
+      branch: ${{ steps.conversation.outputs.branch }}
       head-sha: ${{ steps.conversation.outputs.head-sha }}
       conversation: ${{ steps.conversation.outputs.conversation }}
 
     steps:
+      - name: Mint the App's write token for the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      # A run started from the Actions tab has no dispatcher to add it.
+      - name: Mark the PR in progress
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+        run: gh pr edit "$PR" --add-label afk:in-progress
+
       - name: Read the PR and its unresolved conversation
         id: conversation
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head-sha }}
           QUERY: >-
             query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){
             reviewThreads(first:100){nodes{isResolved comments(first:100){nodes{databaseId path line originalLine body author{login}}}}}}}}
         run: |
-          gh pr view "$PR" --json state,headRefOid,comments,reviews > "$RUNNER_TEMP/pr.json"
+          gh pr view "$PR" --json state,url,isCrossRepository,headRefName,headRefOid,comments,reviews > "$RUNNER_TEMP/pr.json"
           if [ "$(jq -r .state "$RUNNER_TEMP/pr.json")" != OPEN ]; then
             echo "refusal=Refused to run: this PR is not open." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$(jq -r .isCrossRepository "$RUNNER_TEMP/pr.json")" = true ]; then
+            echo "refusal=Refused to run: this PR's branch is in a fork, and an AFK run never runs a fork's code with the repository's secrets." >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # A reply goes to a thread's first comment; the REST API rejects replies to replies.
@@ -50,8 +85,9 @@ jobs:
             --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | .comments.nodes
               | {comment_id: .[0].databaseId, path: .[0].path, line: (.[0].line // .[0].originalLine),
                  comments: [.[] | {author: .author.login, body}]}]')
+          # AFK commands are requests for this run, not feedback to act on.
           conversation=$(jq -c --argjson threads "$threads" '{
-            issue_comments: [.comments[] | {author: .author.login, body}],
+            issue_comments: [.comments[] | select(.body | startswith("/afk") | not) | {author: .author.login, body}],
             review_summaries: [.reviews[] | select(.body != "") | {author: .author.login, state, body}],
             review_threads: $threads}' "$RUNNER_TEMP/pr.json")
           if [ "$(jq '[.[] | length] | add' <<<"$conversation")" = 0 ]; then
@@ -59,7 +95,9 @@ jobs:
             exit 0
           fi
           {
-            echo "head-sha=$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")"
+            echo "url=$(jq -r .url "$RUNNER_TEMP/pr.json")"
+            echo "branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")"
+            echo "head-sha=${HEAD_SHA:-$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")}"
             echo "conversation=$conversation"
           } >> "$GITHUB_OUTPUT"
 
@@ -77,8 +115,7 @@ jobs:
       agent-output: ${{ steps.agent.outputs.structured_output }}
 
     env:
-      BRANCH: ${{ github.event.pull_request.head.ref }}
-      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      BRANCH: ${{ needs.check.outputs.branch }}
       HEAD_SHA: ${{ needs.check.outputs.head-sha }}
 
     steps:
@@ -130,7 +167,7 @@ jobs:
           prompt: |
             # TASK
 
-            You are addressing reviewer feedback on PR ${{ github.event.pull_request.html_url }}, checked out on the current branch.
+            You are addressing reviewer feedback on PR ${{ needs.check.outputs.url }}, checked out on the current branch.
 
             Unlike a review, your job is **not** to compare the code against a spec or coding standards. Your job is to read the unresolved conversation on this PR, decide what (if anything) to change in the code, make those changes, and explain yourself by commenting back where useful.
 
@@ -223,7 +260,7 @@ jobs:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
         run: |
           git push --force-with-lease="refs/heads/${BRANCH}:${HEAD_SHA}" \
-            "https://x-access-token:${GH_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:refs/heads/${BRANCH}"
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
 
       - name: Post the thread replies, inline and top-level comments
         env:
@@ -254,7 +291,7 @@ jobs:
 
   finish:
     needs: [check, implement]
-    if: always() && github.event.label.name == 'agent:implement'
+    if: always()
     runs-on: ubuntu-latest
 
     permissions:
@@ -310,14 +347,14 @@ jobs:
             printf '## Follow-ups already covered\n\n%s\n' "$already_covered" | gh pr comment "$PR" --body-file -
           fi
 
-      - name: Clear agent:blocked after a successful run
+      - name: Clear afk:blocked after a successful run
         if: always() && needs.implement.result == 'success'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh pr edit "$PR" --remove-label agent:blocked
+        run: gh pr edit "$PR" --remove-label afk:blocked
 
       - name: Report the failure
-        if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+        if: always() && (failure() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           ACTIONS_TOKEN: ${{ github.token }}
@@ -334,19 +371,31 @@ jobs:
             reason="${reason} The agent reported: ${AGENT_ERROR}"
           fi
           cat > "$RUNNER_TEMP/failure.md" <<EOF
-          \`agent:implement\` run on this PR failed.
+          The AFK run on this PR failed.
 
           **Reason:** ${reason}
 
           **Run:** ${RUN_URL}
 
-          Re-add \`agent:implement\` to retry.
+          Comment \`/afk implement\` to retry.
           EOF
-          gh pr edit "$PR" --add-label agent:blocked
+          gh pr edit "$PR" --add-label afk:blocked
           gh pr comment "$PR" --body-file "$RUNNER_TEMP/failure.md"
 
-      - name: Remove the trigger label
+      - name: Clear afk:in-progress
         if: always()
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh pr edit "$PR" --remove-label agent:implement
+        run: gh pr edit "$PR" --remove-label afk:in-progress
+
+      - name: React to the AFK command
+        if: always() && inputs.comment-id != ''
+        env:
+          GH_TOKEN: ${{ steps.write-token.outputs.token }}
+          SUCCEEDED: ${{ needs.check.outputs.refusal == '' && needs.implement.result == 'success' && job.status == 'success' }}
+        run: |
+          content=confused
+          if [ "$SUCCEEDED" = true ]; then
+            content=rocket
+          fi
+          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="$content"
