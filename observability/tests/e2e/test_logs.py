@@ -15,10 +15,11 @@ from tests.helpers.query import (
     wait_for_traces,
 )
 
+# The car's boot logs predate the stack, so its case logs when the streamer connects.
 CASES: list[tuple[str, str]] = [
     ("dust-mite-streamer", "Starting server"),
     ("dust-mite-web", "dust-mite-web logging initialized"),
-    ("dust-mite-car", "Starting camera task"),
+    ("dust-mite-car", "Camera started"),
 ]
 
 
@@ -34,7 +35,7 @@ def test_car_log_has_correct_severity() -> None:
     result = query(
         LOKI_UID,
         "loki",
-        logql_severity_query("dust-mite-car", "Starting camera task", "INFO"),
+        logql_severity_query("dust-mite-car", "Camera started", "INFO"),
     )
     assert has_logs(result)
 
