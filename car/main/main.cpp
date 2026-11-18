@@ -62,11 +62,14 @@ extern "C" void app_main() {
   // and tracing's provider both must be installed before the first span is created.
   const opentelemetry::sdk::resource::ResourceAttributes resource_attrs =
       otel_resource_attributes();
-  auto span_exporter = esp_opentelemetry::MakeOtlpHttpSpanExporter(CAR_OTLP_TRACES_BASE_URL);
-  auto metric_exporter = esp_opentelemetry::MakeOtlpHttpMetricExporter(CAR_OTLP_METRICS_BASE_URL);
-  auto log_exporter = esp_opentelemetry::MakeOtlpHttpLogRecordExporter(CAR_OTLP_LOGS_BASE_URL);
+  auto span_exporter =
+      esp_opentelemetry::MakeOtlpHttpSpanExporter(CAR_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT);
+  auto metric_exporter =
+      esp_opentelemetry::MakeOtlpHttpMetricExporter(CAR_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT);
+  auto log_exporter =
+      esp_opentelemetry::MakeOtlpHttpLogRecordExporter(CAR_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT);
   auto profiles_exporter =
-      esp_opentelemetry::MakeOtlpHttpProfilesExporter(CAR_OTLP_PROFILES_BASE_URL);
+      esp_opentelemetry::MakeOtlpHttpProfilesExporter(CAR_OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT);
 
   esp_opentelemetry_tracing_setup(std::move(span_exporter), resource_attrs);
   esp_opentelemetry_metrics_setup(std::move(metric_exporter), resource_attrs);

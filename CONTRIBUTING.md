@@ -252,11 +252,11 @@ All three services export traces via OTLP/HTTP to the OTel Collector; the firmwa
 
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
-| ESP32 firmware | `dust-mite-car` | `CAR_OTLP_TRACES_BASE_URL` (default `http://$CAR_OTLP_HOST:4318`) | `CAR_OTLP_METRICS_BASE_URL` + `/v1/metrics` (default `http://$CAR_OTLP_HOST:8080/otlp`) |
+| ESP32 firmware | `dust-mite-car` | `CAR_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (default `http://$CAR_OTLP_HOST:4318/v1/traces`) | `CAR_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://$CAR_OTLP_HOST:8080/otlp/v1/metrics`) |
 | Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces` (default `http://otel-collector:4318/v1/traces`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
 | Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | none |
 
-The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name. Set that IP as `CAR_OTLP_HOST` when [scripts/dump_env.sh](scripts/dump_env.sh) generates `.env`. The script derives `CAR_OTLP_TRACES_BASE_URL`, `CAR_OTLP_LOGS_BASE_URL`, `CAR_OTLP_METRICS_BASE_URL` and `CAR_OTLP_PROFILES_BASE_URL` from it. The C++ devcontainer passes the four URLs to the firmware build, which [car/main/main.cpp](car/main/main.cpp) uses for its exporters, in the same way that `WIFI_SSID` reaches the firmware. The build reads it when CMake configures, so after changing it run `idf.py reconfigure` or `idf.py fullclean` before the next build.
+The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name. Set that IP as `CAR_OTLP_HOST` when [scripts/dump_env.sh](scripts/dump_env.sh) generates `.env`. The script derives `CAR_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `CAR_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, `CAR_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and `CAR_OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT` from it. Each is a full URL, like the streamer's `OTEL_EXPORTER_OTLP_*_ENDPOINT`. The C++ devcontainer passes the four URLs to the firmware build, which [car/main/main.cpp](car/main/main.cpp) uses for its exporters, in the same way that `WIFI_SSID` reaches the firmware. The build reads it when CMake configures, so after changing it run `idf.py reconfigure` or `idf.py fullclean` before the next build.
 
 The firmware's logs endpoint reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
 
@@ -319,7 +319,7 @@ to ship ([camera.cpp](car/components/camera/camera.cpp),
 already compiled out of this build (`CONFIG_LOG_MAXIMUM_LEVEL` follows the default `Info` level),
 matching what the fork's macro deliberately excludes. Reuses the same `vcs.*` resource attributes
 tracing/metrics already build in `main.cpp`, routed to the same collector endpoint as tracing
-(`CAR_OTLP_LOGS_BASE_URL`).
+(`CAR_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`).
 
 One structural gap: `esp_opentelemetry_logs_setup()` must run after `sync_time()` (SNTP) or every
 record is stamped 1970 and Loki drops it — but `wifi_setup()`'s own `ESP_LOGI(TAG, "wifi_init_sta
