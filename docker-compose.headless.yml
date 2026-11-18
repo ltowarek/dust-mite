@@ -4,6 +4,9 @@ services:
 
   python:
     command: /home/dustmite/workspace/controller/scripts/run_streamer.sh
+    # Starts after the collector, so its startup logs are not dropped.
+    depends_on:
+      - otel-collector
 
   js:
     command: >
