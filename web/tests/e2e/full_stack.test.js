@@ -44,7 +44,6 @@ test("receives live telemetry", async ({ page }) => {
   await expect(page.locator("#rssi")).not.toHaveText("", { timeout: 10000 });
 });
 
-// Also gives the observability suite its drive-command traffic.
 test("driving from the keyboard sends drive commands", async ({ page }) => {
   const driveSocket = page.waitForEvent("websocket", (ws) => ws.url().endsWith("/drive"));
   await page.goto("/");
