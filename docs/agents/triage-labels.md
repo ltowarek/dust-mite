@@ -14,6 +14,8 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 A ticket that changes any file under `.devcontainer/` is `ready-for-human`, never `ready-for-agent`. Claude Code refuses writes there in an AFK run, and those files can run commands on the maintainer's host, so they stay under human control. A spec with such a child ticket labels only that ticket `ready-for-human`.
 
+A ticket that changes any file under `.github/` or `tools/` is `ready-for-human` too. Code in those folders runs with the AFK App's write token in later AFK runs, so it stays under human control as well ([ADR 0008](../adr/0008-complex-automation-logic-in-tested-python.md)). The same rule for specs applies.
+
 These are separate from this repo's type/component labels (`bug`/`enhancement`/`documentation` × `web`/`camera`/`telemetry`/`infrastructure`/`observability`/`drive`/`teleop`), described in [CONTRIBUTING.md#issue-labels](../../CONTRIBUTING.md#issue-labels). Every issue should carry a type label and a component label in addition to whichever triage-role label applies. An issue waiting for a car agent session also carries `needs-car:<variant>`, described in the same section.
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
