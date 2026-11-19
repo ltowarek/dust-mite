@@ -1272,9 +1272,9 @@ Labels record the state of the AFK loop only, and the AFK GitHub App sets them:
 
 ### AFK GitHub App
 
-AFK agent sessions act as one GitHub App, installed only on dust-mite. The App has Contents, Pull requests, Issues and Checks write, Actions and Metadata read, and no Workflows permission. Because it has no Actions write permission, a leaked App token cannot start a workflow, and the AFK workflows dispatch AFK runs with their own `GITHUB_TOKEN`. To create the App, run [scripts/setup_afk_github_app.sh](scripts/setup_afk_github_app.sh) on the host, where `gh` is authenticated. The wizard stores the App's slug, Client ID and bot id in the `AFK_APP_SLUG`, `AFK_APP_CLIENT_ID` and `AFK_APP_BOT_ID` Actions variables, and its private key in the `AFK_APP_PRIVATE_KEY` Actions secret.
+AFK agent sessions act as one GitHub App, installed only on dust-mite. The App has Contents, Pull requests, Issues and Checks write, Actions and Metadata read, and no Workflows permission. Because it has no Actions write permission, a leaked App token cannot start a workflow, and the AFK workflows dispatch AFK runs with their own `GITHUB_TOKEN`. To create the App, run [scripts/wizards/setup_afk_github_app.sh](scripts/wizards/setup_afk_github_app.sh) on the host, where `gh` is authenticated. The wizard stores the App's slug, Client ID and bot id in the `AFK_APP_SLUG`, `AFK_APP_CLIENT_ID` and `AFK_APP_BOT_ID` Actions variables, and its private key in the `AFK_APP_PRIVATE_KEY` Actions secret.
 
-Car agent sessions use a second private key of the same App, which is stored on the host outside the repository. To add the Checks permission and the second key, run [scripts/setup_afk_car_key.sh](scripts/setup_afk_car_key.sh) on the host. The wizard moves the key to a path that you choose, writes that path to `AFK_APP_KEY_FILE` in `.env`, and checks the installation's permissions with the new key.
+Car agent sessions use a second private key of the same App, which is stored on the host outside the repository. To add the Checks permission and the second key, run [scripts/wizards/setup_afk_car_key.sh](scripts/wizards/setup_afk_car_key.sh) on the host. The wizard moves the key to a path that you choose, writes that path to `AFK_APP_KEY_FILE` in `.env`, and checks the installation's permissions with the new key.
 
 ### Actions lockfile
 
