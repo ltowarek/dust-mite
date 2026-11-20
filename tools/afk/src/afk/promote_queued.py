@@ -107,11 +107,11 @@ def _refuse(refusal: Refusal) -> list[Effect]:
 
 
 def _promote(
-    promotion: Promotion, command: str | None, blocking_ticket: int
+    promotion: Promotion, command_id: str | None, blocking_ticket: int
 ) -> list[Effect]:
     inputs = {"number": str(promotion.number)}
-    if command is not None:
-        inputs["comment-id"] = command
+    if command_id is not None:
+        inputs["comment-id"] = command_id
     # Dispatch first: a failed dispatch leaves the ticket queued, not stale in progress.
     return [
         DispatchWorkflow(workflow="afk-run.yml", inputs=inputs),
@@ -126,7 +126,7 @@ def _promote(
 
 def plan(
     selection: list[Promotion | Refusal],
-    commands: Mapping[int, str | None],
+    command_ids: Mapping[int, str | None],
     blocking_ticket: int,
 ) -> list[Effect]:
     """Return the writes for each selected ticket or spec, in order."""
@@ -136,7 +136,7 @@ def plan(
             effects += _refuse(selected)
         else:
             effects += _promote(
-                selected, commands.get(selected.number), blocking_ticket
+                selected, command_ids.get(selected.number), blocking_ticket
             )
     return effects
 
@@ -165,7 +165,7 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
     )
     selection = select(json.loads(blocking), repository)
     LOGGER.info("Selected: %s", selection)
-    commands: dict[int, str | None] = {}
+    command_ids: dict[int, str | None] = {}
     for selected in selection:
         if isinstance(selected, Promotion):
             endpoint = (
@@ -175,8 +175,8 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
                 gh(["gh", "api", "--paginate", "--slurp", endpoint], read_env)
             )
             comments = [comment for page in pages for comment in page]
-            commands[selected.number] = command_id(comments, int(env["AFK_BOT_ID"]))
+            command_ids[selected.number] = command_id(comments, int(env["AFK_BOT_ID"]))
     writer = Writer(gh, env)
-    for effect in plan(selection, commands, blocking_ticket):
+    for effect in plan(selection, command_ids, blocking_ticket):
         writer(effect)
     return writer.outputs()

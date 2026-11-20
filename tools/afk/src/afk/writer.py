@@ -17,7 +17,7 @@ class Token(StrEnum):
     WORKFLOW = "AFK_WORKFLOW_TOKEN"
 
 
-def command(effect: Effect) -> tuple[list[str], Token]:
+def gh_command(effect: Effect) -> tuple[list[str], Token]:
     """Return the `gh` arguments for a write and the variable that holds its token."""
     match effect:
         case DispatchWorkflow(workflow=workflow, inputs=inputs):
@@ -56,7 +56,7 @@ class Writer:
         self._planned.append(effect)
         if self._dry_run:
             return
-        args, token = command(effect)
+        args, token = gh_command(effect)
         self._gh(args, {**self._env, "GH_TOKEN": self._env[token]})
 
     def outputs(self) -> dict[str, str]:
