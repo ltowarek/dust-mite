@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from afk.effects import Comment, DispatchWorkflow, ReplaceLabel
 from afk.promote_queued import Promotion, Refusal, command_id, plan, select
 
@@ -41,68 +43,72 @@ def response(*tickets: Blocked) -> dict[str, Any]:
 
 
 class TestSelect:
-    def test_refuses_a_queued_child_ticket(self) -> None:
-        selection = select(
-            response(Blocked(7, labels=("afk:queued",), parent=3)), REPOSITORY
-        )
-
-        assert selection == [Refusal(number=7, parent=3)]
-
-    def test_refuses_a_queued_child_ticket_that_is_still_blocked(self) -> None:
-        ticket = Blocked(7, labels=("afk:queued",), parent=3, blocked_by=("OPEN",))
-
-        assert select(response(ticket), REPOSITORY) == [Refusal(number=7, parent=3)]
-
-    def test_promotes_a_queued_ticket_whose_blocking_tickets_are_all_closed(
-        self,
+    @pytest.mark.parametrize(
+        ("ticket", "selection"),
+        [
+            pytest.param(
+                Blocked(7, labels=("afk:queued",), parent=3),
+                [Refusal(number=7, parent=3)],
+                id="refuses a queued child ticket",
+            ),
+            pytest.param(
+                Blocked(7, labels=("afk:queued",), parent=3, blocked_by=("OPEN",)),
+                [Refusal(number=7, parent=3)],
+                id="refuses a queued child ticket that is still blocked",
+            ),
+            pytest.param(
+                Blocked(7, labels=("afk:queued",), blocked_by=("CLOSED", "CLOSED")),
+                [Promotion(number=7)],
+                id="promotes a queued ticket whose blocking tickets are all closed",
+            ),
+            pytest.param(
+                Blocked(7, parent=3, parent_labels=("afk:queued",)),
+                [Promotion(number=3)],
+                id="promotes the queued spec of an unblocked child ticket",
+            ),
+            pytest.param(
+                Blocked(7, labels=("afk:queued",), blocked_by=("CLOSED", "OPEN")),
+                [],
+                id="skips a queued ticket that another ticket still blocks",
+            ),
+            pytest.param(
+                Blocked(7, labels=("afk:queued", "afk:in-progress")),
+                [],
+                id="skips a queued ticket that is in progress",
+            ),
+            pytest.param(
+                Blocked(7, labels=("ready-for-agent",)),
+                [],
+                id="skips a ticket that is not queued",
+            ),
+            pytest.param(
+                Blocked(7, labels=("afk:queued",), state="CLOSED"),
+                [],
+                id="skips a closed ticket",
+            ),
+            pytest.param(
+                Blocked(7, labels=("afk:queued",), repository="owner/other"),
+                [],
+                id="skips a ticket in another repository",
+            ),
+            pytest.param(
+                Blocked(
+                    7, parent=3, parent_labels=("afk:queued",), blocked_by=("OPEN",)
+                ),
+                [],
+                id="skips the queued spec of a child ticket that is still blocked",
+            ),
+            pytest.param(
+                Blocked(7, parent=3, parent_labels=("afk:queued", "afk:in-progress")),
+                [],
+                id="skips a queued spec that is in progress",
+            ),
+        ],
+    )
+    def test_selects_one_blocked_ticket(
+        self, ticket: Blocked, selection: list[Promotion | Refusal]
     ) -> None:
-        ticket = Blocked(7, labels=("afk:queued",), blocked_by=("CLOSED", "CLOSED"))
-
-        assert select(response(ticket), REPOSITORY) == [Promotion(number=7)]
-
-    def test_skips_a_queued_ticket_that_another_ticket_still_blocks(self) -> None:
-        ticket = Blocked(7, labels=("afk:queued",), blocked_by=("CLOSED", "OPEN"))
-
-        assert select(response(ticket), REPOSITORY) == []
-
-    def test_skips_a_queued_ticket_that_is_in_progress(self) -> None:
-        ticket = Blocked(7, labels=("afk:queued", "afk:in-progress"))
-
-        assert select(response(ticket), REPOSITORY) == []
-
-    def test_skips_a_ticket_that_is_not_queued(self) -> None:
-        assert (
-            select(response(Blocked(7, labels=("ready-for-agent",))), REPOSITORY) == []
-        )
-
-    def test_skips_a_closed_ticket(self) -> None:
-        ticket = Blocked(7, labels=("afk:queued",), state="CLOSED")
-
-        assert select(response(ticket), REPOSITORY) == []
-
-    def test_skips_a_ticket_in_another_repository(self) -> None:
-        ticket = Blocked(7, labels=("afk:queued",), repository="owner/other")
-
-        assert select(response(ticket), REPOSITORY) == []
-
-    def test_promotes_the_queued_spec_of_an_unblocked_child_ticket(self) -> None:
-        ticket = Blocked(7, parent=3, parent_labels=("afk:queued",))
-
-        assert select(response(ticket), REPOSITORY) == [Promotion(number=3)]
-
-    def test_skips_the_queued_spec_of_a_child_ticket_that_is_still_blocked(
-        self,
-    ) -> None:
-        ticket = Blocked(
-            7, parent=3, parent_labels=("afk:queued",), blocked_by=("OPEN",)
-        )
-
-        assert select(response(ticket), REPOSITORY) == []
-
-    def test_skips_a_queued_spec_that_is_in_progress(self) -> None:
-        ticket = Blocked(7, parent=3, parent_labels=("afk:queued", "afk:in-progress"))
-
-        assert select(response(ticket), REPOSITORY) == []
+        assert select(response(ticket), REPOSITORY) == selection
 
     def test_promotes_a_spec_once_when_several_of_its_child_tickets_unblock(
         self,
@@ -179,38 +185,56 @@ def comment(user_id: int, body: str) -> dict[str, Any]:
 
 
 class TestCommandId:
-    def test_finds_the_command_in_the_apps_latest_queued_comment(self) -> None:
-        comments = [
-            comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->"),
-            comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->"),
-            comment(BOT_ID, "Promoted."),
-        ]
-
-        assert command_id([comments], BOT_ID) == "222"
-
-    def test_finds_the_command_on_the_latest_page(self) -> None:
-        pages = [
-            [comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->")],
-            [comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->")],
-        ]
-
-        assert command_id(pages, BOT_ID) == "222"
-
-    def test_ignores_a_command_marker_that_another_user_wrote(self) -> None:
-        comments = [
-            comment(BOT_ID, "<!-- afk-command: 111 -->"),
-            comment(1, "<!-- afk-command: 333 -->"),
-        ]
-
-        assert command_id([comments], BOT_ID) == "111"
-
-    def test_finds_no_command_when_the_latest_marker_is_empty(self) -> None:
-        comments = [
-            comment(BOT_ID, "<!-- afk-command: 111 -->"),
-            comment(BOT_ID, "<!-- afk-command:  -->"),
-        ]
-
-        assert command_id([comments], BOT_ID) is None
-
-    def test_finds_no_command_without_a_marker(self) -> None:
-        assert command_id([[comment(BOT_ID, "Queued.")]], BOT_ID) is None
+    @pytest.mark.parametrize(
+        ("pages", "expected"),
+        [
+            pytest.param(
+                [
+                    [
+                        comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->"),
+                        comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->"),
+                        comment(BOT_ID, "Promoted."),
+                    ]
+                ],
+                "222",
+                id="finds the command in the App's latest queued comment",
+            ),
+            pytest.param(
+                [
+                    [comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->")],
+                    [comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->")],
+                ],
+                "222",
+                id="finds the command on the latest page",
+            ),
+            pytest.param(
+                [
+                    [
+                        comment(BOT_ID, "<!-- afk-command: 111 -->"),
+                        comment(1, "<!-- afk-command: 333 -->"),
+                    ]
+                ],
+                "111",
+                id="ignores a command marker that another user wrote",
+            ),
+            pytest.param(
+                [
+                    [
+                        comment(BOT_ID, "<!-- afk-command: 111 -->"),
+                        comment(BOT_ID, "<!-- afk-command:  -->"),
+                    ]
+                ],
+                None,
+                id="finds no command when the latest marker is empty",
+            ),
+            pytest.param(
+                [[comment(BOT_ID, "Queued.")]],
+                None,
+                id="finds no command without a marker",
+            ),
+        ],
+    )
+    def test_finds_the_command_id(
+        self, pages: list[list[dict[str, Any]]], expected: str | None
+    ) -> None:
+        assert command_id(pages, BOT_ID) == expected

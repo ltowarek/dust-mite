@@ -35,7 +35,7 @@ class TestWriterWrite:
     @pytest.mark.parametrize(
         ("effect", "args", "token"),
         [
-            (
+            pytest.param(
                 DispatchWorkflow(
                     workflow="afk-run.yml", inputs={"number": "7", "comment-id": "555"}
                 ),
@@ -50,8 +50,9 @@ class TestWriterWrite:
                     "comment-id=555",
                 ],
                 "workflow-token",
+                id="dispatches a workflow with the workflow token",
             ),
-            (
+            pytest.param(
                 ReplaceLabel(number=7, remove="afk:queued", add="afk:blocked"),
                 [
                     "gh",
@@ -64,11 +65,13 @@ class TestWriterWrite:
                     "afk:blocked",
                 ],
                 "app-token",
+                id="replaces a label with the App's token",
             ),
-            (
+            pytest.param(
                 Comment(number=7, body="Hello `there`"),
                 ["gh", "issue", "comment", "7", "--body", "Hello `there`"],
                 "app-token",
+                id="comments with the App's token",
             ),
         ],
     )
