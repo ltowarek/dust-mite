@@ -3,11 +3,9 @@ import threading
 from collections.abc import Generator
 
 import pytest
-from opentelemetry.sdk.resources import Resource
 
-import otlp_profiler
 from controller.observability import ObservabilitySettings, configure_observability
-from otlp_profiler.sampler import SAMPLER_THREAD_NAME, Sampler
+from otlp_profiler.sampler import SAMPLER_THREAD_NAME
 
 
 class TestObservabilitySettingsFromEnv:
@@ -125,39 +123,23 @@ class TestConfigureObservabilityLogging:
         assert "DEBUG:controller.test_module:debug detail" in capsys.readouterr().err
 
 
-@pytest.fixture
-def stop_started_samplers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Generator[None, None, None]:
-    """Stop every sampler `otlp_profiler.configure` starts during the test."""
-    started: list[Sampler] = []
-
-    def configure(endpoint: str, resource: Resource) -> Sampler:
-        sampler = original_configure(endpoint, resource)
-        started.append(sampler)
-        return sampler
-
-    original_configure = otlp_profiler.configure
-    monkeypatch.setattr(otlp_profiler, "configure", configure)
-    yield
-    for sampler in started:
-        sampler.stop()
-
-
 def _sampler_running() -> bool:
     return SAMPLER_THREAD_NAME in {t.name for t in threading.enumerate()}
 
 
 class TestConfigureObservability:
-    @pytest.mark.usefixtures("stop_started_samplers")
     def test_starts_the_profiler_with_a_profiles_endpoint(self) -> None:
         settings = ObservabilitySettings.from_env(
             {"OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT": "http://127.0.0.1:9/profiles"}
         )
 
-        configure_observability("test-service", settings)
+        sampler = configure_observability("test-service", settings)
 
-        assert _sampler_running()
+        try:
+            assert _sampler_running()
+        finally:
+            if sampler is not None:
+                sampler.stop()
 
     def test_starts_no_profiler_without_a_profiles_endpoint(self) -> None:
         configure_observability("test-service", ObservabilitySettings.from_env({}))

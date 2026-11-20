@@ -9,6 +9,7 @@ from opentelemetry.semconv._incubating.attributes.vcs_attributes import (
 )
 
 import otlp_profiler
+from otlp_profiler.sampler import Sampler
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def source_link_attributes(resource: Resource) -> dict[str, str]:
     }
 
 
-def configure_profiling(endpoint: str | None, resource: Resource) -> None:
+def configure_profiling(endpoint: str | None, resource: Resource) -> Sampler | None:
     """Export continuous CPU profiles over OTLP/HTTP.
 
     ``endpoint`` is the full OTLP/HTTP profiles URL, on the OTel Collector:
@@ -40,12 +41,13 @@ def configure_profiling(endpoint: str | None, resource: Resource) -> None:
     Configuration is skipped if it is empty.
 
     Call after `configure_tracing()`, which must have already set the global
-    TracerProvider for span/profile linking to attach to.
+    TracerProvider for span/profile linking to attach to. Returns the running
+    sampler, if any.
     """
     if not endpoint:
         logger.debug("No OTLP profiles endpoint, skipping profiler configuration")
-        return
+        return None
 
-    otlp_profiler.configure(
+    return otlp_profiler.configure(
         endpoint, resource.merge(Resource(source_link_attributes(resource)))
     )
