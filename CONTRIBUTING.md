@@ -58,7 +58,7 @@ A DUT run of an issue or pull request labelled `needs-car:<variant>` starts with
 ./scripts/run_dut_tests.sh
 ```
 
-The script runs every DUT-gated test, each suite through its area's own test runner, in this order: the car's tests in a one-off C++ devcontainer, the controller's DUT integration tests in a one-off Python devcontainer, the full-stack tests in the headless stack's `test-runner`, and the observability E2E tests in a one-off Observability devcontainer. It starts the headless stack after the controller's tests, stops at the first failing suite with a non-zero exit status, and, once it has started the headless stack, always stops it on exit. The one-off containers run under the project name `dust-mite-dut`, rebuild their images first, and publish no ports, so they leave the editor's devcontainers untouched. The car's tests leave the debug build flashed.
+The script runs every DUT-gated test, each suite through its area's own test runner, in this order: the car's tests in a one-off C++ devcontainer, the controller's DUT integration tests in a one-off Python devcontainer, the full-stack tests in the headless stack's `test-runner`, after `npm ci` there installs the web's packages, and the observability E2E tests in a one-off Observability devcontainer. It starts the headless stack after the controller's tests, stops at the first failing suite with a non-zero exit status, and, once it has started the headless stack, always stops it on exit. The one-off containers run under the project name `dust-mite-dut`, rebuild their images first, and publish no ports, so they leave the editor's devcontainers untouched. The car's tests leave the debug build flashed.
 
 A DUT run does not work from a git worktree. A worktree's `.git` file points to a host path that the containers do not mount, so the controller's version, the streamer's image and the car's firmware version cannot read the git metadata. Only one car is connected, so only one DUT run happens at a time; check out the branch under test in the main checkout instead.
 
@@ -753,9 +753,10 @@ Some tests require the car to be connected and active. Prerequisites: start the 
 ./scripts/start_headless.sh
 ```
 
-The headless stack includes the `test-runner` service (built from the JS devcontainer image, with the web's packages and Firefox) running in standby. Execute tests inside it:
+The headless stack includes the `test-runner` service (built from the JS devcontainer image, with Playwright and Firefox) running in standby. Execute tests inside it:
 
 ```bash
+docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner npm ci
 docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack
 ```
 
