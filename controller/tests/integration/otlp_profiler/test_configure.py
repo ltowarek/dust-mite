@@ -11,7 +11,6 @@ from opentelemetry.proto.collector.profiles.v1development import (
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 import otlp_profiler
-from otlp_profiler.sampler import SAMPLER_THREAD_NAME
 
 from .test_doubles import CollectorServer
 
@@ -30,7 +29,7 @@ def _profile_until(collector: CollectorServer, condition: Callable[[], bool]) ->
     The sampler records only threads that are on the CPU, and it exports
     nothing for an interval without samples, so this thread busy-waits.
     """
-    sampler = otlp_profiler.configure(
+    otlp_profiler.configure(
         collector.profiles_endpoint, _RESOURCE, export_interval_ms=_EXPORT_INTERVAL_MS
     )
     try:
@@ -38,7 +37,7 @@ def _profile_until(collector: CollectorServer, condition: Callable[[], bool]) ->
         while not condition() and time.monotonic() < deadline:
             pass
     finally:
-        sampler.stop()
+        otlp_profiler.shutdown()
 
 
 def test_exports_profiles_of_the_given_resource(collector: CollectorServer) -> None:
@@ -72,4 +71,4 @@ def test_shutdown_stops_every_started_sampler(collector: CollectorServer) -> Non
 
     otlp_profiler.shutdown()
 
-    assert SAMPLER_THREAD_NAME not in {t.name for t in threading.enumerate()}
+    assert "otlp-profiler-sampler" not in {t.name for t in threading.enumerate()}

@@ -29,7 +29,7 @@ def configure(
     resource: Resource,
     sample_rate: int = _DEFAULT_SAMPLE_RATE,
     export_interval_ms: int = _DEFAULT_EXPORT_INTERVAL_MS,
-) -> Sampler:
+) -> None:
     """Start continuous profiling and attach span/profile linking.
 
     Starts a background sampler that periodically exports OTLP profiles of
@@ -38,9 +38,8 @@ def configure(
     `SpanProcessor` that stamps every span with a `pyroscope.profile.id`
     attribute and tags samples with whichever span is active in the asyncio
     task or thread they ran. Call it once per process, after the global tracer
-    provider is set, as with the other signals' configure functions. Returns
-    the running sampler, which samples until its `stop()` is called or the
-    interpreter exits.
+    provider is set, as with the other signals' configure functions. The
+    sampler runs until `shutdown()`, which also runs at interpreter exit.
     """
     aggregator = Aggregator()
     span_registry = ActiveSpanRegistry()
@@ -71,11 +70,12 @@ def configure(
     )
     sampler.start()
     _started.append(sampler)
-    atexit.register(sampler.stop)
-    return sampler
 
 
 def shutdown() -> None:
     """Stop every sampler `configure` has started."""
     while _started:
         _started.pop().stop()
+
+
+atexit.register(shutdown)
