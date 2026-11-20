@@ -53,82 +53,82 @@ class GhSpy:
         return ""
 
 
-def test_reads_with_the_workflow_token_and_writes_each_planned_effect() -> None:
-    gh = GhSpy()
+class TestRun:
+    def test_reads_with_the_workflow_token_and_writes_each_planned_effect(self) -> None:
+        gh = GhSpy()
 
-    run(gh, ENV)
+        run(gh, ENV)
 
-    graphql, comments, *writes = gh.calls
-    assert graphql[0][:3] == ["gh", "api", "graphql"]
-    assert graphql[0][-6:] == [
-        "-f",
-        "owner=owner",
-        "-f",
-        "repo=repo",
-        "-F",
-        "number=12",
-    ]
-    assert graphql[1] == "workflow-token"
-    assert comments == (
-        [
-            "gh",
-            "api",
-            "--paginate",
-            "--slurp",
-            "repos/owner/repo/issues/7/comments?per_page=100",
-        ],
-        "workflow-token",
-    )
-    assert writes == [
-        (
+        graphql, comments, *writes = gh.calls
+        assert graphql[0][:3] == ["gh", "api", "graphql"]
+        assert graphql[0][-6:] == [
+            "-f",
+            "owner=owner",
+            "-f",
+            "repo=repo",
+            "-F",
+            "number=12",
+        ]
+        assert graphql[1] == "workflow-token"
+        assert comments == (
             [
                 "gh",
-                "workflow",
-                "run",
-                "afk-run.yml",
-                "-f",
-                "number=7",
-                "-f",
-                "comment-id=555",
+                "api",
+                "--paginate",
+                "--slurp",
+                "repos/owner/repo/issues/7/comments?per_page=100",
             ],
             "workflow-token",
-        ),
-        (
-            [
-                "gh",
-                "issue",
-                "edit",
-                "7",
-                "--remove-label",
-                "afk:queued",
-                "--add-label",
-                "afk:in-progress",
-            ],
-            "app-token",
-        ),
-        (
-            [
-                "gh",
-                "issue",
-                "comment",
-                "7",
-                "--body",
-                "Unblocked by #12 closing; promoted from `afk:queued` to "
-                "`afk:in-progress`.",
-            ],
-            "app-token",
-        ),
-    ]
+        )
+        assert writes == [
+            (
+                [
+                    "gh",
+                    "workflow",
+                    "run",
+                    "afk-run.yml",
+                    "-f",
+                    "number=7",
+                    "-f",
+                    "comment-id=555",
+                ],
+                "workflow-token",
+            ),
+            (
+                [
+                    "gh",
+                    "issue",
+                    "edit",
+                    "7",
+                    "--remove-label",
+                    "afk:queued",
+                    "--add-label",
+                    "afk:in-progress",
+                ],
+                "app-token",
+            ),
+            (
+                [
+                    "gh",
+                    "issue",
+                    "comment",
+                    "7",
+                    "--body",
+                    "Unblocked by #12 closing; promoted from `afk:queued` to "
+                    "`afk:in-progress`.",
+                ],
+                "app-token",
+            ),
+        ]
 
+    def test_a_dry_run_reads_and_reports_the_writes_it_skips(self) -> None:
+        gh = GhSpy()
 
-def test_a_dry_run_reads_and_reports_the_writes_it_skips() -> None:
-    gh = GhSpy()
+        outputs = run(gh, {**ENV, "AFK_DRY_RUN": "true"})
 
-    outputs = run(gh, {**ENV, "AFK_DRY_RUN": "true"})
-
-    assert [args[:2] for args, _ in gh.calls] == [["gh", "api"], ["gh", "api"]]
-    assert [effect["type"] for effect in json.loads(outputs["effects"])] == [
-        "DispatchWorkflow",
-        "ReplaceLabel",
-        "Comment",
-    ]
+        assert [args[:2] for args, _ in gh.calls] == [["gh", "api"], ["gh", "api"]]
+        assert [effect["type"] for effect in json.loads(outputs["effects"])] == [
+            "DispatchWorkflow",
+            "ReplaceLabel",
+            "Comment",
+        ]
