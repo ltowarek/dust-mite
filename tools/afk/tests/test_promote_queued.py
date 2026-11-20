@@ -193,5 +193,14 @@ def test_ignores_a_command_marker_that_another_user_wrote() -> None:
     assert command_id(comments, BOT_ID) == "111"
 
 
+def test_finds_no_command_when_the_latest_marker_is_empty() -> None:
+    comments = [
+        comment(BOT_ID, "<!-- afk-command: 111 -->"),
+        comment(BOT_ID, "<!-- afk-command:  -->"),
+    ]
+
+    assert command_id(comments, BOT_ID) is None
+
+
 def test_finds_no_command_without_a_marker() -> None:
     assert command_id([comment(BOT_ID, "Queued.")], BOT_ID) is None

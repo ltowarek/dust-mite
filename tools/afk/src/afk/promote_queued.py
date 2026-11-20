@@ -1,18 +1,20 @@
 """Promote the queued tickets and specs that a closed blocking ticket unblocks."""
 
 import json
+import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
-from afk.writer import AS_WORKFLOW, Runner, Writer
+from afk.writer import Runner, Token, Writer
 
+LOGGER = logging.getLogger(__name__)
 QUEUED = "afk:queued"
 IN_PROGRESS = "afk:in-progress"
 BLOCKED = "afk:blocked"
-COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]+) -->")
+COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")
 BLOCKING_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -87,7 +89,7 @@ def command_id(comments: list[dict[str, Any]], bot_id: int) -> str | None:
     for comment in comments:
         match = COMMAND_MARKER.search(comment["body"])
         if comment["user"]["id"] == bot_id and match is not None:
-            found = match.group(1)
+            found = match.group(1) or None
     return found
 
 
@@ -144,7 +146,7 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
     repository = env["GH_REPO"]
     blocking_ticket = int(env["AFK_BLOCKING_TICKET"])
     owner, name = repository.split("/")
-    read_env = {**env, "GH_TOKEN": env[AS_WORKFLOW]}
+    read_env = {**env, "GH_TOKEN": env[Token.WORKFLOW]}
     blocking = gh(
         [
             "gh",
@@ -162,17 +164,18 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
         read_env,
     )
     selection = select(json.loads(blocking), repository)
+    LOGGER.info("Selected: %s", selection)
     commands: dict[int, str | None] = {}
-    for promotion in selection:
-        if isinstance(promotion, Promotion):
+    for selected in selection:
+        if isinstance(selected, Promotion):
             endpoint = (
-                f"repos/{repository}/issues/{promotion.number}/comments?per_page=100"
+                f"repos/{repository}/issues/{selected.number}/comments?per_page=100"
             )
             pages = json.loads(
                 gh(["gh", "api", "--paginate", "--slurp", endpoint], read_env)
             )
             comments = [comment for page in pages for comment in page]
-            commands[promotion.number] = command_id(comments, int(env["AFK_BOT_ID"]))
+            commands[selected.number] = command_id(comments, int(env["AFK_BOT_ID"]))
     writer = Writer(gh, env)
     for effect in plan(selection, commands, blocking_ticket):
         writer(effect)
