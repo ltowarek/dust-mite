@@ -98,7 +98,7 @@ docker compose -f .devcontainer/infrastructure/docker-compose.yml up -d --build 
 
 When the car is needed, add `-f docker-compose.car.yml` to the C++ bring-up, which passes the car's serial port `CAR_SERIAL_PORT` through to the container.
 
-Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, and falls back to uid `1050` without one.
+Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, which [scripts/link_devcontainer_env.sh](scripts/link_devcontainer_env.sh) creates once per clone, and falls back to uid `1050` without one.
 
 **Isolation from VS Code:** all five are the same containers VS Code's Dev Containers extension attaches to (e.g. `cpp-cpp-1`, `python-python-1`, `js-js-1`, `observability-observability-1`, `infrastructure-infrastructure-1`). Recreating/rebuilding one, or installing packages into it, drops an attached VS Code window's remote connection and can leave the workspace owned by a different uid until it reconnects. Give agent runs their own instance instead of reusing a container a human may be attached to, by adding a distinct `-p` project name to any of the bring-up commands above, e.g.:
 
