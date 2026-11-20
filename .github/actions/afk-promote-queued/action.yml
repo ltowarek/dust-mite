@@ -27,6 +27,15 @@ outputs:
 runs:
   using: composite
   steps:
+    # Needs $/ to fetch the whole repository at the workflow's commit, so that the package sits beside the action.
+    - name: Install the afk package and its pinned runtime requirements
+      shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/afk-venv"
+        "$RUNNER_TEMP/afk-venv/bin/pip" install --disable-pip-version-check --quiet \
+          --requirement "$GITHUB_ACTION_PATH/../../../tools/afk/requirements/base.txt" \
+          "$GITHUB_ACTION_PATH/../../../tools/afk"
+
     - name: Promote the unblocked tickets and specs, and refuse child tickets
       id: promote
       shell: bash
@@ -37,5 +46,5 @@ runs:
         AFK_BOT_ID: ${{ inputs.bot-id }}
         AFK_DRY_RUN: ${{ inputs.dry-run }}
         GH_REPO: ${{ github.repository }}
-      # Needs $/ to fetch the whole repository at the workflow's commit, so that the package sits beside the action.
-      run: PYTHONPATH="$GITHUB_ACTION_PATH/../../../tools/afk/src" python3 -m afk promote-queued
+      run: |
+        "$RUNNER_TEMP/afk-venv/bin/python" -m afk promote-queued
