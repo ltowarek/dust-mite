@@ -178,6 +178,14 @@ _Avoid_: Ready set, unblocked tickets
 A ticket an agent files on its own, without the maintainer reviewing its text, for a problem outside the ticket it is working.
 _Avoid_: Spin-off, side issue, pre-existing finding
 
+**Canary ticket**:
+A closed ticket kept only for CI to start a dry-run AFK run on; no run on it ever pushes or writes.
+_Avoid_: Test ticket, fixture ticket, dummy ticket
+
+**Canary PR**:
+An open draft PR kept only for CI to start dry-run AFK runs on; it never merges, and no run on it ever pushes or writes.
+_Avoid_: Test PR, fixture PR, dummy PR
+
 **Agent brief**:
 The triage comment that is the contract an agent works from; the rest of the ticket is context.
 _Avoid_: Prompt, task description
