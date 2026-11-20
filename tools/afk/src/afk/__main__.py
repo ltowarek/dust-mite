@@ -3,10 +3,12 @@
 import argparse
 import logging
 import os
+import secrets
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TextIO
 
 from afk import promote_queued
 from afk.writer import Runner
@@ -21,14 +23,24 @@ def gh(args: Sequence[str], env: Mapping[str, str]) -> str:
     ).stdout
 
 
+def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:
+    """Write step outputs in the multiline form, so no value can add an output."""
+    delimiter = f"afk_{secrets.token_hex(16)}"
+    output.writelines(
+        f"{name}<<{delimiter}\n{value}\n{delimiter}\n"
+        for name, value in outputs.items()
+    )
+
+
 def main(argv: Sequence[str], gh: Runner, env: Mapping[str, str]) -> None:
     """Run the phase that `argv` names and append its outputs to `$GITHUB_OUTPUT`."""
     parser = argparse.ArgumentParser(prog="afk")
     parser.add_argument("phase", choices=sorted(PHASES))
     phase = parser.parse_args(argv).phase
     outputs = PHASES[phase](gh, env)
+    # Append: earlier writes in the same step stay outputs.
     with Path(env["GITHUB_OUTPUT"]).open("a") as output:
-        output.writelines(f"{name}={value}\n" for name, value in outputs.items())
+        write_outputs(output, outputs)
 
 
 if __name__ == "__main__":
