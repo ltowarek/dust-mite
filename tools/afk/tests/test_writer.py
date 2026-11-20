@@ -31,99 +31,100 @@ EFFECTS: list[Effect] = [
 ]
 
 
-class TestWriterWrite:
-    @pytest.mark.parametrize(
-        ("effect", "args", "token"),
-        [
-            pytest.param(
-                DispatchWorkflow(
-                    workflow="afk-run.yml", inputs={"number": "7", "comment-id": "555"}
+class TestWriter:
+    class TestWrite:
+        @pytest.mark.parametrize(
+            ("effect", "args", "token"),
+            [
+                pytest.param(
+                    DispatchWorkflow(
+                        workflow="afk-run.yml",
+                        inputs={"number": "7", "comment-id": "555"},
+                    ),
+                    [
+                        "gh",
+                        "workflow",
+                        "run",
+                        "afk-run.yml",
+                        "-f",
+                        "number=7",
+                        "-f",
+                        "comment-id=555",
+                    ],
+                    "workflow-token",
+                    id="dispatches a workflow with the workflow token",
                 ),
-                [
-                    "gh",
-                    "workflow",
-                    "run",
-                    "afk-run.yml",
-                    "-f",
-                    "number=7",
-                    "-f",
-                    "comment-id=555",
-                ],
-                "workflow-token",
-                id="dispatches a workflow with the workflow token",
-            ),
-            pytest.param(
-                ReplaceLabel(number=7, remove="afk:queued", add="afk:blocked"),
-                [
-                    "gh",
-                    "issue",
-                    "edit",
-                    "7",
-                    "--remove-label",
-                    "afk:queued",
-                    "--add-label",
-                    "afk:blocked",
-                ],
-                "app-token",
-                id="replaces a label with the App's token",
-            ),
-            pytest.param(
-                Comment(number=7, body="Hello `there`"),
-                ["gh", "issue", "comment", "7", "--body", "Hello `there`"],
-                "app-token",
-                id="comments with the App's token",
-            ),
-        ],
-    )
-    def test_runs_each_write_as_its_gh_command_with_its_token(
-        self, effect: Effect, args: list[str], token: str
-    ) -> None:
-        runner = RunnerSpy()
+                pytest.param(
+                    ReplaceLabel(number=7, remove="afk:queued", add="afk:blocked"),
+                    [
+                        "gh",
+                        "issue",
+                        "edit",
+                        "7",
+                        "--remove-label",
+                        "afk:queued",
+                        "--add-label",
+                        "afk:blocked",
+                    ],
+                    "app-token",
+                    id="replaces a label with the App's token",
+                ),
+                pytest.param(
+                    Comment(number=7, body="Hello `there`"),
+                    ["gh", "issue", "comment", "7", "--body", "Hello `there`"],
+                    "app-token",
+                    id="comments with the App's token",
+                ),
+            ],
+        )
+        def test_runs_each_write_as_its_gh_command_with_its_token(
+            self, effect: Effect, args: list[str], token: str
+        ) -> None:
+            runner = RunnerSpy()
 
-        Writer(runner, ENV).write(effect)
+            Writer(runner, ENV).write(effect)
 
-        assert runner.calls == [(args, token, "owner/repo")]
+            assert runner.calls == [(args, token, "owner/repo")]
 
-    def test_a_dry_run_runs_no_command(self) -> None:
-        runner = RunnerSpy()
-        writer = Writer(runner, {**ENV, "AFK_DRY_RUN": "true"})
+        def test_a_dry_run_runs_no_command(self) -> None:
+            runner = RunnerSpy()
+            writer = Writer(runner, {**ENV, "AFK_DRY_RUN": "true"})
 
-        for effect in EFFECTS:
-            writer.write(effect)
+            for effect in EFFECTS:
+                writer.write(effect)
 
-        assert runner.calls == []
+            assert runner.calls == []
 
+    class TestOutputs:
+        def test_a_dry_run_reports_its_writes_as_effects(self) -> None:
+            writer = Writer(RunnerSpy(), {**ENV, "AFK_DRY_RUN": "true"})
 
-class TestWriterOutputs:
-    def test_a_dry_run_reports_its_writes_as_effects(self) -> None:
-        writer = Writer(RunnerSpy(), {**ENV, "AFK_DRY_RUN": "true"})
+            for effect in EFFECTS:
+                writer.write(effect)
 
-        for effect in EFFECTS:
-            writer.write(effect)
+            assert json.loads(writer.outputs()["effects"]) == [
+                {
+                    "type": "DispatchWorkflow",
+                    "workflow": "afk-run.yml",
+                    "inputs": {"number": "7"},
+                },
+                {
+                    "type": "ReplaceLabel",
+                    "number": 7,
+                    "remove": "afk:queued",
+                    "add": "afk:in-progress",
+                },
+                {"type": "Comment", "number": 7, "body": "Promoted."},
+            ]
 
-        assert json.loads(writer.outputs()["effects"]) == [
-            {
-                "type": "DispatchWorkflow",
-                "workflow": "afk-run.yml",
-                "inputs": {"number": "7"},
-            },
-            {
-                "type": "ReplaceLabel",
-                "number": 7,
-                "remove": "afk:queued",
-                "add": "afk:in-progress",
-            },
-            {"type": "Comment", "number": 7, "body": "Promoted."},
-        ]
+        def test_a_dry_run_with_no_writes_reports_no_effects(self) -> None:
+            writer = Writer(RunnerSpy(), {**ENV, "AFK_DRY_RUN": "true"})
 
-    def test_a_dry_run_with_no_writes_reports_no_effects(self) -> None:
-        writer = Writer(RunnerSpy(), {**ENV, "AFK_DRY_RUN": "true"})
+            assert writer.outputs() == {"effects": "[]"}
 
-        assert writer.outputs() == {"effects": "[]"}
+        def test_a_real_run_reports_no_effects(self) -> None:
+            writer = Writer(RunnerSpy(), ENV)
 
-    def test_a_real_run_reports_no_effects(self) -> None:
-        writer = Writer(RunnerSpy(), ENV)
+            writer.write(Comment(number=7, body="Promoted."))
 
-        writer.write(Comment(number=7, body="Promoted."))
-
-        assert writer.outputs() == {}
+            assert writer.outputs() == {}
