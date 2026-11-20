@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { Command } from "../../src/command.js";
-
 // In the headless stack, the js service sets VITE_WS_URL=ws://python:8765 and
 // VITE_CAMERA_URL=http://python:8766/camera.
 // Traces and logs go to otel-collector:4318 via VITE_OTLP_ENDPOINT.
 
 const wsUrl = process.env.VITE_WS_URL;
+const ADVANCE = 1;
+const BRAKE = 3;
 
 // Verifies the browser can reach the Python streamer over the Docker network.
 // The WebSocket should open without error (readyState OPEN).
@@ -55,11 +55,11 @@ test("driving from the keyboard sends drive commands", async ({ page }) => {
     });
 
   await page.locator("body").focus();
-  const advance = sent(Command.ADVANCE);
+  const advance = sent(ADVANCE);
   await page.keyboard.down("KeyW");
   await advance;
 
-  const brake = sent(Command.BRAKE);
+  const brake = sent(BRAKE);
   await page.keyboard.up("KeyW");
   await brake;
 });

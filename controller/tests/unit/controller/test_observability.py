@@ -6,7 +6,6 @@ import pytest
 
 import otlp_profiler
 from controller.observability import ObservabilitySettings, configure_observability
-from otlp_profiler.sampler import SAMPLER_THREAD_NAME
 
 
 class TestObservabilitySettingsFromEnv:
@@ -131,7 +130,7 @@ def stop_started_samplers() -> Generator[None, None, None]:
 
 
 def _sampler_running() -> bool:
-    return SAMPLER_THREAD_NAME in {t.name for t in threading.enumerate()}
+    return "otlp-profiler-sampler" in {t.name for t in threading.enumerate()}
 
 
 class TestConfigureObservability:
