@@ -12,8 +12,8 @@ from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
 from afk.writer import Runner, Token, Writer
 
 logger = logging.getLogger(__name__)
-COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")
-BLOCKING_QUERY = """
+_COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")
+_BLOCKING_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
@@ -93,7 +93,7 @@ def command_id(comments: list[dict[str, Any]], bot_id: int) -> str | None:
     """Return the AFK command id from the App's latest queued comment."""
     found = None
     for comment in comments:
-        match = COMMAND_MARKER.search(comment["body"])
+        match = _COMMAND_MARKER.search(comment["body"])
         if comment["user"]["id"] == bot_id and match is not None:
             found = match.group(1) or None
     return found
@@ -161,7 +161,7 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
             "api",
             "graphql",
             "-f",
-            f"query={BLOCKING_QUERY}",
+            f"query={_BLOCKING_QUERY}",
             "-f",
             f"owner={owner}",
             "-f",
