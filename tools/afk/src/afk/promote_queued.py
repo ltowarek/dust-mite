@@ -11,7 +11,7 @@ from typing import Any
 from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
 from afk.writer import Runner, Token, Writer
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")
 BLOCKING_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -172,7 +172,7 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
         read_env,
     )
     selection = select(json.loads(blocking), repository)
-    LOGGER.info("Selected: %s", selection)
+    logger.info("Selected: %s", selection)
     command_ids: dict[int, str | None] = {}
     for selected in selection:
         if isinstance(selected, Promotion):
