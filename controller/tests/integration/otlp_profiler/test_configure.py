@@ -1,5 +1,6 @@
 import logging
 import sys
+import threading
 import time
 from collections.abc import Callable
 
@@ -10,6 +11,7 @@ from opentelemetry.proto.collector.profiles.v1development import (
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 import otlp_profiler
+from otlp_profiler.sampler import SAMPLER_THREAD_NAME
 
 from .test_doubles import CollectorServer
 
@@ -62,3 +64,12 @@ def test_logs_a_failed_export(
         )
 
     assert "failed to export profiles" in caplog.messages
+
+
+def test_shutdown_stops_every_started_sampler(collector: CollectorServer) -> None:
+    otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
+    otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
+
+    otlp_profiler.shutdown()
+
+    assert SAMPLER_THREAD_NAME not in {t.name for t in threading.enumerate()}

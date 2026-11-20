@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SAMPLE_RATE = 100
 _DEFAULT_EXPORT_INTERVAL_MS = 500
 
+_started: list[Sampler] = []
+
 
 def configure(
     endpoint: str,
@@ -68,5 +70,12 @@ def configure(
         _export,
     )
     sampler.start()
+    _started.append(sampler)
     atexit.register(sampler.stop)
     return sampler
+
+
+def shutdown() -> None:
+    """Stop every sampler `configure` has started."""
+    while _started:
+        _started.pop().stop()

@@ -4,6 +4,7 @@ from collections.abc import Generator
 
 import pytest
 
+import otlp_profiler
 from controller.observability import ObservabilitySettings, configure_observability
 from otlp_profiler.sampler import SAMPLER_THREAD_NAME
 
@@ -123,23 +124,26 @@ class TestConfigureObservabilityLogging:
         assert "DEBUG:controller.test_module:debug detail" in capsys.readouterr().err
 
 
+@pytest.fixture
+def stop_started_samplers() -> Generator[None, None, None]:
+    yield
+    otlp_profiler.shutdown()
+
+
 def _sampler_running() -> bool:
     return SAMPLER_THREAD_NAME in {t.name for t in threading.enumerate()}
 
 
 class TestConfigureObservability:
+    @pytest.mark.usefixtures("stop_started_samplers")
     def test_starts_the_profiler_with_a_profiles_endpoint(self) -> None:
         settings = ObservabilitySettings.from_env(
             {"OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT": "http://127.0.0.1:9/profiles"}
         )
 
-        sampler = configure_observability("test-service", settings)
+        configure_observability("test-service", settings)
 
-        try:
-            assert _sampler_running()
-        finally:
-            if sampler is not None:
-                sampler.stop()
+        assert _sampler_running()
 
     def test_starts_no_profiler_without_a_profiles_endpoint(self) -> None:
         configure_observability("test-service", ObservabilitySettings.from_env({}))

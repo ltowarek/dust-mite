@@ -4,8 +4,6 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Self
 
-from otlp_profiler.sampler import Sampler
-
 from .logging import configure_logging
 from .metrics import configure_metrics
 from .otel import service_resource
@@ -65,16 +63,13 @@ class ObservabilitySettings:
         )
 
 
-def configure_observability(
-    service_name: str, settings: ObservabilitySettings
-) -> Sampler | None:
+def configure_observability(service_name: str, settings: ObservabilitySettings) -> None:
     """Configure logging, tracing, metrics and profiling for `service_name`.
 
     Logging comes first, so the other signals' setup records are not lost.
-    Returns the profiler's running sampler, if any.
     """
     resource = service_resource(service_name, settings.repository)
     configure_logging(settings.logs_endpoint, resource)
     configure_tracing(settings.traces_endpoint, resource)
     configure_metrics(settings.metrics_endpoint, resource)
-    return configure_profiling(settings.profiles_endpoint, resource)
+    configure_profiling(settings.profiles_endpoint, resource)
