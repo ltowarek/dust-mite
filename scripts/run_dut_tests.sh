@@ -9,7 +9,6 @@ docker compose -p dust-mite-dut -f .devcontainer/cpp/docker-compose.yml -f docke
 docker compose -p dust-mite-dut -f .devcontainer/python/docker-compose.yml \
     run --rm --build -w /workspaces/dust-mite/controller python ./scripts/run_tests.sh -- tests/integration --dut
 ./scripts/start_headless.sh
-docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner npm ci
 # Runs before the observability suite, which needs recent traffic from the Web app.
 docker compose -f docker-compose.yml -f docker-compose.headless.yml \
     exec test-runner ./scripts/run_tests.sh tests/e2e/full_stack

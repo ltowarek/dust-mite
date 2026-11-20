@@ -19,11 +19,13 @@ RUN userdel -r node \
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
-WORKDIR /tmp/web
+# Above the /workspaces/dust-mite mount, so Node finds these packages from web/ without shadowing.
+WORKDIR /workspaces
 COPY ./web/package.json ./web/package-lock.json ./
 RUN npm ci \
     && npx playwright install --with-deps firefox \
-    && rm -rf /tmp/web
+    && rm package.json package-lock.json
+ENV PATH=/workspaces/node_modules/.bin:$PATH
 WORKDIR /
 
 USER $USERNAME
