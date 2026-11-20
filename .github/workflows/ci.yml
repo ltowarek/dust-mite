@@ -30,9 +30,12 @@ jobs:
   infrastructure:
     permissions:
       contents: read
+      issues: read
       packages: write
 
     uses: $/.github/workflows/infrastructure.yml
+    secrets:
+      AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
 
   js-web:
     permissions:

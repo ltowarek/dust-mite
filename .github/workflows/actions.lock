@@ -7,6 +7,7 @@ workflows:
         - 'actions/create-github-app-token@v3.3.0'
     '.github/workflows/afk-promote-queued.yml':
         - 'actions/create-github-app-token@v3.3.0'
+        - 'actions/setup-python@v7.1.0'
     '.github/workflows/afk-run-pr.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
@@ -41,6 +42,8 @@ workflows:
         - 'docker/setup-buildx-action@v4.4.1'
     '.github/workflows/infrastructure.yml':
         - 'actions/checkout@v7.0.1'
+        - 'actions/create-github-app-token@v3.3.0'
+        - 'actions/setup-python@v7.1.0'
     '.github/workflows/js-web.yml':
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v7.1.1'

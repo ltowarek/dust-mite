@@ -1,0 +1,7 @@
+-r base.in
+
+pip-compile-multi
+tox
+pytest
+ruff==0.15.2
+mypy

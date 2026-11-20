@@ -1,3 +1,3 @@
 #!/bin/bash
 
-zizmor "$@" .github/workflows
+zizmor "$@" .github/workflows .github/actions

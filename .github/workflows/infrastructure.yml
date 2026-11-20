@@ -2,6 +2,9 @@ name: Infrastructure
 
 on:
   workflow_call:
+    secrets:
+      AFK_APP_PRIVATE_KEY:
+        required: true
 
 jobs:
   build-docker:
@@ -186,6 +189,91 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           ./scripts/run_hadolint.sh
+
+  afk:
+    needs: build-docker
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./tools/afk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run linters
+        run: ./scripts/run_linters.sh --output-format=github
+      - name: Run formatter
+        run: ./scripts/run_formatter.sh --diff
+      - name: Run type checks
+        run: ./scripts/run_type_checks.sh
+      - name: Run requirements checks
+        run: ./scripts/run_requirements_checks.sh
+      - name: Run tests
+        run: ./scripts/run_tests.sh
+
+  afk-promote-queued:
+    name: afk-promote-queued (${{ matrix.case }})
+
+    # The production job's read permissions; its Actions write only dispatches, which a dry run skips.
+    permissions:
+      issues: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # #315 blocks #333, which is open and unblocked but not queued.
+          - case: skips an unblocked ticket that is not queued
+            blocking-ticket: 315
+            assertion: . == []
+          # #312 blocks only closed tickets.
+          - case: skips closed tickets
+            blocking-ticket: 312
+            assertion: . == []
+
+    steps:
+      - name: Mint the App's write token for labels and comments
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+
+      - name: Promote the unblocked tickets and specs as a dry run
+        id: promote
+        uses: $/.github/actions/afk-promote-queued
+        with:
+          blocking-ticket: ${{ matrix.blocking-ticket }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}
+          dry-run: true
+
+      - name: Assert on the planned effects
+        shell: bash
+        env:
+          EFFECTS: ${{ steps.promote.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: jq -e "$ASSERTION" <<<"$EFFECTS"
 
   actions-lock:
     permissions:
