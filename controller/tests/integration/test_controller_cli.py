@@ -52,14 +52,14 @@ async def _eventually(condition: Callable[[], bool]) -> bool:
 
 
 async def _hold_until_forwarded(
-    driver: websockets.asyncio.client.ClientConnection, control: CarEndpointSpy
+    driver: websockets.asyncio.client.ClientConnection, car_control: CarEndpointSpy
 ) -> None:
-    """Resend ADVANCE until `control` receives one, as a driver holding it does.
+    """Resend ADVANCE until `car_control` receives one, as a Driver holding it does.
 
-    The Streamer drops Drive commands until its car Drive connection is up.
+    The streamer drops Drive commands until it is connected to the car's Drive endpoint.
     """
     resend_interval_s = 0.05
-    while not control.received:
+    while not car_control.received:
         await send_command(driver, (Command.ADVANCE, _SPEED))
         await asyncio.sleep(resend_interval_s)
 
