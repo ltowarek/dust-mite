@@ -186,7 +186,15 @@ class TestCommandId:
             comment(BOT_ID, "Promoted."),
         ]
 
-        assert command_id(comments, BOT_ID) == "222"
+        assert command_id([comments], BOT_ID) == "222"
+
+    def test_finds_the_command_on_the_latest_page(self) -> None:
+        pages = [
+            [comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->")],
+            [comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->")],
+        ]
+
+        assert command_id(pages, BOT_ID) == "222"
 
     def test_ignores_a_command_marker_that_another_user_wrote(self) -> None:
         comments = [
@@ -194,7 +202,7 @@ class TestCommandId:
             comment(1, "<!-- afk-command: 333 -->"),
         ]
 
-        assert command_id(comments, BOT_ID) == "111"
+        assert command_id([comments], BOT_ID) == "111"
 
     def test_finds_no_command_when_the_latest_marker_is_empty(self) -> None:
         comments = [
@@ -202,7 +210,7 @@ class TestCommandId:
             comment(BOT_ID, "<!-- afk-command:  -->"),
         ]
 
-        assert command_id(comments, BOT_ID) is None
+        assert command_id([comments], BOT_ID) is None
 
     def test_finds_no_command_without_a_marker(self) -> None:
-        assert command_id([comment(BOT_ID, "Queued.")], BOT_ID) is None
+        assert command_id([[comment(BOT_ID, "Queued.")]], BOT_ID) is None

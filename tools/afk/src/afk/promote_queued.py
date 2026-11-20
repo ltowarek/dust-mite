@@ -89,10 +89,10 @@ def select(response: dict[str, Any], repository: str) -> list[Promotion | Refusa
     return [selected[number] for number in sorted(selected)]
 
 
-def command_id(comments: list[dict[str, Any]], bot_id: int) -> str | None:
+def command_id(pages: list[list[dict[str, Any]]], bot_id: int) -> str | None:
     """Return the AFK command id from the App's latest queued comment."""
     found = None
-    for comment in comments:
+    for comment in (comment for page in pages for comment in page):
         match = _COMMAND_MARKER.search(comment["body"])
         if comment["user"]["id"] == bot_id and match is not None:
             found = match.group(1) or None
@@ -186,8 +186,7 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
                 pages = json.loads(
                     gh(["gh", "api", "--paginate", "--slurp", endpoint], read_env)
                 )
-                comments = [comment for page in pages for comment in page]
-                command_ids[number] = command_id(comments, int(env["AFK_BOT_ID"]))
+                command_ids[number] = command_id(pages, int(env["AFK_BOT_ID"]))
     writer = Writer(gh, env)
     for effect in plan(selection, command_ids, blocking_ticket):
         writer.write(effect)
