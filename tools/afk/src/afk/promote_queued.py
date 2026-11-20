@@ -132,6 +132,16 @@ def _promote(
     ]
 
 
+def _effects(
+    selected: Promotion | Refusal, command_id: str | None, blocking_ticket: int
+) -> list[Effect]:
+    match selected:
+        case Refusal():
+            return _refuse(selected)
+        case Promotion():
+            return _promote(selected, command_id, blocking_ticket)
+
+
 def plan(
     selection: list[Promotion | Refusal],
     command_ids: Mapping[int, str | None],
@@ -140,12 +150,7 @@ def plan(
     """Return the writes for each selected ticket or spec, in order."""
     effects: list[Effect] = []
     for selected in selection:
-        if isinstance(selected, Refusal):
-            effects += _refuse(selected)
-        else:
-            effects += _promote(
-                selected, command_ids.get(selected.number), blocking_ticket
-            )
+        effects += _effects(selected, command_ids.get(selected.number), blocking_ticket)
     return effects
 
 
@@ -175,15 +180,14 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
     logger.info("Selected: %s", selection)
     command_ids: dict[int, str | None] = {}
     for selected in selection:
-        if isinstance(selected, Promotion):
-            endpoint = (
-                f"repos/{repository}/issues/{selected.number}/comments?per_page=100"
-            )
-            pages = json.loads(
-                gh(["gh", "api", "--paginate", "--slurp", endpoint], read_env)
-            )
-            comments = [comment for page in pages for comment in page]
-            command_ids[selected.number] = command_id(comments, int(env["AFK_BOT_ID"]))
+        match selected:
+            case Promotion(number=number):
+                endpoint = f"repos/{repository}/issues/{number}/comments?per_page=100"
+                pages = json.loads(
+                    gh(["gh", "api", "--paginate", "--slurp", endpoint], read_env)
+                )
+                comments = [comment for page in pages for comment in page]
+                command_ids[number] = command_id(comments, int(env["AFK_BOT_ID"]))
     writer = Writer(gh, env)
     for effect in plan(selection, command_ids, blocking_ticket):
         writer(effect)
