@@ -1,0 +1,41 @@
+name: AFK promote queued
+description: Promote the queued tickets and specs that a closed blocking ticket unblocks, and refuse queued child tickets
+
+inputs:
+  blocking-ticket:
+    description: The number of the blocking ticket that closed
+    required: true
+  app-token:
+    description: The AFK App's token with Issues write, for labels and comments
+    required: true
+  workflow-token:
+    description: A token with Issues read for the reads and Actions write for the dispatch
+    required: true
+  bot-id:
+    description: The account id of the AFK App's bot
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.promote.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Promote the unblocked tickets and specs, and refuse child tickets
+      id: promote
+      shell: bash
+      env:
+        AFK_BLOCKING_TICKET: ${{ inputs.blocking-ticket }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_WORKFLOW_TOKEN: ${{ inputs.workflow-token }}
+        AFK_BOT_ID: ${{ inputs.bot-id }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        GH_REPO: ${{ github.repository }}
+      # Needs $/ to fetch the whole repository at the workflow's commit, so that the package sits beside the action.
+      run: PYTHONPATH="$GITHUB_ACTION_PATH/../../../tools/afk/src" python3 -m afk promote-queued

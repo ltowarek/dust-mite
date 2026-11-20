@@ -1114,7 +1114,9 @@ Open the repository root in the `Infrastructure` devcontainer and run the checks
 ./scripts/run_infrastructure_checks.sh
 ```
 
-The script runs every infrastructure check except the lockfile verification, which needs `gh` and runs on the host, as described in [Actions lockfile](#actions-lockfile). Each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt and apply zizmor's safe fixes, so a failing run can rewrite files. yamllint has no automatic fixes. To apply the fixes without running the checks:
+The infrastructure check also checks the [tools/afk/](tools/afk/) package, which holds the AFK loop's logic ([ADR 0008](docs/adr/0008-complex-automation-logic-in-tested-python.md)). It runs ruff with every rule, ruff format, mypy in strict mode with `explicit-override`, `pip-compile-multi verify` and pytest through tox, on the devcontainer's Python 3.11, from the package's own `./scripts/run_checks.sh`. The devcontainer installs the package's development requirements, pinned in [tools/afk/requirements/dev.txt](tools/afk/requirements/dev.txt), into its venv. To change them, edit `dev.in`, run `./scripts/update_requirements.sh` from [tools/afk/](tools/afk/), and rebuild the devcontainer.
+
+The script runs every infrastructure check except the lockfile verification, which needs `gh` and runs on the host, as described in [Actions lockfile](#actions-lockfile). Each check also has its own script, for example `./scripts/run_actionlint.sh`. If a check fails, the script itself applies the automatic fixes, which reformat the shell scripts with shfmt, apply zizmor's safe fixes, and apply ruff's fixes and formatting to the `afk` package, so a failing run can rewrite files. yamllint has no automatic fixes. To apply the fixes without running the checks:
 
 ```bash
 ./scripts/fix_infrastructure_checks.sh
@@ -1148,7 +1150,8 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
     - Runs firmware build for [car/](car/) and build-only checks for each component test app
   - [infrastructure.yml](.github/workflows/infrastructure.yml)
     - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
-    - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure)
+    - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure), and the `afk` package's checks and unit tests in the `afk` job
+    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests); `ci.yml` grants this area `issues: read` and passes it the AFK App's private key
     - Verifies the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
   - [observability.yml](.github/workflows/observability.yml)
     - Runs the observability checks and the synthetic pipeline tests against the observability stack on the runner
@@ -1205,6 +1208,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Reacts 🚀 to the AFK command when the run, or a spec's whole implementation, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car; a run that dispatches the spec's next run or queues the spec does not react
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
+  - Is an entry workflow: one job mints the App's write token and passes the closed ticket's number to the [afk-promote-queued](.github/actions/afk-promote-queued/action.yml) action, which runs `python3 -m afk promote-queued` from the same commit
   - Starts an AFK run on a ticket labelled `afk:queued`, when its last open blocking ticket closes, and on a spec that [afk-run.yml](.github/workflows/afk-run.yml) labelled `afk:queued`, when the last open blocking ticket of one of its child tickets closes
   - Expects the `afk:queued`, `afk:in-progress` and `afk:blocked` labels to exist in the repository
   - Counts a blocking ticket closed for any reason, including as not planned, as no longer blocking
@@ -1250,6 +1254,16 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
 
 Before opening a pull request, run the relevant local checks in the matching devcontainer to reduce CI failures.
+
+### AFK actions and dry runs
+
+The AFK loop's decisions live in the `afk` package in [tools/afk/](tools/afk/), not in workflow bash ([ADR 0008](docs/adr/0008-complex-automation-logic-in-tested-python.md)). Its pure core returns a phase's step outputs and its writes, called effects; its shell reads GitHub with `gh` and carries out each effect with a `gh` subcommand. Each phase runs in a composite action in [.github/actions/](.github/actions/), which a workflow calls with the `$/` self-repository syntax, so the action loads the package from the workflow's own commit without a checkout. Only an entry workflow reads the triggering event; an action takes plain inputs, and passes untrusted values to the package only through environment variables.
+
+Every action that writes takes a `dry-run` input. In a dry run, the action reports each write as JSON in its `effects` output, for example `[{"type": "Comment", "number": 7, "body": "…"}]`, and calls neither `gh` nor `git` for it. Every read, token mint and output stays real.
+
+#### AFK action tests
+
+The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that reads a real closed ticket and checks the action's `effects` with one `jq -e` assertion. A failing case names the behaviour that broke, and its log shows the planned effects. A case relies on its tickets staying in the state that its comment in [infrastructure.yml](.github/workflows/infrastructure.yml) describes; when one changes, pick another ticket.
 
 ### AFK commands
 
