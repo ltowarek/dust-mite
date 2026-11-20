@@ -34,8 +34,9 @@ This file is a lightweight navigation guide for coding agents.
 
 ## Running the Full Stack (Headless)
 
-Run `./scripts/start_headless.sh` to build and start all services in the background.
+Run `./scripts/start_headless.sh` to build and start all services in the background. The stack needs the car connected, because the script passes `docker-compose.car.yml`, which gives `cpp` the car's serial port.
 Run `./scripts/stop_headless.sh` to stop and remove all containers.
+Run `./scripts/run_dut_tests.sh` on the host, with the car connected, from the main checkout (not a git worktree), to run every DUT-gated test; a DUT run of an issue or pull request labelled `needs-car:<variant>` starts with it ([CONTRIBUTING.md#dut-run](CONTRIBUTING.md#dut-run)).
 
 Docker Compose services: `cpp`, `python`, `js`, `otel-collector`, `tempo`, `mimir`, `loki`, `pyroscope`, `profiling-symbolizer`, `grafana`. Use standard docker compose commands to manage them:
 
@@ -60,7 +61,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 
 - Treat [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/) as authoritative.
 - Run all commands inside the appropriate devcontainer, not on the host. See [CONTRIBUTING.md](CONTRIBUTING.md) for available environments. The exception is `gh` and its extensions, including the actions lockfile script, which run on the host, where `gh` is authenticated.
-- For the C++ devcontainer: the image is built from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile). Find the running container with `docker ps` (service name `cpp`) and run commands via `docker exec <name> bash -c "source /opt/esp/idf/export.sh && <command>"`. ESP-IDF lives at `/opt/esp/idf/`; QEMU (`qemu-system-xtensa`) is installed in the container. The linux IDF target is not available. Always build and flash firmware from this devcontainer — never from the host or the headless `cpp` production container.
+- For the C++ devcontainer: the image is built from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile). Find the running container with `docker ps` (service name `cpp`) and run commands via `docker exec <name> bash -c "source /opt/esp/idf/export.sh && <command>"`. ESP-IDF lives at `/opt/esp/idf/`; QEMU (`qemu-system-xtensa`) is installed in the container. The linux IDF target is not available. Always build and flash firmware from this devcontainer — never from the host or the headless `cpp` production container. Build firmware that will be flashed from the main checkout, not a git worktree; see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Prefer location-based discovery over hard-coded assumptions when looking for commands or procedures.
 - Keep changes focused and update relevant docs when behavior or workflow changes. When adding or removing a metric, update the metrics table in the relevant variant document under [docs/variants/](docs/variants/).
 - Write the **idiomatic** form: the one the library's own docs and examples use, or the standard library's. When the surrounding code is built around another pattern, redesign it to the idiomatic one, however much that touches, and land the redesign as its own refactor commit before the change. Focused means one concern per commit, not the smallest diff.
@@ -81,7 +82,7 @@ source scripts/load_env.sh && ./scripts/dump_env.sh
 - For observability changes, use scripts under [observability/scripts/](observability/scripts/). `observability/tests/integration/` (synthetic data) always runs, including in CI; `observability/tests/e2e/` (real data, requires headless stack running) is DUT-gated and on-demand only. See [CONTRIBUTING.md#observability-tests](CONTRIBUTING.md#observability-tests).
 - For repo-wide checks/hooks, use [scripts/](scripts/).
 - For workflow changes, regenerate and verify the actions lockfile: see [CONTRIBUTING.md#actions-lockfile](CONTRIBUTING.md#actions-lockfile).
-- For full-stack E2E tests (requires headless stack running), exec into the `test-runner` container: `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack`. The test-runner starts with the headless stack in standby mode; no separate devcontainer session is needed. These on-demand tests do not run in CI.
+- For full-stack E2E tests (requires headless stack running), exec into the `test-runner` container, first `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner npm ci` to install the web's packages, then `docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack`. The test-runner starts with the headless stack in standby mode; no separate devcontainer session is needed. These on-demand tests do not run in CI.
 
 ## Starting Devcontainers
 
@@ -94,6 +95,8 @@ docker compose -f .devcontainer/js/docker-compose.yml up -d --build js
 docker compose -f .devcontainer/observability/docker-compose.yml up -d --build observability
 docker compose -f .devcontainer/infrastructure/docker-compose.yml up -d --build infrastructure
 ```
+
+When the car is needed, add `-f docker-compose.car.yml` to the C++ bring-up, which passes the car's serial port `CAR_SERIAL_PORT` through to the container.
 
 Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, and falls back to uid `1050` without one.
 
@@ -131,7 +134,7 @@ to provide a pseudo-TTY, then read the output file.
 
 Example (inside the C++ devcontainer):
 ```bash
-script -q -c "idf.py -p /dev/ttyACM0 monitor" /tmp/monitor.txt
+script -q -c "idf.py -p \"$CAR_SERIAL_PORT\" monitor" /tmp/monitor.txt
 # wait for desired output, then Ctrl-C
 cat /tmp/monitor.txt
 ```

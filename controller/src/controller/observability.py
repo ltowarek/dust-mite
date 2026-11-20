@@ -1,7 +1,6 @@
 """Observability settings and the setup every entry point shares."""
 
 import dataclasses
-import logging
 from collections.abc import Mapping
 from typing import Self
 
@@ -10,8 +9,6 @@ from .metrics import configure_metrics
 from .otel import service_resource
 from .profiling import configure_profiling
 from .tracing import configure_tracing
-
-logger = logging.getLogger(__name__)
 
 # The profiles signal is still in development, so the pinned collector serves
 # it under the development version rather than `v1`.
@@ -42,7 +39,6 @@ class ObservabilitySettings:
     metrics_endpoint: str | None
     profiles_endpoint: str | None
     repository: str | None
-    profiling_enabled: bool
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> Self:
@@ -64,7 +60,6 @@ class ObservabilitySettings:
                 environ, "OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT", _PROFILES_PATH
             ),
             repository=environ.get("SERVICE_REPOSITORY"),
-            profiling_enabled=environ.get("PROFILING_ENABLED") == "1",
         )
 
 
@@ -72,14 +67,9 @@ def configure_observability(service_name: str, settings: ObservabilitySettings) 
     """Configure logging, tracing, metrics and profiling for `service_name`.
 
     Logging comes first, so the other signals' setup records are not lost.
-    Profiling is opt-in, unlike the other signals: it only starts if
-    ``settings.profiling_enabled`` is true.
     """
     resource = service_resource(service_name, settings.repository)
     configure_logging(settings.logs_endpoint, resource)
     configure_tracing(settings.traces_endpoint, resource)
     configure_metrics(settings.metrics_endpoint, resource)
-    if settings.profiling_enabled:
-        configure_profiling(settings.profiles_endpoint, resource)
-    else:
-        logger.debug("Profiling not enabled, skipping profiler configuration")
+    configure_profiling(settings.profiles_endpoint, resource)
