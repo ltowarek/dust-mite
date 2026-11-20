@@ -63,7 +63,7 @@ class Writer:
         self._dry_run = env.get("AFK_DRY_RUN") == "true"
         self._planned: list[Effect] = []
 
-    def __call__(self, effect: Effect) -> None:
+    def write(self, effect: Effect) -> None:
         """Carry out `effect`, or only record it in a dry run."""
         self._planned.append(effect)
         if self._dry_run:

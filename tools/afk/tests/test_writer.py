@@ -31,7 +31,7 @@ EFFECTS: list[Effect] = [
 ]
 
 
-class TestWriterCall:
+class TestWriterWrite:
     @pytest.mark.parametrize(
         ("effect", "args", "token"),
         [
@@ -77,7 +77,7 @@ class TestWriterCall:
     ) -> None:
         runner = RunnerSpy()
 
-        Writer(runner, ENV)(effect)
+        Writer(runner, ENV).write(effect)
 
         assert runner.calls == [(args, token, "owner/repo")]
 
@@ -86,7 +86,7 @@ class TestWriterCall:
         writer = Writer(runner, {**ENV, "AFK_DRY_RUN": "true"})
 
         for effect in EFFECTS:
-            writer(effect)
+            writer.write(effect)
 
         assert runner.calls == []
 
@@ -96,7 +96,7 @@ class TestWriterOutputs:
         writer = Writer(RunnerSpy(), {**ENV, "AFK_DRY_RUN": "true"})
 
         for effect in EFFECTS:
-            writer(effect)
+            writer.write(effect)
 
         assert json.loads(writer.outputs()["effects"]) == [
             {
@@ -121,6 +121,6 @@ class TestWriterOutputs:
     def test_a_real_run_reports_no_effects(self) -> None:
         writer = Writer(RunnerSpy(), ENV)
 
-        writer(Comment(number=7, body="Promoted."))
+        writer.write(Comment(number=7, body="Promoted."))
 
         assert writer.outputs() == {}

@@ -190,5 +190,5 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
                 command_ids[number] = command_id(comments, int(env["AFK_BOT_ID"]))
     writer = Writer(gh, env)
     for effect in plan(selection, command_ids, blocking_ticket):
-        writer(effect)
+        writer.write(effect)
     return writer.outputs()
