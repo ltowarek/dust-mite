@@ -5,15 +5,13 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
 from afk.writer import Runner, Token, Writer
 
 LOGGER = logging.getLogger(__name__)
-QUEUED = "afk:queued"
-IN_PROGRESS = "afk:in-progress"
-BLOCKED = "afk:blocked"
 COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")
 BLOCKING_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -33,6 +31,14 @@ query($owner: String!, $repo: String!, $number: Int!) {
   }
 }
 """
+
+
+class Label(StrEnum):
+    """The AFK loop's state labels."""
+
+    QUEUED = "afk:queued"
+    IN_PROGRESS = "afk:in-progress"
+    BLOCKED = "afk:blocked"
 
 
 @dataclass(frozen=True)
@@ -55,7 +61,7 @@ def _labels(node: dict[str, Any]) -> set[str]:
 
 
 def _waiting(labels: set[str]) -> bool:
-    return QUEUED in labels and IN_PROGRESS not in labels
+    return Label.QUEUED in labels and Label.IN_PROGRESS not in labels
 
 
 def _decide(node: dict[str, Any]) -> Promotion | Refusal | None:
@@ -96,7 +102,7 @@ def command_id(comments: list[dict[str, Any]], bot_id: int) -> str | None:
 def _refuse(refusal: Refusal) -> list[Effect]:
     parent = refusal.parent
     return [
-        ReplaceLabel(number=refusal.number, remove=QUEUED, add=BLOCKED),
+        ReplaceLabel(number=refusal.number, remove=Label.QUEUED, add=Label.BLOCKED),
         Comment(
             number=refusal.number,
             body=f"Refused to promote: this ticket is a child ticket of #{parent}. "
@@ -115,11 +121,13 @@ def _promote(
     # Dispatch first: a failed dispatch leaves the ticket queued, not stale in progress.
     return [
         DispatchWorkflow(workflow="afk-run.yml", inputs=inputs),
-        ReplaceLabel(number=promotion.number, remove=QUEUED, add=IN_PROGRESS),
+        ReplaceLabel(
+            number=promotion.number, remove=Label.QUEUED, add=Label.IN_PROGRESS
+        ),
         Comment(
             number=promotion.number,
             body=f"Unblocked by #{blocking_ticket} closing; promoted from "
-            f"`{QUEUED}` to `{IN_PROGRESS}`.",
+            f"`{Label.QUEUED}` to `{Label.IN_PROGRESS}`.",
         ),
     ]
 
