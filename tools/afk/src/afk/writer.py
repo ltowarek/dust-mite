@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from enum import StrEnum
 
 from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
@@ -17,15 +17,25 @@ class Token(StrEnum):
     WORKFLOW = "AFK_WORKFLOW_TOKEN"
 
 
-def gh_command(effect: Effect) -> tuple[list[str], Token]:
-    """Return the `gh` arguments for a write and the variable that holds its token."""
+@dataclass(frozen=True)
+class GhCommand:
+    """A `gh` command line and the variable that holds the token it runs with."""
+
+    args: list[str]
+    token: Token
+
+
+def gh_command(effect: Effect) -> GhCommand:
+    """Return the `gh` command that carries out a write."""
     match effect:
         case DispatchWorkflow(workflow=workflow, inputs=inputs):
             fields = [
                 arg for key, value in inputs.items() for arg in ("-f", f"{key}={value}")
             ]
             # The App has no Actions write permission, so it cannot dispatch.
-            return ["gh", "workflow", "run", workflow, *fields], Token.WORKFLOW
+            return GhCommand(
+                ["gh", "workflow", "run", workflow, *fields], Token.WORKFLOW
+            )
         case ReplaceLabel(number=number, remove=remove, add=add):
             args = [
                 "issue",
@@ -36,9 +46,11 @@ def gh_command(effect: Effect) -> tuple[list[str], Token]:
                 "--add-label",
                 add,
             ]
-            return ["gh", *args], Token.APP
+            return GhCommand(["gh", *args], Token.APP)
         case Comment(number=number, body=body):
-            return ["gh", "issue", "comment", str(number), "--body", body], Token.APP
+            return GhCommand(
+                ["gh", "issue", "comment", str(number), "--body", body], Token.APP
+            )
 
 
 class Writer:
@@ -56,8 +68,10 @@ class Writer:
         self._planned.append(effect)
         if self._dry_run:
             return
-        args, token = gh_command(effect)
-        self._gh(args, {**self._env, "GH_TOKEN": self._env[token]})
+        invocation = gh_command(effect)
+        self._gh(
+            invocation.args, {**self._env, "GH_TOKEN": self._env[invocation.token]}
+        )
 
     def outputs(self) -> dict[str, str]:
         """Return the `effects` step output in a dry run, and nothing otherwise."""
