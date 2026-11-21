@@ -17,6 +17,8 @@ echo 'run_zizmor.sh'
 "$SCRIPTPATH/run_zizmor.sh"
 echo 'run_hadolint.sh'
 "$SCRIPTPATH/run_hadolint.sh"
+echo 'tools/afk/scripts/run_checks.sh'
+(cd "$SCRIPTPATH/../tools/afk" && ./scripts/run_checks.sh)
 
 trap - ERR
 

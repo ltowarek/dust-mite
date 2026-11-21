@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "afk"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    env_list =
+        py311
+
+    [testenv]
+    package = editable
+    deps = -r requirements/dev.txt
+    commands = pytest --junitxml=results.xml -o junit_family=legacy {posargs:tests/}
+"""
+
+[tool.mypy]
+python_version = "3.11"
+files = [
+    "src/**/*.py",
+    "tests/**/*.py"
+]
+strict = true
+enable_error_code = ["explicit-override"]
+
+[tool.ruff]
+target-version = "py311"
+include = [
+    "pyproject.toml",
+    "src/**/*.py",
+    "tests/**/*.py"
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812"]
+unfixable = ["F401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "S101"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"

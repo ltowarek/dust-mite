@@ -33,10 +33,11 @@ RUN curl -fsSL -o /usr/local/bin/hadolint "https://github.com/hadolint/hadolint/
 
 # Debian's Python is externally managed (PEP 668), so the Python tools get their own venv.
 ENV PATH="/opt/venv/bin:$PATH"
-COPY .devcontainer/infrastructure/requirements.txt /tmp/requirements.txt
+COPY .devcontainer/infrastructure/requirements.txt /tmp/infrastructure/requirements.txt
+COPY tools/afk/requirements/ /tmp/afk/
 RUN python3 -m venv /opt/venv \
-    && /opt/venv/bin/pip install --disable-pip-version-check --no-cache-dir -r /tmp/requirements.txt \
-    && rm /tmp/requirements.txt
+    && /opt/venv/bin/pip install --disable-pip-version-check --no-cache-dir -r /tmp/infrastructure/requirements.txt -r /tmp/afk/dev.txt \
+    && rm -rf /tmp/infrastructure/ /tmp/afk/
 
 # hadolint ignore=DL3064 # USERNAME follows VS Code's documented devcontainer convention
 ARG USERNAME=vscode
