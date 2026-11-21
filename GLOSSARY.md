@@ -4,6 +4,12 @@ A remote-controlled car whose ESP32 firmware exposes endpoints to a host-side st
 
 ## Language
 
+### Variants
+
+**Variant**:
+One build of the car, named after a chemical element (Copper, Iron), with its own hardware and its own split of the work between the car and the host the streamer runs on.
+_Avoid_: Model, version, revision
+
 ### Car endpoints
 
 **Endpoint**:
