@@ -5,10 +5,10 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
 from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
+from afk.labels import Label
 from afk.writer import Runner, Token, Writer
 
 logger = logging.getLogger(__name__)
@@ -31,14 +31,6 @@ query($owner: String!, $repo: String!, $number: Int!) {
   }
 }
 """
-
-
-class Label(StrEnum):
-    """The AFK loop's state labels."""
-
-    QUEUED = "afk:queued"
-    IN_PROGRESS = "afk:in-progress"
-    BLOCKED = "afk:blocked"
 
 
 @dataclass(frozen=True)
