@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TextIO
 
 from afk import promote_queued
-from afk.writer import Runner
+from afk.writer import Runner, StepOutput
 
 PHASES = {"promote-queued": promote_queued.run}
 
@@ -32,15 +32,23 @@ def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:
     )
 
 
+def step_output(path: Path) -> StepOutput:
+    """Return a writer that appends step outputs to `path` as soon as it is called."""
+
+    def write(outputs: Mapping[str, str]) -> None:
+        # Append: earlier writes in the same step stay outputs.
+        with path.open("a") as output:
+            write_outputs(output, outputs)
+
+    return write
+
+
 def main(argv: Sequence[str], gh: Runner, env: Mapping[str, str]) -> None:
-    """Run the phase that `argv` names and append its outputs to `$GITHUB_OUTPUT`."""
+    """Run the phase that `argv` names, with its outputs going to `$GITHUB_OUTPUT`."""
     parser = argparse.ArgumentParser(prog="afk")
     parser.add_argument("phase", choices=sorted(PHASES))
     phase = parser.parse_args(argv).phase
-    outputs = PHASES[phase](gh, env)
-    # Append: earlier writes in the same step stay outputs.
-    with Path(env["GITHUB_OUTPUT"]).open("a") as output:
-        write_outputs(output, outputs)
+    PHASES[phase](gh, env, step_output(Path(env["GITHUB_OUTPUT"])))
 
 
 if __name__ == "__main__":

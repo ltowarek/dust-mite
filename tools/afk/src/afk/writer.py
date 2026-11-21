@@ -8,6 +8,7 @@ from enum import StrEnum
 from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
 
 Runner = Callable[[Sequence[str], Mapping[str, str]], str]
+StepOutput = Callable[[Mapping[str, str]], None]
 
 
 class Token(StrEnum):

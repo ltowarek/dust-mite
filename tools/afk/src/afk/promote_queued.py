@@ -9,7 +9,7 @@ from typing import Any
 
 from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer
+from afk.writer import Runner, StepOutput, Token, Writer
 
 logger = logging.getLogger(__name__)
 _COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")
@@ -146,7 +146,7 @@ def plan(
     return effects
 
 
-def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
+def run(gh: Runner, env: Mapping[str, str], output: StepOutput) -> None:
     """Read the blocking ticket's blocked tickets, then promote or refuse them."""
     repository = env["GH_REPO"]
     blocking_ticket = int(env["AFK_BLOCKING_TICKET"])
@@ -182,4 +182,4 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
     writer = Writer(gh, env)
     for effect in plan(selection, command_ids, blocking_ticket):
         writer.write(effect)
-    return writer.outputs()
+    output(writer.outputs())
