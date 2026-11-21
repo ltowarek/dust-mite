@@ -19,7 +19,6 @@ _CAR_PROFILING_REASON = (
     "requires firmware built with sdkconfig.defaults.debug, real ESP32 "
     "hardware, and the profiling-symbolizer container"
 )
-_STREAMER_PROFILING_REASON = "requires PROFILING_ENABLED=1 on the streamer"
 
 
 def _profile_query(service_name: str) -> dict[str, Any]:
@@ -38,7 +37,7 @@ def test_car_has_profile_samples() -> None:
     assert has_profile_samples(result)
 
 
-@pytest.mark.dut(reason=_STREAMER_PROFILING_REASON)
+@pytest.mark.dut
 def test_streamer_has_profile_samples() -> None:
     result = wait_for_profile_samples(
         PYROSCOPE_UID,
@@ -48,7 +47,7 @@ def test_streamer_has_profile_samples() -> None:
     assert has_profile_samples(result)
 
 
-@pytest.mark.dut(reason=_STREAMER_PROFILING_REASON)
+@pytest.mark.dut
 def test_streamer_span_has_linked_profile_samples() -> None:
     """Many spans are selected at once: a single short span often catches no sample."""
     spans = span_ids(

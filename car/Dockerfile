@@ -7,7 +7,8 @@ ARG USER_UID=1040
 ARG USER_GID=$USER_UID
 
 RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME
+    && useradd --uid $USER_UID --gid $USER_GID --create-home --shell /bin/bash $USERNAME \
+    && usermod -aG dialout $USERNAME
 
 USER $USERNAME
 

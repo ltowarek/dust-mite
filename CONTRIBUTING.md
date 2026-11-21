@@ -47,11 +47,23 @@ Every issue should carry one type label and at least one component label.
 - **Type** — `bug`, `enhancement`, `documentation`.
 - **Component** — `web`, `camera`, `telemetry`, `infrastructure`, `observability`, `drive`, `teleop`. Each names a functional subsystem, not a root directory, so a subsystem can move between [car/](car/) and [controller/](controller/) across variants without invalidating its label.
 
-An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json), [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json) and [afk-update-branch-output.schema.json](.github/afk-update-branch-output.schema.json).
+An issue or pull request that waits for a car agent session also carries `needs-car:<variant>`. A `needs-car` label exists only for a variant whose firmware is in the repository, which today is `needs-car:copper`. A label created for another variant also needs the variant added to the `car_variant` enum in [afk-run-output.schema.json](.github/afk-run-output.schema.json), [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json) and [afk-update-branch-output.schema.json](.github/afk-update-branch-output.schema.json). [DUT run](#dut-run) describes how a DUT run of such an item starts.
 
 See each label's description on the [GitHub labels page](https://github.com/ltowarek/dust-mite/labels) for what it covers.
 
 Don't add a new label without a recurring, evidenced need — an unused label is noise.
+
+## DUT run
+
+A DUT run of an issue or pull request labelled `needs-car:<variant>` starts with one command on the host, with the car connected, from the main checkout:
+
+```bash
+./scripts/run_dut_tests.sh
+```
+
+The script runs every DUT-gated test, each suite through its area's own test runner, in this order: the car's tests in a one-off C++ devcontainer, the controller's DUT integration tests in a one-off Python devcontainer, the full-stack tests in the headless stack's `test-runner`, after `npm ci` there installs the web's packages, and the observability E2E tests in a one-off Observability devcontainer. It starts the headless stack after the controller's tests, stops at the first failing suite with a non-zero exit status, and, once it has started the headless stack, always stops it on exit. The one-off containers run under the project name `dust-mite-dut`, rebuild their images first, and publish no ports, so they leave the editor's devcontainers untouched. The car's tests leave the debug build flashed.
+
+A DUT run does not work from a git worktree. A worktree's `.git` file points to a host path that the containers do not mount, so the controller's version, the streamer's image and the car's firmware version cannot read the git metadata. Only one car is connected, so only one DUT run happens at a time; check out the branch under test in the main checkout instead.
 
 ## Prerequisites
 
@@ -64,11 +76,13 @@ From repository root:
 
 ```bash
 ./scripts/install_git_hooks.sh
+./scripts/link_devcontainer_env.sh
 ```
 
-This installs a Git pre-commit hook that can run project checks.
-
+`install_git_hooks.sh` installs a Git pre-commit hook that can run project checks.
 The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRIPT` configured in each devcontainer.
+
+`link_devcontainer_env.sh` links each devcontainer's `.env` to the root `.env` (see [Development environment](#development-environment)).
 
 [.claude/settings.json](.claude/settings.json) enables Matt Pocock's skills plugin for Claude Code, but enabling a plugin does not download it. Install it once per clone:
 
@@ -103,7 +117,7 @@ Available environments:
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
 - [.devcontainer/infrastructure/](.devcontainer/infrastructure/) for GitHub Actions workflows and repository-level scripts (see [Infrastructure](#infrastructure))
 
-Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, so VS Code builds and runs every devcontainer except `docs` as the host uid. Rebuild an existing devcontainer created before these symlinks existed to pick this up.
+Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, so VS Code builds and runs every devcontainer except `docs` as the host uid. [scripts/link_devcontainer_env.sh](scripts/link_devcontainer_env.sh) creates these symlinks in each clone, and git ignores them. The script holds the list of devcontainers, so a new devcontainer must be added to that list. Without the symlinks, each devcontainer falls back to uid `1050`.
 
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
 
@@ -134,9 +148,9 @@ Container-internal ports (`python:8765`, `python:8766`, `js:5173`) are unchanged
      1. Run `File: Open Workspace from File...`.
      2. Choose [python.code-workspace](python.code-workspace) for [controller/](controller/) work, [cpp.code-workspace](cpp.code-workspace) for [car/](car/) work, [js.code-workspace](js.code-workspace) for [web/](web/) work, or [observability.code-workspace](observability.code-workspace) for [observability/](observability/) work.
    - For docs or infrastructure work: no additional action is required; continue with the repository root opened in step 1.
-5. If you need hardware passthrough (for example controller or ESP32 device access), manually uncomment the `devices:` entries in:
-   - [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml)
-   - [.devcontainer/cpp/docker-compose.yml](.devcontainer/cpp/docker-compose.yml)
+5. If you need hardware passthrough:
+   - For the controller's `hidraw` device, manually uncomment the `devices:` entry in [.devcontainer/python/docker-compose.yml](.devcontainer/python/docker-compose.yml).
+   - To flash the car from VS Code, add `../../docker-compose.car.yml` to `dockerComposeFile` in [.devcontainer/cpp/devcontainer.json](.devcontainer/cpp/devcontainer.json). See [The car's serial port](#the-cars-serial-port).
 6. Run `Dev Containers: Reopen in Container` and choose the matching devcontainer (`Python`, `C++`, `JavaScript`, `Observability`, `Docs`, or `Infrastructure`).
 
 The container image includes project dependencies and VS Code extensions required for that stack. On first open, the devcontainer installs the controller package into the virtual environment via `postCreateCommand`.
@@ -151,6 +165,14 @@ The container image includes project dependencies and VS Code extensions require
 ## Full stack development session
 
 [docker-compose.yml](docker-compose.yml) at the repository root combines all devcontainer and observability services into a single compose project using [extends](https://docs.docker.com/compose/how-tos/multiple-compose-files/extends/).
+
+### The car's serial port
+
+The car's serial port is set once, as `CAR_SERIAL_PORT` in `.env`, with the default `/dev/ttyACM0`. The port has the same path on the host and inside every container. The overlay [docker-compose.car.yml](docker-compose.car.yml) passes it to the `cpp` service as a device, and applies both to the root compose project and to the C++ devcontainer.
+
+- The headless stack and the byobu session take the overlay, so both need the car connected. The headless serial monitor connects without resetting the car.
+- The DUT run's one-off C++ container takes the overlay.
+- The VS Code C++ devcontainer does not take the overlay, so it starts without the car. To flash from VS Code, add the overlay to its `dockerComposeFile`. `idf.port` reads `CAR_SERIAL_PORT`.
 
 ### Byobu session
 
@@ -209,7 +231,7 @@ flowchart LR
     FW -- "OTLP/HTTP metrics" --> MIMIR
     STR -- "OTLP/HTTP traces" --> OC
     STR -- "OTLP/HTTP metrics" --> MIMIR
-    STR -- "OTLP/HTTP profiles (opt-in)" --> OC
+    STR -- "OTLP/HTTP profiles" --> OC
     WEB -- "OTLP/HTTP traces" --> OC
     OC -- "OTLP/gRPC" --> TEMPO
     OC -- "OTLP/HTTP profiles" --> PYRO
@@ -235,13 +257,13 @@ All three services export traces via OTLP/HTTP to the OTel Collector; the firmwa
 
 | Service | Name in Tempo | Traces endpoint | Metrics endpoint |
 |---|---|---|---|
-| ESP32 firmware | `dust-mite-car` | `http://<host-ip>:4318` (configured in [car/sdkconfig.defaults](car/sdkconfig.defaults)) | `CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL` + `/v1/metrics` |
+| ESP32 firmware | `dust-mite-car` | `CAR_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (default `http://$CAR_OTLP_HOST:4318/v1/traces`) | `CAR_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://$CAR_OTLP_HOST:8080/otlp/v1/metrics`) |
 | Python streamer | `dust-mite-streamer` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces` (default `http://otel-collector:4318/v1/traces`) | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (default `http://mimir:8080/otlp/v1/metrics`) |
 | Web browser | `dust-mite-web` | `VITE_OTLP_ENDPOINT` (default `http://localhost:4318`) | none |
 
-The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name.
+The ESP32 cannot resolve the observability stack's Docker DNS names (e.g. `otel-collector`), so its endpoints must be the host machine's LAN IP rather than a container service name. Set that IP as `CAR_OTLP_HOST` when [scripts/dump_env.sh](scripts/dump_env.sh) generates `.env`. The script derives `CAR_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `CAR_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, `CAR_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and `CAR_OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT` from it. Each is a full URL, like the streamer's `OTEL_EXPORTER_OTLP_*_ENDPOINT`. The C++ devcontainer passes the four URLs to the firmware build, which [car/main/main.cpp](car/main/main.cpp) uses for its exporters, in the same way that `WIFI_SSID` reaches the firmware. The build reads these URLs when CMake configures, so after changing `CAR_OTLP_HOST` run `idf.py reconfigure` or `idf.py fullclean` before the next build.
 
-The firmware's logs endpoint (`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL`) reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
+The firmware's logs endpoint reuses the same collector URL as traces, not the metrics bypass-to-Mimir pattern — see [Logs](#logs) below.
 
 ### Metrics
 
@@ -301,8 +323,8 @@ to ship ([camera.cpp](car/components/camera/camera.cpp),
 [telemetry.cpp](car/components/telemetry/telemetry.cpp)). `ESP_LOGD`/`V` are not wrapped — they're
 already compiled out of this build (`CONFIG_LOG_MAXIMUM_LEVEL` follows the default `Info` level),
 matching what the fork's macro deliberately excludes. Reuses the same `vcs.*` resource attributes
-tracing/metrics already build in `main.cpp`, routed through
-`CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL` (same collector endpoint as tracing).
+tracing/metrics already build in `main.cpp`, routed to the same collector endpoint as tracing
+(`CAR_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`).
 
 One structural gap: `esp_opentelemetry_logs_setup()` must run after `sync_time()` (SNTP) or every
 record is stamped 1970 and Loki drops it — but `wifi_setup()`'s own `ESP_LOGI(TAG, "wifi_init_sta
@@ -483,16 +505,15 @@ stack snapshot, not a computed CPU-time delta, and it doesn't factor in GIL owne
 contending for the GIL is typically in `S` state and gets filtered out even though it's using CPU.
 See `controller/src/otlp_profiler/sampler.py`'s module docstring for the full detail.
 
-Profiling is **opt-in** (unlike tracing/metrics, which default to on): it is off unless
-`PROFILING_ENABLED` is set to `1`. Profiles go to `OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT`, else
-`OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1development/profiles`: the profiles signal is still in
-development, so the pinned collector serves it under the development version rather than `v1`.
+Profiling is on whenever the profiles endpoint is set, like tracing and logs. Profiles go to
+`OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT` +
+`/v1development/profiles`: the profiles signal is still in development, so the pinned collector
+serves it under the development version rather than `v1`. The headless stack's streamer therefore
+always profiles ([ADR 0007](docs/adr/0007-streamer-always-profiles-car-profiles-in-debug-build.md)).
 
 To profile a run:
 
-1. `./scripts/enable_profiling.sh && ./scripts/start_headless.sh` — sets `PROFILING_ENABLED=1`
-   in `.env` (preserving any other already-set variables, e.g. `WIFI_SSID`/`WIFI_PASSWORD`),
-   then brings up the stack.
+1. Bring up the stack (`./scripts/start_headless.sh`).
 2. Open Grafana → **Explore** → **Pyroscope** datasource. Filter by
    `{service_name="dust-mite-streamer"}`, optionally split by `thread_name`. Splitting by thread
    name separates the event loop, which serves every connection, from worker threads such as those
@@ -579,10 +600,10 @@ Two test tiers:
 
 - **[observability/tests/integration/](observability/tests/integration/)** — pushes synthetic data through the pipeline and confirms it's queryable. No hardware needed, so it runs in CI. Proves the pipeline works, not that the real system produces correct data — `tests/e2e/` covers that.
 - **[observability/tests/e2e/](observability/tests/e2e/)** — confirms metrics, traces, and profiles for all three real services are produced and queryable from live traffic. DUT-gated, not run in CI.
-Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; `PROFILING_ENABLED=1` and the debug firmware overlay for profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
+Prerequisites for `tests/e2e/`: real device traffic for metrics/traces; the debug firmware overlay for the car profile tests — see [Profiling (firmware CPU)](#profiling-firmware-cpu) and [Profiling (Python streamer CPU)](#profiling-python-streamer-cpu) above.
 
 ```bash
-source scripts/load_env.sh && PROFILING_ENABLED=1 ./scripts/dump_env.sh && ./scripts/start_headless.sh
+./scripts/start_headless.sh
 ```
 
 Run from the Observability devcontainer with `--dut`:
@@ -740,6 +761,7 @@ Some tests require the car to be connected and active. Prerequisites: start the 
 The headless stack includes the `test-runner` service (built from the JS devcontainer image, with Playwright and Firefox) running in standby. Execute tests inside it:
 
 ```bash
+docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner npm ci
 docker compose -f docker-compose.yml -f docker-compose.headless.yml exec test-runner scripts/run_tests.sh tests/e2e/full_stack
 ```
 
@@ -766,6 +788,8 @@ idf.py build
 idf.py flash
 idf.py monitor
 ```
+
+Build firmware that will be flashed from the main checkout, not a git worktree. In a worktree, ESP-IDF cannot read the git metadata inside the container, so the firmware records the version `1` instead of its commit, and Grafana cannot link its profiles to the source.
 
 ### Run quality checks
 
@@ -1050,8 +1074,8 @@ overlay (`sdkconfig.defaults.debug`) but never runs it, so the script builds the
 `car/sdkconfig.defaults.<overlay>` (`build_<overlay>/`), and the test flashes each one, streams the
 Camera endpoint for a minute, and fails when the frames stop for more than a few seconds. Run it
 before merging a firmware change that touches an overlay or the observability setup. The debug
-build is still flashed when the script ends; then run `test_car_has_profile_samples` from [observability/tests/e2e/](observability/tests/e2e/) (see
-[Observability tests](#observability-tests)) to check that its profiles reached Pyroscope.
+build is still flashed when the script ends, so in a [DUT run](#dut-run) the
+[observability E2E tests](#observability-tests) that follow check that its profiles reached Pyroscope.
 
 ### Feature flags
 

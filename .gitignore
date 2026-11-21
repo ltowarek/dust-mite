@@ -1,6 +1,4 @@
 .env
-# Devcontainer .env files are tracked symlinks to the root .env.
-!/.devcontainer/*/.env
 env/
 .vscode/
 __pycache__/

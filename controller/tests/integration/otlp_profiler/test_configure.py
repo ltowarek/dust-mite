@@ -1,5 +1,6 @@
 import logging
 import sys
+import threading
 import time
 from collections.abc import Callable
 
@@ -28,7 +29,7 @@ def _profile_until(collector: CollectorServer, condition: Callable[[], bool]) ->
     The sampler records only threads that are on the CPU, and it exports
     nothing for an interval without samples, so this thread busy-waits.
     """
-    sampler = otlp_profiler.configure(
+    otlp_profiler.configure(
         collector.profiles_endpoint, _RESOURCE, export_interval_ms=_EXPORT_INTERVAL_MS
     )
     try:
@@ -36,7 +37,7 @@ def _profile_until(collector: CollectorServer, condition: Callable[[], bool]) ->
         while not condition() and time.monotonic() < deadline:
             pass
     finally:
-        sampler.stop()
+        otlp_profiler.shutdown()
 
 
 def test_exports_profiles_of_the_given_resource(collector: CollectorServer) -> None:
@@ -62,3 +63,12 @@ def test_logs_a_failed_export(
         )
 
     assert "failed to export profiles" in caplog.messages
+
+
+def test_shutdown_stops_every_started_sampler(collector: CollectorServer) -> None:
+    otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
+    otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
+
+    otlp_profiler.shutdown()
+
+    assert "otlp-profiler-sampler" not in {t.name for t in threading.enumerate()}

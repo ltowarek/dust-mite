@@ -10,7 +10,6 @@ services:
       args:
         USER_UID: "${USER_UID:-1050}"
         USER_GID: "${USER_GID:-1050}"
-    user: "${USER_UID:-1050}:${USER_GID:-1050}"
     volumes:
       - ../..:/workspaces/dust-mite:cached
     environment:
@@ -21,7 +20,6 @@ services:
       - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
       - OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT
       - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-      - PROFILING_ENABLED
       - RPI_ADDRESS
       - RPI_USERNAME
       - SERVICE_REPOSITORY

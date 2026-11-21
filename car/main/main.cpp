@@ -63,13 +63,13 @@ extern "C" void app_main() {
   const opentelemetry::sdk::resource::ResourceAttributes resource_attrs =
       otel_resource_attributes();
   auto span_exporter =
-      esp_opentelemetry::MakeOtlpHttpSpanExporter(CONFIG_ESP_OPENTELEMETRY_TRACING_OTLP_BASE_URL);
+      esp_opentelemetry::MakeOtlpHttpSpanExporter(CAR_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT);
   auto metric_exporter =
-      esp_opentelemetry::MakeOtlpHttpMetricExporter(CONFIG_ESP_OPENTELEMETRY_METRICS_OTLP_BASE_URL);
+      esp_opentelemetry::MakeOtlpHttpMetricExporter(CAR_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT);
   auto log_exporter =
-      esp_opentelemetry::MakeOtlpHttpLogRecordExporter(CONFIG_ESP_OPENTELEMETRY_LOGS_OTLP_BASE_URL);
-  auto profiles_exporter = esp_opentelemetry::MakeOtlpHttpProfilesExporter(
-      CONFIG_ESP_OPENTELEMETRY_PROFILES_OTLP_BASE_URL);
+      esp_opentelemetry::MakeOtlpHttpLogRecordExporter(CAR_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT);
+  auto profiles_exporter =
+      esp_opentelemetry::MakeOtlpHttpProfilesExporter(CAR_OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT);
 
   esp_opentelemetry_tracing_setup(std::move(span_exporter), resource_attrs);
   esp_opentelemetry_metrics_setup(std::move(metric_exporter), resource_attrs);

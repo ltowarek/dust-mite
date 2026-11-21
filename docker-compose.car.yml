@@ -1,0 +1,4 @@
+services:
+  cpp:
+    devices:
+      - "${CAR_SERIAL_PORT}:${CAR_SERIAL_PORT}"

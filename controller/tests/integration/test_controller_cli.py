@@ -51,6 +51,19 @@ async def _eventually(condition: Callable[[], bool]) -> bool:
     return await asyncio.to_thread(wait_for, condition)
 
 
+async def _hold_until_forwarded(
+    driver: websockets.asyncio.client.ClientConnection, car_control: CarEndpointSpy
+) -> None:
+    """Resend ADVANCE until `car_control` receives one, as a Driver holding it does.
+
+    The streamer drops Drive commands until it is connected to the car's Drive endpoint.
+    """
+    resend_interval_s = 0.05
+    while not car_control.received:
+        await send_command(driver, (Command.ADVANCE, _SPEED))
+        await asyncio.sleep(resend_interval_s)
+
+
 def _received_values(control: CarEndpointSpy) -> list[int]:
     return [command["value"] for command in control.received]
 
@@ -228,8 +241,7 @@ async def test_exits_with_the_reason_while_another_driver_holds_drive(
         serve_streamer(settings) as streamer,
         websockets.asyncio.client.connect(streamer.drive, proxy=None) as other,
     ):
-        await send_command(other, (Command.ADVANCE, _SPEED))
-        await _eventually(lambda: bool(car_control.received))
+        await _hold_until_forwarded(other, car_control)
         with pytest.raises(DriveConnectionClosedError, match="another driver"):
             await drive(HeldInputStub(), streamer.drive)
 
