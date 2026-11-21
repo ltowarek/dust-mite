@@ -21,6 +21,14 @@ class ReplaceLabel:
 
 
 @dataclass(frozen=True)
+class RemoveLabel:
+    """Remove a label from an issue or pull request."""
+
+    number: int
+    label: str
+
+
+@dataclass(frozen=True)
 class Comment:
     """Post a conversation comment on an issue or pull request."""
 
@@ -28,4 +36,12 @@ class Comment:
     body: str
 
 
-Effect = DispatchWorkflow | ReplaceLabel | Comment
+@dataclass(frozen=True)
+class React:
+    """React to a conversation comment."""
+
+    comment_id: int
+    content: str
+
+
+Effect = DispatchWorkflow | ReplaceLabel | RemoveLabel | Comment | React

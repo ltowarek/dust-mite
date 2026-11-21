@@ -5,7 +5,14 @@ from collections.abc import Mapping, Sequence
 
 import pytest
 
-from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
+from afk.effects import (
+    Comment,
+    DispatchWorkflow,
+    Effect,
+    React,
+    RemoveLabel,
+    ReplaceLabel,
+)
 from afk.writer import Writer
 
 ENV = {
@@ -70,10 +77,30 @@ class TestWriter:
                     id="replaces a label with the App's token",
                 ),
                 pytest.param(
+                    RemoveLabel(number=7, label="afk:in-progress"),
+                    ["gh", "issue", "edit", "7", "--remove-label", "afk:in-progress"],
+                    "app-token",
+                    id="removes a label with the App's token",
+                ),
+                pytest.param(
                     Comment(number=7, body="Hello `there`"),
                     ["gh", "issue", "comment", "7", "--body", "Hello `there`"],
                     "app-token",
                     id="comments with the App's token",
+                ),
+                pytest.param(
+                    React(comment_id=555, content="eyes"),
+                    [
+                        "gh",
+                        "api",
+                        "--method",
+                        "POST",
+                        "repos/{owner}/{repo}/issues/comments/555/reactions",
+                        "-f",
+                        "content=eyes",
+                    ],
+                    "app-token",
+                    id="reacts to a comment with the App's token",
                 ),
             ],
         )

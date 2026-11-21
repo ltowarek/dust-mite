@@ -5,6 +5,7 @@ version: 'v0.0.3'
 workflows:
     '.github/workflows/afk-dispatch.yml':
         - 'actions/create-github-app-token@v3.3.0'
+        - 'actions/setup-python@v7.1.0'
     '.github/workflows/afk-promote-queued.yml':
         - 'actions/create-github-app-token@v3.3.0'
         - 'actions/setup-python@v7.1.0'

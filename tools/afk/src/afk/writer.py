@@ -5,7 +5,14 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
-from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
+from afk.effects import (
+    Comment,
+    DispatchWorkflow,
+    Effect,
+    React,
+    RemoveLabel,
+    ReplaceLabel,
+)
 
 Runner = Callable[[Sequence[str], Mapping[str, str]], str]
 StepOutput = Callable[[Mapping[str, str]], None]
@@ -48,10 +55,21 @@ def gh_command(effect: Effect) -> GhCommand:
                 add,
             ]
             return GhCommand(["gh", *args], Token.APP)
+        case RemoveLabel(number=number, label=label):
+            return GhCommand(
+                ["gh", "issue", "edit", str(number), "--remove-label", label], Token.APP
+            )
         case Comment(number=number, body=body):
             return GhCommand(
                 ["gh", "issue", "comment", str(number), "--body", body], Token.APP
             )
+        case React(comment_id=comment_id, content=content):
+            # gh has no reaction subcommand; gh api takes {owner}/{repo} from GH_REPO.
+            endpoint = (
+                f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}/reactions"
+            )
+            args = ["api", "--method", "POST", endpoint, "-f", f"content={content}"]
+            return GhCommand(["gh", *args], Token.APP)
 
 
 class Writer:

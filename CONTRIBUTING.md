@@ -1198,13 +1198,15 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Enables auto-merge and approves the pull request as described in [Dependency updates](#dependency-updates)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-dispatch.yml](.github/workflows/afk-dispatch.yml)
+  - Is an entry workflow: one job mints the App's write token and passes the comment and its target to the [afk-dispatch](.github/actions/afk-dispatch/action.yml) action, which runs `python3 -m afk dispatch` from the same commit
   - Triggers on each new issue or pull request conversation comment, and acts only on an [AFK command](#afk-commands) whose author's account id is the repository owner's; it ignores every other comment without a reply or a reaction
   - Triggers on `issue_comment`, which runs on a pull request that conflicts with `main`, with a `zizmor: ignore[dangerous-triggers]` comment whose reason [ADR 0007](docs/adr/0007-start-afk-runs-by-comment-command.md) gives
   - Handles one command at a time in the `afk-dispatch` concurrency group with `queue: max`, so that two commands posted together cannot both pass the `afk:in-progress` check
   - Replies and reacts 😕 to an unknown verb, and to a command on a target labelled `afk:in-progress` or `afk:queued`
   - Labels a ticket or spec with open blocking tickets `afk:queued` for `/afk implement`, replies with the blocking tickets and the command's id in a hidden marker, and reacts 👀
   - Otherwise reacts 👀, replaces `afk:blocked` with `afk:in-progress`, and dispatches [afk-run.yml](.github/workflows/afk-run.yml) for `/afk implement` on an issue, [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) for `/afk implement` on a pull request, or [afk-update-branch.yml](.github/workflows/afk-update-branch.yml) for `/afk update-branch`, with the comment's id and, on a pull request, its head commit
-  - Labels, reacts and replies as the [AFK GitHub App](#afk-github-app); only the dispatch step uses its own `GITHUB_TOKEN`, which has `actions: write`
+  - When the job fails, reacts 😕 through the [afk-dispatch-release](.github/actions/afk-dispatch-release/action.yml) action, which also removes `afk:in-progress` if the command was accepted; the afk-dispatch action sets its `accepted` output before its first write, so that a failed write still releases the target
+  - Labels, reacts and replies as the [AFK GitHub App](#afk-github-app); only the dispatch uses its own `GITHUB_TOKEN`, which has `actions: write`
   - Times out after 5 minutes
 - [afk-run.yml](.github/workflows/afk-run.yml)
   - Runs an AFK run on a ticket or on a spec, which is an issue with child tickets

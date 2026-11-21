@@ -10,10 +10,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TextIO
 
-from afk import promote_queued
+from afk import dispatch, promote_queued
 from afk.writer import Runner, StepOutput
 
-PHASES = {"promote-queued": promote_queued.run}
+PHASES = {
+    "dispatch": dispatch.run,
+    "dispatch-release": dispatch.run_release,
+    "promote-queued": promote_queued.run,
+}
 
 
 def gh(args: Sequence[str], env: Mapping[str, str]) -> str:
