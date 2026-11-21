@@ -299,24 +299,24 @@ jobs:
             kind: issue
             body: '/afk deploy'
             assertion: '.[0].body | startswith("Unknown AFK command.")'
-          # #318 is closed and labelled afk:in-progress.
+          # #383, an AFK fixture, is closed and labelled afk:in-progress.
           - case: refuses a target in progress
-            number: 318
+            number: 383
             kind: issue
             body: '/afk implement'
             assertion: '.[0].body | startswith("Refused: an AFK run is already queued or running here")'
-          # #319 is closed and labelled afk:queued.
+          # #384, an AFK fixture, is closed and labelled afk:queued.
           - case: refuses a queued target
-            number: 319
+            number: 384
             kind: issue
             body: '/afk implement'
             assertion: '.[0].body | startswith("Refused: this ticket is waiting")'
-          # #320 is closed, has no AFK label, and is blocked by a ticket that stays open.
+          # #385, an AFK fixture, is closed, has no AFK label, and is blocked by #382, which stays open.
           - case: queues a ticket with open blockers
-            number: 320
+            number: 385
             kind: issue
             body: '/afk implement'
-            assertion: '.[1] == {"type":"ReplaceLabel","number":320,"remove":"afk:blocked","add":"afk:queued"}'
+            assertion: '.[1] == {"type":"ReplaceLabel","number":385,"remove":"afk:blocked","add":"afk:queued"}'
           - case: dispatches an issue's AFK run
             number: 317
             kind: issue
