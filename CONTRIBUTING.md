@@ -74,11 +74,13 @@ From repository root:
 
 ```bash
 ./scripts/install_git_hooks.sh
+./scripts/link_devcontainer_env.sh
 ```
 
-This installs a Git pre-commit hook that can run project checks.
-
+`install_git_hooks.sh` installs a Git pre-commit hook that can run project checks.
 The hook delegates to container-specific pre-commit scripts via `PRE_COMMIT_SCRIPT` configured in each devcontainer.
+
+`link_devcontainer_env.sh` links each devcontainer's `.env` to the root `.env` (see [Development environment](#development-environment)).
 
 [.claude/settings.json](.claude/settings.json) enables Matt Pocock's skills plugin for Claude Code, but enabling a plugin does not download it. Install it once per clone:
 
@@ -113,7 +115,7 @@ Available environments:
 - [.devcontainer/docs/](.devcontainer/docs/) for [docs/](docs/) updates (diagrams and image processing)
 - [.devcontainer/infrastructure/](.devcontainer/infrastructure/) for GitHub Actions workflows and repository-level scripts (see [Infrastructure](#infrastructure))
 
-Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, so VS Code builds and runs every devcontainer except `docs` as the host uid. Rebuild an existing devcontainer created before these symlinks existed to pick this up.
+Each devcontainer reads the root `.env` through its `.devcontainer/<name>/.env` symlink, so VS Code builds and runs every devcontainer except `docs` as the host uid. [scripts/link_devcontainer_env.sh](scripts/link_devcontainer_env.sh) creates these symlinks in each clone, and git ignores them. The script holds the list of devcontainers, so a new devcontainer must be added to that list. Without the symlinks, each devcontainer falls back to uid `1050`.
 
 There is currently no dedicated Raspberry Pi devcontainer profile. Use the Python devcontainer for shared lint/type/test workflows, and run Raspberry Pi camera runtime validation directly on Raspberry Pi OS.
 
