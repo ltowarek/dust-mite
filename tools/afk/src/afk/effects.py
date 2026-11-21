@@ -1,6 +1,7 @@
 """The writes that a phase plans, one dataclass per kind."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,13 @@ class Comment:
 
     number: int
     body: str
+
+
+class Reaction(StrEnum):
+    """A reaction to a comment, as GitHub names it."""
+
+    EYES = "eyes"
+    CONFUSED = "confused"
 
 
 @dataclass(frozen=True)

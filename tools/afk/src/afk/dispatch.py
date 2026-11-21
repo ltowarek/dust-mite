@@ -12,6 +12,7 @@ from afk.effects import (
     DispatchWorkflow,
     Effect,
     React,
+    Reaction,
     RemoveLabel,
     ReplaceLabel,
 )
@@ -60,13 +61,6 @@ class Kind(StrEnum):
     PR = "pr"
 
 
-class Reaction(StrEnum):
-    """The reactions that answer an AFK command."""
-
-    EYES = "eyes"
-    CONFUSED = "confused"
-
-
 @dataclass(frozen=True)
 class Target:
     """The issue or pull request that a command runs on, and the command's comment."""
@@ -77,9 +71,8 @@ class Target:
 
 @dataclass(frozen=True)
 class State:
-    """What the shell read about the command's target."""
+    """What the shell read about a target that no label refuses."""
 
-    labels: frozenset[str] = frozenset()
     open_blockers: tuple[int, ...] = ()
     head_sha: str | None = None
 
@@ -118,18 +111,23 @@ def _workflow(verb: Verb, kind: Kind) -> str:
     return "afk-run-pr.yml" if kind is Kind.PR else "afk-run.yml"
 
 
-def decide(verb: Verb, kind: Kind, state: State) -> Refusal | Queue | Accept:
-    """Decide whether a known command is refused, queued or accepted."""
-    if Label.IN_PROGRESS in state.labels:
+def refusal(labels: frozenset[str]) -> Refusal | None:
+    """Refuse a target that is in progress or queued, before any other read."""
+    if Label.IN_PROGRESS in labels:
         return Refusal(
             "Refused: an AFK run is already queued or running here "
             f"(`{Label.IN_PROGRESS}`)."
         )
-    if Label.QUEUED in state.labels:
+    if Label.QUEUED in labels:
         return Refusal(
             f"Refused: this ticket is waiting (`{Label.QUEUED}`) and starts when it "
             "is unblocked."
         )
+    return None
+
+
+def decide(verb: Verb, kind: Kind, state: State) -> Queue | Accept:
+    """Decide whether a known command on a target no label refuses is queued."""
     if verb is Verb.IMPLEMENT and kind is Kind.ISSUE and state.open_blockers:
         return Queue(blockers=state.open_blockers)
     return Accept(workflow=_workflow(verb, kind), head_sha=state.head_sha)
@@ -189,15 +187,17 @@ def _target(env: Mapping[str, str]) -> Target:
     return Target(number=int(env["AFK_NUMBER"]), comment_id=int(env["AFK_COMMENT_ID"]))
 
 
-def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> State:
+def _read_labels(gh: Runner, env: Mapping[str, str]) -> frozenset[str]:
     # Read now, not from the event: an earlier command may have changed the labels.
+    endpoint = f"repos/{env['GH_REPO']}/issues/{env['AFK_NUMBER']}"
+    issue = json.loads(gh(["gh", "api", endpoint], {**env, "GH_TOKEN": env[Token.APP]}))
+    return frozenset(label["name"] for label in issue["labels"])
+
+
+def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> State:
     repository = env["GH_REPO"]
     number = env["AFK_NUMBER"]
     read_env = {**env, "GH_TOKEN": env[Token.APP]}
-    issue = json.loads(
-        gh(["gh", "api", f"repos/{repository}/issues/{number}"], read_env)
-    )
-    labels = frozenset(label["name"] for label in issue["labels"])
     blockers: tuple[int, ...] = ()
     if verb is Verb.IMPLEMENT and kind is Kind.ISSUE:
         owner, name = repository.split("/")
@@ -222,7 +222,7 @@ def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> S
     if kind is Kind.PR:
         pr = gh(["gh", "pr", "view", number, "--json", "headRefOid"], read_env)
         head_sha = json.loads(pr)["headRefOid"]
-    return State(labels=labels, open_blockers=blockers, head_sha=head_sha)
+    return State(open_blockers=blockers, head_sha=head_sha)
 
 
 def run(gh: Runner, env: Mapping[str, str], output: StepOutput) -> None:
@@ -236,7 +236,9 @@ def run(gh: Runner, env: Mapping[str, str], output: StepOutput) -> None:
             effects = plan(target, Refusal(_UNKNOWN))
         case verb:
             kind = Kind(env["AFK_KIND"])
-            decision = decide(verb, kind, _read_state(gh, env, verb, kind))
+            decision = refusal(_read_labels(gh, env)) or decide(
+                verb, kind, _read_state(gh, env, verb, kind)
+            )
             if isinstance(decision, Accept):
                 # Set before the writes, so that the release step sees it if one fails.
                 output({"accepted": "true"})

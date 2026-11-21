@@ -19,6 +19,7 @@ from afk.dispatch import (
     open_blockers,
     parse,
     plan,
+    refusal,
     release,
 )
 from afk.effects import Comment, DispatchWorkflow, React, RemoveLabel, ReplaceLabel
@@ -66,37 +67,14 @@ class TestDecide:
             pytest.param(
                 Verb.IMPLEMENT,
                 Kind.ISSUE,
-                State(
-                    labels=frozenset({"afk:in-progress", "afk:queued"}),
-                    open_blockers=(4,),
-                ),
-                Refusal(
-                    "Refused: an AFK run is already queued or running here "
-                    "(`afk:in-progress`)."
-                ),
-                id="refuses a target in progress before anything else",
-            ),
-            pytest.param(
-                Verb.UPDATE_BRANCH,
-                Kind.PR,
-                State(labels=frozenset({"afk:queued"}), head_sha=HEAD_SHA),
-                Refusal(
-                    "Refused: this ticket is waiting (`afk:queued`) and starts when "
-                    "it is unblocked."
-                ),
-                id="refuses a queued target",
-            ),
-            pytest.param(
-                Verb.IMPLEMENT,
-                Kind.ISSUE,
-                State(labels=frozenset({"afk:blocked"}), open_blockers=(4, 9)),
+                State(open_blockers=(4, 9)),
                 Queue(blockers=(4, 9)),
                 id="queues a ticket with open blockers",
             ),
             pytest.param(
                 Verb.IMPLEMENT,
                 Kind.ISSUE,
-                State(labels=frozenset({"ready-for-agent"})),
+                State(),
                 Accept(workflow="afk-run.yml", head_sha=None),
                 id="runs an issue's implementation",
             ),
@@ -124,9 +102,40 @@ class TestDecide:
         ],
     )
     def test_decides_what_a_command_does(
-        self, verb: Verb, kind: Kind, state: State, decision: Refusal | Queue | Accept
+        self, verb: Verb, kind: Kind, state: State, decision: Queue | Accept
     ) -> None:
         assert decide(verb, kind, state) == decision
+
+
+class TestRefusal:
+    @pytest.mark.parametrize(
+        ("labels", "decision"),
+        [
+            pytest.param(
+                {"afk:in-progress", "afk:queued"},
+                Refusal(
+                    "Refused: an AFK run is already queued or running here "
+                    "(`afk:in-progress`)."
+                ),
+                id="refuses a target in progress before a queued one",
+            ),
+            pytest.param(
+                {"afk:queued"},
+                Refusal(
+                    "Refused: this ticket is waiting (`afk:queued`) and starts when "
+                    "it is unblocked."
+                ),
+                id="refuses a queued target",
+            ),
+            pytest.param(
+                {"afk:blocked", "ready-for-agent"}, None, id="refuses no other target"
+            ),
+        ],
+    )
+    def test_refuses_a_target_by_its_labels(
+        self, labels: set[str], decision: Refusal | None
+    ) -> None:
+        assert refusal(frozenset(labels)) == decision
 
 
 TARGET = Target(number=7, comment_id=555)
@@ -222,8 +231,8 @@ def gh_dummy(args: Sequence[str], _env: Mapping[str, str]) -> str:
     pytest.fail(f"ran {list(args)}")
 
 
-class GhFake:
-    """Answers the reads of an unlabelled, unblocked issue and fails the dispatch."""
+class GhSpy:
+    """Answers an open issue's reads, records its writes and fails the dispatch."""
 
     def __init__(self) -> None:
         self.writes: list[list[str]] = []
@@ -241,6 +250,12 @@ class GhFake:
             case write:
                 self.writes.append(write)
                 return ""
+
+
+def gh_in_progress_stub(args: Sequence[str], _env: Mapping[str, str]) -> str:
+    if list(args) != ["gh", "api", "repos/owner/repo/issues/7"]:
+        pytest.fail(f"ran {list(args)}")
+    return json.dumps({"labels": [{"name": "afk:in-progress"}]})
 
 
 class TestRun:
@@ -272,8 +287,19 @@ class TestRun:
 
         assert [json.loads(o["effects"]) for o in output.outputs] == [effects]
 
+    def test_reads_only_the_labels_of_a_refused_target(self) -> None:
+        output = OutputSpy()
+        env = {**ENV, "AFK_BODY": "/afk implement", "AFK_DRY_RUN": "true"}
+
+        dispatch.run(gh_in_progress_stub, env, output)
+
+        assert [e["type"] for e in json.loads(output.outputs[0]["effects"])] == [
+            "Comment",
+            "React",
+        ]
+
     def test_sets_accepted_before_a_dispatch_that_fails(self) -> None:
-        gh = GhFake()
+        gh = GhSpy()
         output = OutputSpy()
 
         with pytest.raises(subprocess.CalledProcessError):

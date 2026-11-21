@@ -364,6 +364,54 @@ jobs:
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$EFFECTS"
 
+  afk-dispatch-release:
+    name: afk-dispatch-release (${{ matrix.case }})
+
+    # The production job's permissions without its Actions write; the release writes only with the App's token.
+    permissions: {}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The release reads nothing, so #317 only names a closed ticket.
+          - case: releases an accepted target
+            accepted: 'true'
+            assertion: '. == [{"type":"RemoveLabel","number":317,"label":"afk:in-progress"},{"type":"React","comment_id":1,"content":"confused"}]'
+          - case: only reacts when the command was not accepted
+            accepted: ''
+            assertion: '. == [{"type":"React","comment_id":1,"content":"confused"}]'
+
+    steps:
+      - name: Mint the App's write token for labels and reactions
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Release the target as a dry run
+        id: release
+        uses: $/.github/actions/afk-dispatch-release
+        with:
+          number: 317
+          comment-id: 1
+          accepted: ${{ matrix.accepted }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: true
+
+      - name: Assert on the planned effects
+        shell: bash
+        env:
+          EFFECTS: ${{ steps.release.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: jq -e "$ASSERTION" <<<"$EFFECTS"
+
   actions-lock:
     permissions:
       contents: read
