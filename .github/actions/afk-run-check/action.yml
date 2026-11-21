@@ -1,0 +1,69 @@
+name: AFK run check
+description: Mark a ticket in progress, then decide whether its AFK run is refused, queued or goes ahead
+
+inputs:
+  number:
+    description: The ticket or spec
+    required: true
+  app-token:
+    description: The AFK App's token with Issues write, for the in-progress label
+    required: true
+  workflow-token:
+    description: A token with Issues read and Pull requests read for the reads
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  url:
+    description: The ticket's URL
+    value: ${{ steps.check.outputs.url }}
+  spec:
+    description: true when the ticket is a spec, whose run works on a child ticket
+    value: ${{ steps.check.outputs.spec }}
+  child-ticket:
+    description: The spec's child ticket that the run works on
+    value: ${{ steps.check.outputs.child-ticket }}
+  child-ticket-url:
+    description: The URL of the spec's child ticket that the run works on
+    value: ${{ steps.check.outputs.child-ticket-url }}
+  branch:
+    description: The branch that the run commits to
+    value: ${{ steps.check.outputs.branch }}
+  last-run:
+    description: true when the run is the ticket's or spec's last
+    value: ${{ steps.check.outputs.last-run }}
+  refusal:
+    description: The comment that refuses the run; empty when it goes ahead or is queued
+    value: ${{ steps.check.outputs.refusal }}
+  block:
+    description: true when a refusal also labels the ticket afk:blocked
+    value: ${{ steps.check.outputs.block }}
+  queue:
+    description: true when the spec waits in afk:queued until a child ticket is unblocked
+    value: ${{ steps.check.outputs.queue }}
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.check.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Mark the ticket in progress, and decide whether its run goes ahead
+      id: check
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_TICKET: ${{ inputs.number }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_WORKFLOW_TOKEN: ${{ inputs.workflow-token }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        "$AFK_PYTHON" -m afk run-check

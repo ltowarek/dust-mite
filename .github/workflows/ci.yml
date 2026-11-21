@@ -32,6 +32,7 @@ jobs:
       contents: read
       issues: read
       packages: write
+      pull-requests: read
 
     uses: $/.github/workflows/infrastructure.yml
     secrets:

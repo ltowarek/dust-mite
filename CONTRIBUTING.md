@@ -1177,7 +1177,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - [infrastructure.yml](.github/workflows/infrastructure.yml)
     - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
     - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure), and the `afk` package's checks and unit tests in the `afk` job
-    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests); `ci.yml` grants this area `issues: read` and passes it the AFK App's private key
+    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests); `ci.yml` grants this area `issues: read` and `pull-requests: read` and passes it the AFK App's private key
     - Verifies the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
   - [observability.yml](.github/workflows/observability.yml)
     - Runs the observability checks and the synthetic pipeline tests against the observability stack on the runner
@@ -1214,6 +1214,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Expects the `afk:in-progress`, `afk:queued`, `afk:blocked` and `source:follow-up` labels to exist in the repository
   - Queues every AFK run in one concurrency group, `afk-run`, with `queue: max`, so that runs go one at a time in the order that they were requested and no run is cancelled
   - Adds `afk:in-progress` when it starts, so that a run started from the Actions tab is labelled as well
+  - Makes that label and the refuse, queue or go-ahead decision below in its `check` job, which mints the App's write token and passes the ticket's number to the [afk-run-check](.github/actions/afk-run-check/action.yml) action, which runs `python -m afk run-check` from the same commit
   - Refuses, with a comment, a child ticket, which it also labels `afk:blocked`, a ticket or spec that has an open blocking ticket, a ticket that an open pull request already closes, and a spec whose child tickets are all closed; the refusals are checked when the run starts, so that a run that waited in the queue acts on the current state
   - Implements a spec one child ticket per run, as an AFK spec implementation:
     - Each run implements the first child ticket of the spec's frontier, the open child tickets with no open blocking ticket, in sub-issue order, on the spec's branch `agent/prd-<spec>-<slug>`, which keeps the commits of the earlier child tickets
@@ -1291,7 +1292,7 @@ Every action that writes takes a `dry-run` input. In a dry run, the action repor
 
 #### AFK action tests
 
-The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that runs the action against a real closed ticket and checks the action's `effects` with one `jq -e` assertion. A failing case names the behaviour that broke, and its log shows the planned effects. A case relies on its tickets staying in the state that its comment in [infrastructure.yml](.github/workflows/infrastructure.yml) describes; when one changes, pick another ticket.
+The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that runs the action against a real closed ticket and checks the action's outputs, such as its `effects`, with one `jq -e` assertion. A failing case names the behaviour that broke, and its log shows the outputs. A case relies on its tickets staying in the state that its comment in [infrastructure.yml](.github/workflows/infrastructure.yml) describes; when one changes, pick another ticket.
 
 ### AFK commands
 

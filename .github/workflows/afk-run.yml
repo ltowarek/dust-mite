@@ -35,15 +35,15 @@ jobs:
       pull-requests: read
 
     outputs:
-      url: ${{ steps.shape.outputs.url }}
-      spec: ${{ steps.shape.outputs.spec }}
-      child-ticket: ${{ steps.shape.outputs.child-ticket }}
-      child-ticket-url: ${{ steps.shape.outputs.child-ticket-url }}
-      branch: ${{ steps.shape.outputs.branch }}
-      last-run: ${{ steps.shape.outputs.last-run }}
-      refusal: ${{ steps.shape.outputs.refusal || steps.open-pr.outputs.refusal }}
-      block: ${{ steps.shape.outputs.block }}
-      queue: ${{ steps.shape.outputs.queue }}
+      url: ${{ steps.check.outputs.url }}
+      spec: ${{ steps.check.outputs.spec }}
+      child-ticket: ${{ steps.check.outputs.child-ticket }}
+      child-ticket-url: ${{ steps.check.outputs.child-ticket-url }}
+      branch: ${{ steps.check.outputs.branch }}
+      last-run: ${{ steps.check.outputs.last-run }}
+      refusal: ${{ steps.check.outputs.refusal }}
+      block: ${{ steps.check.outputs.block }}
+      queue: ${{ steps.check.outputs.queue }}
 
     steps:
       - name: Mint the App's write token for the label
@@ -54,77 +54,13 @@ jobs:
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-issues: write
 
-      # A run started from the Actions tab has no dispatcher to add it.
-      - name: Mark the ticket in progress
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$TICKET" --add-label afk:in-progress
-
-      - name: Read the ticket's child tickets and parent
-        id: shape
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          gh issue view "$TICKET" --json title,url,subIssuesSummary,parent > "$RUNNER_TEMP/ticket.json"
-          echo "url=$(jq -r .url "$RUNNER_TEMP/ticket.json")" >> "$GITHUB_OUTPUT"
-          child_tickets=$(jq .subIssuesSummary.total "$RUNNER_TEMP/ticket.json")
-          parent=$(jq -r '.parent.number // empty' "$RUNNER_TEMP/ticket.json")
-          open_blocking_tickets=$(gh api "repos/${GH_REPO}/issues/${TICKET}" --jq .issue_dependencies_summary.blocked_by)
-          if [ -z "$parent" ] && [ "$open_blocking_tickets" != 0 ]; then
-            echo "refusal=Refused to run: this ticket has an open blocking ticket. Comment \`/afk implement\` to queue it until its last blocking ticket closes." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$child_tickets" != 0 ]; then
-            open=$(gh api "repos/${GH_REPO}/issues/${TICKET}/sub_issues?per_page=100" --jq '[.[] | select(.state == "open")]')
-            if [ "$(jq length <<<"$open")" = 0 ]; then
-              echo "refusal=Refused to run: every child ticket of this spec is closed, so there is nothing to implement." >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            frontier=$(jq '[.[] | select(.issue_dependencies_summary.blocked_by == 0)]' <<<"$open")
-            if [ "$(jq length <<<"$frontier")" = 0 ]; then
-              blocking=$(jq -r '.[].number' <<<"$open" | while read -r child; do
-                gh api "repos/${GH_REPO}/issues/${child}/dependencies/blocked_by?per_page=100" --jq '[.[] | select(.state == "open") | .html_url]'
-              done | jq -s 'add')
-              loop=$(jq -n --argjson open "$open" --argjson blocking "$blocking" '($open | map(.html_url)) as $urls | $blocking | all(. as $url | $urls | index($url))')
-              if [ "$loop" = true ]; then
-                echo "block=true" >> "$GITHUB_OUTPUT"
-                echo "refusal=Refused to run: the open child tickets of this spec block only each other, so none can start. Remove a blocking link from the loop, then comment \`/afk implement\` again." >> "$GITHUB_OUTPUT"
-              else
-                echo "queue=true" >> "$GITHUB_OUTPUT"
-              fi
-              exit 0
-            fi
-            slug=$(jq -r '.title | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | .[0:50] | rtrimstr("-")' "$RUNNER_TEMP/ticket.json")
-            {
-              echo "spec=true"
-              echo "child-ticket=$(jq '.[0].number' <<<"$frontier")"
-              echo "child-ticket-url=$(jq -r '.[0].html_url' <<<"$frontier")"
-              echo "branch=agent/prd-${TICKET}-${slug}"
-              echo "last-run=$(jq 'length == 1' <<<"$open")"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -n "$parent" ]; then
-            echo "block=true" >> "$GITHUB_OUTPUT"
-            echo "refusal=Refused to run: this ticket is a child ticket of #${parent}. Child tickets run only through their spec; comment \`/afk implement\` on #${parent} instead." >> "$GITHUB_OUTPUT"
-          fi
-          {
-            echo "branch=afk/issue-${TICKET}-${RUN_ID}"
-            echo "last-run=true"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Look for an open PR that closes the ticket
-        id: open-pr
-        if: steps.shape.outputs.spec != 'true' && steps.shape.outputs.refusal == ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pr=$(gh pr list --state open --search "in:body \"#${TICKET}\"" --json url,body \
-            --jq "[.[] | select(.body | test(\"(?i)(closes|fixes|resolves)\\\\s+#${TICKET}\\\\b\"))][0].url // empty")
-          if [ -n "$pr" ]; then
-            echo "refusal=Refused to run: PR $pr already targets this ticket. Close it first, then comment \`/afk implement\` again." >> "$GITHUB_OUTPUT"
-          fi
+      - name: Mark the ticket in progress, and decide whether its run goes ahead
+        id: check
+        uses: $/.github/actions/afk-run-check
+        with:
+          number: ${{ inputs.number }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
 
   implement:
     needs: check
