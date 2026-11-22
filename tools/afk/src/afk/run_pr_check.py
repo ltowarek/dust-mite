@@ -153,11 +153,11 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Mark the PR in progress, then decide whether its AFK run goes ahead."""
     number = env["AFK_PR"]
     writer.write(EditLabels(number=int(number), add=(Label.IN_PROGRESS,)))
-    fields_ = (
+    view_fields = (
         "number,state,url,isCrossRepository,headRefName,headRefOid,comments,reviews"
     )
     view = json.loads(
-        run_gh(gh, env, Token.WORKFLOW, ["pr", "view", number, "--json", fields_])
+        run_gh(gh, env, Token.WORKFLOW, ["pr", "view", number, "--json", view_fields])
     )
     threads = read_graphql(gh, env, _REVIEW_THREADS_QUERY, number)
     result = check(

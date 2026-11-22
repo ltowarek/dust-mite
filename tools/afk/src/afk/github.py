@@ -52,7 +52,7 @@ class PullRequest:
 def read_graphql(
     gh: Runner, env: Mapping[str, str], query: str, number: int | str
 ) -> dict[str, Any]:
-    """Run `query` with the repository's owner, name and `number`, as the workflow."""
+    """Run `query` on the repository and `number`, with the workflow token."""
     owner, repo = env["GH_REPO"].split("/")
     args = [
         "api",
