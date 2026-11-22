@@ -8,7 +8,7 @@ from typing import Any
 
 from afk.agent import already_covered, read_agent_error, refuse_protected_merge
 from afk.effects import Comment, EditLabels, Effect, PushBranch
-from afk.git import run_git
+from afk.git import head_contains, run_git
 from afk.github import PullRequest
 from afk.labels import needs_car
 from afk.runner import Runner
@@ -54,9 +54,9 @@ def plan(
     ]
 
 
-def unfinished(status: str, *, merging: bool, contains: bool) -> str | None:
+def unfinished(*, dirty: bool, merging: bool, contains: bool) -> str | None:
     """Return why the agent's merge is unfinished, or None when it is committed."""
-    if status:
+    if dirty:
         return "The working tree has uncommitted changes."
     if merging:
         return "The merge is not committed."
@@ -73,17 +73,13 @@ def _merging(git: Runner, env: Mapping[str, str]) -> bool:
     return True
 
 
-def _contains(git: Runner, env: Mapping[str, str], commit: str) -> bool:
-    return run_git(git, env, ["rev-list", "--count", f"HEAD..{commit}"]).strip() == "0"
-
-
 def _refuse_unfinished(
     git: Runner, env: Mapping[str, str], head: str, main: str
 ) -> None:
     error = unfinished(
-        run_git(git, env, ["status", "--porcelain"]).strip(),
+        dirty=bool(run_git(git, env, ["status", "--porcelain"]).strip()),
         merging=_merging(git, env),
-        contains=_contains(git, env, head) and _contains(git, env, main),
+        contains=head_contains(git, env, head) and head_contains(git, env, main),
     )
     if error:
         raise SystemExit(error)

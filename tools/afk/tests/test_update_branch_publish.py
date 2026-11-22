@@ -79,32 +79,32 @@ class TestPlan:
 
 class TestUnfinished:
     @pytest.mark.parametrize(
-        ("status", "merging", "contains", "error"),
+        ("dirty", "merging", "contains", "error"),
         [
             pytest.param(
-                " M docs/a.md\n",
+                True,
                 False,
                 True,
                 "The working tree has uncommitted changes.",
                 id="fails on uncommitted changes",
             ),
             pytest.param(
-                "", True, True, "The merge is not committed.", id="fails mid-merge"
+                False, True, True, "The merge is not committed.", id="fails mid-merge"
             ),
             pytest.param(
-                "",
+                False,
                 False,
                 False,
                 "HEAD does not contain both the branch and main.",
                 id="fails when HEAD lost the branch or main",
             ),
-            pytest.param("", False, True, None, id="passes a finished merge"),
+            pytest.param(False, False, True, None, id="passes a finished merge"),
         ],
     )
     def test_says_why_the_merge_is_unfinished(
-        self, status: str, *, merging: bool, contains: bool, error: str | None
+        self, *, dirty: bool, merging: bool, contains: bool, error: str | None
     ) -> None:
-        assert unfinished(status, merging=merging, contains=contains) == error
+        assert unfinished(dirty=dirty, merging=merging, contains=contains) == error
 
 
 ENV = {

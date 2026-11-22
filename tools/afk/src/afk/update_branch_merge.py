@@ -4,7 +4,7 @@ import subprocess
 from collections.abc import Mapping
 from enum import StrEnum
 
-from afk.git import run_git
+from afk.git import head_contains, run_git
 from afk.runner import Runner
 from afk.writer import Writer
 
@@ -20,7 +20,7 @@ class Merge(StrEnum):
 
 
 def _merge(git: Runner, env: Mapping[str, str]) -> Merge:
-    if run_git(git, env, ["rev-list", "--count", f"HEAD..{_MAIN}"]).strip() == "0":
+    if head_contains(git, env, _MAIN):
         return Merge.UP_TO_DATE
     try:
         run_git(git, env, ["merge", "--no-edit", _MAIN])

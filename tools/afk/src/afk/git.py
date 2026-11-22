@@ -66,6 +66,11 @@ def read_commit_count(git: Runner, env: Mapping[str, str], base: str) -> int:
     return int(run_git(git, env, ["rev-list", "--count", f"{base}..HEAD"]))
 
 
+def head_contains(git: Runner, env: Mapping[str, str], commit: str) -> bool:
+    """Return whether HEAD already holds `commit`."""
+    return run_git(git, env, ["rev-list", "--count", f"HEAD..{commit}"]).strip() == "0"
+
+
 def read_head(git: Runner, env: Mapping[str, str]) -> str:
     """Return the commit that HEAD points at."""
     return run_git(git, env, ["rev-parse", "HEAD"]).strip()
