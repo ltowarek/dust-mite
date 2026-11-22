@@ -1319,6 +1319,8 @@ The `afk-update-branch-workflow` job likewise calls the pull request's own [afk-
 
 `ci.yml` grants the area `actions: write` only because the called workflow's `finish` job requests it to dispatch a spec's next run, and GitHub refuses to start a nested job that requests more than its caller grants; a dry run dispatches nothing.
 
+Dependabot pull requests run the same tests. The AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN` are therefore also Dependabot secrets, and in a dry run each run workflow adds `dependabot` to `claude-code-action`'s `allowed_bots`, because the action refuses a run that a bot outside that list started. A real AFK run never allows Dependabot.
+
 ### AFK commands
 
 The maintainer starts an AFK run with an AFK command: a new conversation comment on an issue or pull request whose first line is exactly one of the following commands. The rest of the comment is ignored, so a ticket's agent brief remains the only instruction to the AFK run.
