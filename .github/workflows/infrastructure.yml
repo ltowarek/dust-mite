@@ -748,7 +748,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
-    # The action reads no ticket, so each case names a closed one: #331 is the spec of the closed #363.
+    # The action reads no ticket, so each case names a closed one: #331 is the spec of the closed #363, and #391 is a merged PR.
     strategy:
       fail-fast: false
       matrix:
@@ -818,6 +818,33 @@ jobs:
                 and .[0].title == "Fix the camera"
                 and .[0].labels == ["needs-triage", "source:follow-up", "bug", "camera"]
                 and (.[0].body | startswith("> *Follow-up ticket filed by an AFK agent session while working #363.*"))
+          - case: reports a failed implement job on a PR
+            workflow: afk-run-pr
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              implement:
+                result: failure
+                outputs:
+                  agent-error: Out of turns.
+            assertion: >-
+              any(.[]; .type == "Comment" and .number == 391
+                and (.body | startswith("The AFK run on this PR failed.\n\n**Reason:** ")))
+          - case: comments the follow-ups already covered on the PR
+            workflow: afk-run-pr
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              implement:
+                result: success
+                outputs:
+                  agent-output: '{"thread_replies": [], "inline_comments": [], "top_level_comments": [], "needs_dut_run": false, "already_covered": [{"problem": "The camera breaks.", "covered_by": 363}]}'
+            assertion: >-
+              .[0] == {"type": "Comment", "number": 391, "body": "## Follow-ups already covered\n\n- The camera breaks. Covered by #363.\n"}
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments
@@ -833,7 +860,7 @@ jobs:
         id: finish
         uses: $/.github/actions/afk-finish
         with:
-          workflow: afk-run
+          workflow: ${{ matrix.workflow || 'afk-run' }}
           ticket: ${{ matrix.ticket }}
           needs: ${{ toJSON(matrix.needs) }}
           app-token: ${{ steps.write-token.outputs.token }}

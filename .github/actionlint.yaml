@@ -12,7 +12,7 @@ paths:
       # actionlint does not support the concurrency queue key yet: https://github.com/rhysd/actionlint/issues/657
       - '^unexpected key "queue" for "concurrency" section\. '
       # actionlint does not support the $/ self-repository syntax for actions yet: https://github.com/rhysd/actionlint/issues/711
-      - '^specifying action "\$/\.github/actions/afk-run-pr-(check|publish)" in invalid format because ref is missing\. '
+      - '^specifying action "\$/\.github/actions/afk-(run-pr-check|run-pr-publish|finish)" in invalid format because ref is missing\. '
   .github/workflows/afk-run.yml:
     ignore:
       # actionlint does not support the concurrency queue key yet: https://github.com/rhysd/actionlint/issues/657

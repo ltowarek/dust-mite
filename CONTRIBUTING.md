@@ -1268,6 +1268,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Files follow-up tickets and comments the follow-ups already covered, as [afk-run.yml](.github/workflows/afk-run.yml) does
   - Removes `afk:in-progress` when the run ends; after a failure, labels the pull request `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
   - Reacts 🚀 to the AFK command when the run succeeds, and 😕 when it fails or is refused
+  - Makes these last writes in its `finish` job, which passes the `needs` context to the [afk-finish](.github/actions/afk-finish/action.yml) action with the `workflow` input `afk-run-pr`, as [afk-run.yml](.github/workflows/afk-run.yml) does; after a failed write, the action labels the pull request `afk:blocked`, comments the failed write, removes `afk:in-progress`, reacts 😕 and fails
 - [afk-update-branch.yml](.github/workflows/afk-update-branch.yml)
   - Runs an AFK run that merges `main` into an open pull request's branch
   - Triggers on `workflow_dispatch` only, with the same inputs as [afk-run-pr.yml](.github/workflows/afk-run-pr.yml); the run is named `afk update-branch #<number>`

@@ -36,6 +36,7 @@ DONE = {
 BLOCK = EditLabels(number=12, add=("afk:blocked",))
 UNBLOCK = EditLabels(number=12, remove=("afk:blocked",))
 RELEASE = EditLabels(number=12, remove=("afk:in-progress",))
+PR_RUN = Run(workflow=Workflow.AFK_RUN_PR, ticket=12, comment_id=555, url=RUN_URL)
 
 
 def needs_context(
@@ -357,6 +358,56 @@ class TestPlan:
             CloseIssue(number=14, comment="Implemented in abc123"),
             UNBLOCK,
             DispatchWorkflow(workflow="afk-run.yml", inputs=inputs),
+        ]
+
+    def test_on_a_pr_refuses_the_pr_then_releases_it_and_reacts_confused(self) -> None:
+        refused = needs(check={"refusal": "Refused."}, implement_result="skipped")
+
+        assert plan(PR_RUN, refused, None) == [
+            Comment(number=12, body="Refused."),
+            RELEASE,
+            React(comment_id=555, content="confused"),
+        ]
+
+    def test_on_a_pr_clears_afk_blocked_releases_and_reacts_rocket_after_its_work(
+        self,
+    ) -> None:
+        assert plan(PR_RUN, needs(), None) == [
+            UNBLOCK,
+            RELEASE,
+            React(comment_id=555, content="rocket"),
+        ]
+
+    def test_comments_the_follow_ups_already_covered_on_the_pr(self) -> None:
+        output = {
+            "already_covered": [{"problem": "The camera\n breaks.", "covered_by": 30}]
+        }
+        finished = needs(
+            implement={"agent-output": json.dumps(output)}, implement_result="failure"
+        )
+
+        assert plan(PR_RUN, finished, "implement")[0] == Comment(
+            number=12,
+            body="## Follow-ups already covered\n\n"
+            "- The camera breaks. Covered by #30.\n",
+        )
+
+    def test_reports_a_failed_job_on_the_pr(self) -> None:
+        failed = needs(
+            implement={"agent-error": "Out of turns."}, implement_result="failure"
+        )
+
+        assert plan(PR_RUN, failed, f"implement{SEP}Run the agent") == [
+            BLOCK,
+            Comment(
+                number=12,
+                body="The AFK run on this PR failed.\n\n**Reason:** "
+                f"`implement{SEP}Run the agent` failed. The agent reported: Out of "
+                f"turns.\n\n**Run:** {RUN_URL}\n\nComment `/afk implement` to "
+                "retry.\n",
+            ),
+            RELEASE,
+            React(comment_id=555, content="confused"),
         ]
 
 

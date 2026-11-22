@@ -31,6 +31,7 @@ class Workflow(StrEnum):
     """The AFK run workflows that the finish phase ends."""
 
     AFK_RUN = "afk-run"
+    AFK_RUN_PR = "afk-run-pr"
 
 
 @dataclass(frozen=True)
@@ -153,14 +154,18 @@ def _follow_ups(run: Run, needs: Needs) -> list[Effect]:
     ]
 
 
-def _already_covered(needs: Needs) -> list[Effect]:
+def _already_covered(run: Run, needs: Needs) -> list[Effect]:
     lines = [
         f"- {_LINE_BREAK.sub(' ', item['problem'])} Covered by #{item['covered_by']}."
         for item in needs.agent_output.get("already_covered", [])
     ]
-    if not (needs.pr_url and lines):
+    if not lines:
         return []
     body = "## Follow-ups already covered\n\n{}\n".format("\n".join(lines))
+    if run.workflow == Workflow.AFK_RUN_PR:
+        return [Comment(number=run.ticket, body=body)]
+    if not needs.pr_url:
+        return []
     return [CommentPullRequest(branch=needs.branch, body=body)]
 
 
@@ -198,7 +203,9 @@ def _report_failure(run: Run, needs: Needs, step: str) -> list[Effect]:
     if needs.agent_error:
         reason = f"{reason} The agent reported: {needs.agent_error}"
     text = "The AFK run failed"
-    if needs.spec:
+    if run.workflow == Workflow.AFK_RUN_PR:
+        text = "The AFK run on this PR failed"
+    elif needs.spec:
         text = f"The AFK run failed on child ticket #{_worked(run, needs)}"
     return _stopped(run, text, reason, "Comment `/afk implement` to retry.")
 
@@ -238,7 +245,7 @@ def plan(run: Run, needs: Needs, step: str | None) -> list[Effect]:
     effects = [
         *_refuse(run, needs),
         *_follow_ups(run, needs),
-        *_already_covered(needs),
+        *_already_covered(run, needs),
         *_close_child_ticket(run, needs),
         *_clear_blocked(run, needs),
         *_stop_spec(run, needs),
@@ -250,7 +257,9 @@ def plan(run: Run, needs: Needs, step: str | None) -> list[Effect]:
         return [*effects, *_queue(run), *_release(run)]
     if needs.spec and needs.sha and not needs.last_run:
         return [*effects, *_dispatch_next_run(run)]
-    done = not needs.refusal and needs.implemented and needs.outcome == "done"
+    # A PR run has no outcome: its work is done when its implement job succeeds.
+    outcome = "done" if run.workflow == Workflow.AFK_RUN_PR else needs.outcome
+    done = not needs.refusal and needs.implemented and outcome == "done"
     reaction = Reaction.ROCKET if done else Reaction.CONFUSED
     return [*effects, *_release(run), *_react(run, reaction)]
 

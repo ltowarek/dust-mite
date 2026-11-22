@@ -24,13 +24,6 @@ concurrency:
   group: afk-run
   queue: max
 
-env:
-  PR: ${{ inputs.number }}
-  COMMENT_ID: ${{ inputs.comment-id }}
-  GH_REPO: ${{ github.repository }}
-  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-  ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
-
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -214,95 +207,12 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Refuse the PR
-        if: always() && needs.check.outputs.refusal != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          REFUSAL: ${{ needs.check.outputs.refusal }}
-        run: gh pr comment "$PR" --body "$REFUSAL"
-
-      - name: File the follow-up tickets
-        if: always() && needs.implement.outputs.agent-output != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTPUT: ${{ needs.implement.outputs.agent-output }}
-        run: |
-          jq -c '.follow_ups // [] | .[]' <<<"$OUTPUT" | while IFS= read -r follow_up; do
-            title=$(jq -r .title <<<"$follow_up")
-            labels=$(jq -r '[.type] + .components | join(",")' <<<"$follow_up")
-            {
-              printf '> *Follow-up ticket filed by an AFK agent session while working #%s.* ([run](%s))\n\n' "$PR" "$RUN_URL"
-              jq -r .body <<<"$follow_up"
-            } > "$RUNNER_TEMP/follow-up.md"
-            gh issue create \
-              --title "$title" \
-              --body-file "$RUNNER_TEMP/follow-up.md" \
-              --label needs-triage,source:follow-up \
-              --label "$labels"
-          done
-
-      - name: Comment the follow-ups already covered
-        if: always() && needs.implement.outputs.agent-output != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTPUT: ${{ needs.implement.outputs.agent-output }}
-        run: |
-          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
-          if [ -n "$already_covered" ]; then
-            printf '## Follow-ups already covered\n\n%s\n' "$already_covered" | gh pr comment "$PR" --body-file -
-          fi
-
-      - name: Clear afk:blocked after a successful run
-        if: always() && needs.implement.result == 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh pr edit "$PR" --remove-label afk:blocked
-
-      - name: Report the failure
-        if: always() && (failure() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          ACTIONS_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          AGENT_ERROR: ${{ needs.implement.outputs.agent-error }}
-        run: |
-          failed_step=$(GH_TOKEN="$ACTIONS_TOKEN" gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
-            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
-              | [.name, first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name)] | join(" › ")]
-              | first // "unknown step"')
-          reason="\`${failed_step}\` failed."
-          if [ -n "$AGENT_ERROR" ]; then
-            reason="${reason} The agent reported: ${AGENT_ERROR}"
-          fi
-          cat > "$RUNNER_TEMP/failure.md" <<EOF
-          The AFK run on this PR failed.
-
-          **Reason:** ${reason}
-
-          **Run:** ${RUN_URL}
-
-          Comment \`/afk implement\` to retry.
-          EOF
-          gh pr edit "$PR" --add-label afk:blocked
-          gh pr comment "$PR" --body-file "$RUNNER_TEMP/failure.md"
-
-      - name: Clear afk:in-progress
-        if: always()
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh pr edit "$PR" --remove-label afk:in-progress
-
-      - name: React to the AFK command
-        if: always() && inputs.comment-id != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          SUCCEEDED: ${{ needs.check.outputs.refusal == '' && needs.implement.result == 'success' && job.status == 'success' }}
-        run: |
-          content=confused
-          if [ "$SUCCEEDED" = true ]; then
-            content=rocket
-          fi
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="$content"
+      - name: Report how the run ended, and release the PR
+        uses: $/.github/actions/afk-finish
+        with:
+          workflow: afk-run-pr
+          ticket: ${{ inputs.number }}
+          comment-id: ${{ inputs.comment-id }}
+          needs: ${{ toJSON(needs) }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
