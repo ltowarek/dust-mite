@@ -480,21 +480,22 @@ class TestPlan:
 
 
 class TestNeeds:
-    def test_reads_a_branch_update_s_update_branch_job(self) -> None:
-        context = {
-            "check": {"result": "success", "outputs": {}},
-            "update-branch": {
-                "result": "failure",
-                "outputs": {"agent-error": "Out of turns."},
-            },
-        }
+    class TestParse:
+        def test_reads_a_branch_update_s_update_branch_job(self) -> None:
+            context = {
+                "check": {"result": "success", "outputs": {}},
+                "update-branch": {
+                    "result": "failure",
+                    "outputs": {"agent-error": "Out of turns."},
+                },
+            }
 
-        parsed = Needs.parse(context, Workflow.AFK_UPDATE_BRANCH)
+            parsed = Needs.parse(context, Workflow.AFK_UPDATE_BRANCH)
 
-        assert (parsed.implement_result, parsed.agent_error) == (
-            "failure",
-            "Out of turns.",
-        )
+            assert (parsed.implement_result, parsed.agent_error) == (
+                "failure",
+                "Out of turns.",
+            )
 
 
 class TestPlanFailure:

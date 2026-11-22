@@ -12,7 +12,6 @@ from tests.test_doubles import GhSpy, GitSpy, read_outputs
 ENV = {
     "AFK_BOT_NAME": "afk[bot]",
     "AFK_BOT_ID": "900",
-    "AFK_APP_TOKEN": "app-token",
 }
 MAIN = ("rev-parse", "origin/main")
 BEHIND = ("rev-list", "--count", "HEAD..origin/main")
