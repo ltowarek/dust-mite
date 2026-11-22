@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from afk.agent import read_agent_error, read_head, refuse_protected_changes
 from afk.effects import (
     Comment,
     CreateReviewComment,
@@ -15,7 +16,6 @@ from afk.effects import (
     PushBranch,
     ReplyToReviewComment,
 )
-from afk.publish import read_agent_error, refuse_protected_changes
 from afk.writer import Runner, Writer, run_git
 
 
@@ -113,6 +113,6 @@ def run(git: Runner, env: Mapping[str, str], writer: Writer) -> None:
     if not acted(output, commits):
         msg = "Refused to publish: the agent neither committed nor commented."
         raise SystemExit(msg)
-    head = run_git(git, env, None, ["rev-parse", "HEAD"]).strip()
+    head = read_head(git, env)
     for write in plan(output, pr, commits, head):
         _write(writer, write)

@@ -2,11 +2,11 @@
 
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
+from afk.agent import read_agent_error, read_head, refuse_protected_changes
 from afk.effects import (
     Comment,
     CreatePullRequest,
@@ -17,7 +17,7 @@ from afk.effects import (
     MarkPullRequestReady,
     PushBranch,
 )
-from afk.writer import Runner, Token, Writer, run_gh, run_git
+from afk.writer import Runner, Token, Writer, run_gh
 
 _LINE_BREAK = re.compile(r"\s*\n\s*")
 
@@ -32,22 +32,6 @@ class Run:
     branch: str
     last_run: bool
     url: str
-
-
-def protected(paths: Iterable[str]) -> list[str]:
-    """Return the changed files under `.github/` or `tools/`, sorted and unique."""
-    # Code here runs with the AFK App's write token in later runs (ADR 0008).
-    return sorted({path for path in paths if path.startswith((".github/", "tools/"))})
-
-
-def agent_error(execution: list[dict[str, Any]]) -> str:
-    """Return the error that the agent's last message reports, if any."""
-    if not execution:
-        return ""
-    last = execution[-1]
-    if last.get("type") != "result" or not last.get("is_error"):
-        return ""
-    return str(last.get("result") or "")
 
 
 def _already_covered(output: Mapping[str, Any]) -> str:
@@ -125,29 +109,9 @@ def plan(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effec
             raise ValueError(msg)
 
 
-def changed_files(log: str) -> list[str]:
-    """Return the files in the NUL-separated `git log` of the agent's commits."""
-    return [path for path in log.split("\0") if path]
-
-
 def open_pull_request(response: list[dict[str, Any]]) -> str | None:
     """Return the URL of the branch's open PR from `gh pr list`."""
     return str(response[0]["url"]) if response else None
-
-
-def _read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[str]:
-    # Per commit and unquoted; replace refs could hide a commit that the push sends.
-    args = [
-        "--no-replace-objects",
-        "log",
-        "-z",
-        "--format=",
-        "--name-only",
-        "--no-renames",
-        "--diff-merges=first-parent",
-        f"{base}..HEAD",
-    ]
-    return changed_files(run_git(git, env, None, args))
 
 
 def _read_open_pull_request(
@@ -155,25 +119,6 @@ def _read_open_pull_request(
 ) -> str | None:
     args = ["pr", "list", "--head", branch, "--state", "open", "--json", "url"]
     return open_pull_request(json.loads(run_gh(gh, env, Token.APP, args)))
-
-
-def read_agent_error(env: Mapping[str, str]) -> str:
-    """Return the error in the agent's execution file, if any."""
-    execution_file = env.get("AFK_EXECUTION_FILE", "")
-    execution = json.loads(Path(execution_file).read_text()) if execution_file else []
-    return agent_error(execution)
-
-
-def refuse_protected_changes(git: Runner, env: Mapping[str, str], base: str) -> None:
-    """Fail when an agent commit after `base` changes `.github/` or `tools/`."""
-    refused = protected(_read_changed_files(git, env, base))
-    if refused:
-        msg = (
-            f"Refused to publish: the agent's commits change {', '.join(refused)}. "
-            "Code under .github/ and tools/ runs with the AFK App's write token, "
-            "so only a human changes it."
-        )
-        raise SystemExit(msg)
 
 
 def _published(env: Mapping[str, str]) -> Run:
@@ -187,10 +132,6 @@ def _published(env: Mapping[str, str]) -> Run:
         url=f"{env['GITHUB_SERVER_URL']}/{repository}/actions/runs/"
         f"{env['GITHUB_RUN_ID']}",
     )
-
-
-def _read_head(git: Runner, env: Mapping[str, str]) -> str:
-    return run_git(git, env, None, ["rev-parse", "HEAD"]).strip()
 
 
 def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None:
@@ -210,4 +151,4 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
     if done:
         pr_url = _read_open_pull_request(gh, env, published.branch)
         writer.set_output("pr-url", pr_url or "")
-        writer.set_output("sha", _read_head(git, env))
+        writer.set_output("sha", read_head(git, env))
