@@ -71,11 +71,12 @@ class EditPullRequest:
 
 
 @dataclass(frozen=True)
-class AddPullRequestLabel:
-    """Add a label to a branch's open pull request."""
+class EditPullRequestLabels:
+    """Add and remove labels of a branch's open pull request in one edit."""
 
     branch: str
-    label: str
+    add: tuple[str, ...] = ()
+    remove: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,6 @@ Effect = (
     | PushBranch
     | CreatePullRequest
     | EditPullRequest
-    | AddPullRequestLabel
+    | EditPullRequestLabels
     | MarkPullRequestReady
 )

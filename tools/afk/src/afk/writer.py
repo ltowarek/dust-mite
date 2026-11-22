@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import TextIO
 
 from afk.effects import (
-    AddPullRequestLabel,
     Comment,
     CreatePullRequest,
     DispatchWorkflow,
     EditLabels,
     EditPullRequest,
+    EditPullRequestLabels,
     Effect,
     MarkPullRequestReady,
     PushBranch,
@@ -58,11 +58,7 @@ def gh_command(effect: Effect) -> GhCommand:
                 ["gh", "workflow", "run", workflow, *fields], Token.WORKFLOW
             )
         case EditLabels(number=number, add=add, remove=remove):
-            flags = [
-                *(arg for label in add for arg in ("--add-label", label)),
-                *(arg for label in remove for arg in ("--remove-label", label)),
-            ]
-            args = ["gh", "issue", "edit", str(number), *flags]
+            args = ["gh", "issue", "edit", str(number), *_label_flags(add, remove)]
         case Comment(number=number, body=body):
             args = ["gh", "issue", "comment", str(number), "--body", body]
         case React(comment_id=comment_id, content=content):
@@ -79,11 +75,18 @@ def gh_command(effect: Effect) -> GhCommand:
             args = ["gh", "pr", "create", "--draft", *pr]
         case EditPullRequest(branch=branch, title=title, body=body):
             args = ["gh", "pr", "edit", branch, "--title", title, "--body", body]
-        case AddPullRequestLabel(branch=branch, label=label):
-            args = ["gh", "pr", "edit", branch, "--add-label", label]
+        case EditPullRequestLabels(branch=branch, add=add, remove=remove):
+            args = ["gh", "pr", "edit", branch, *_label_flags(add, remove)]
         case MarkPullRequestReady(branch=branch):
             args = ["gh", "pr", "ready", branch]
     return GhCommand(args, Token.APP)
+
+
+def _label_flags(add: Sequence[str], remove: Sequence[str]) -> list[str]:
+    return [
+        *(arg for label in add for arg in ("--add-label", label)),
+        *(arg for label in remove for arg in ("--remove-label", label)),
+    ]
 
 
 def _push(repository: str, branch: str) -> list[str]:

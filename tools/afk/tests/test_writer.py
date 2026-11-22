@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 
 from afk.effects import (
-    AddPullRequestLabel,
     Comment,
     CreatePullRequest,
     DispatchWorkflow,
     EditLabels,
     EditPullRequest,
+    EditPullRequestLabels,
     Effect,
     MarkPullRequestReady,
     PushBranch,
@@ -37,7 +37,7 @@ PUBLISH_EFFECTS: list[Effect] = [
     PushBranch(repository="owner/repo", branch="afk/issue-7-100"),
     CreatePullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
     EditPullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
-    AddPullRequestLabel(branch="afk/issue-7-100", label="needs-car:copper"),
+    EditPullRequestLabels(branch="afk/issue-7-100", add=("needs-car:copper",)),
     MarkPullRequestReady(branch="afk/issue-7-100"),
 ]
 
@@ -170,8 +170,10 @@ class TestWriter:
                     id="edits a branch's PR with the App's token",
                 ),
                 pytest.param(
-                    AddPullRequestLabel(
-                        branch="afk/issue-7-100", label="needs-car:copper"
+                    EditPullRequestLabels(
+                        branch="afk/issue-7-100",
+                        add=("needs-car:copper",),
+                        remove=("afk:blocked",),
                     ),
                     [
                         "gh",
@@ -180,9 +182,11 @@ class TestWriter:
                         "afk/issue-7-100",
                         "--add-label",
                         "needs-car:copper",
+                        "--remove-label",
+                        "afk:blocked",
                     ],
                     "app-token",
-                    id="labels a branch's PR with the App's token",
+                    id="adds and removes a branch's PR labels with the App's token",
                 ),
                 pytest.param(
                     MarkPullRequestReady(branch="afk/issue-7-100"),

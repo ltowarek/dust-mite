@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from afk.effects import (
-    AddPullRequestLabel,
     Comment,
     CreatePullRequest,
     EditLabels,
     EditPullRequest,
+    EditPullRequestLabels,
     Effect,
     MarkPullRequestReady,
     PushBranch,
@@ -75,7 +75,7 @@ def _done(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effe
         return effects
     if output["needs_dut_run"]:
         label = f"needs-car:{output.get('car_variant', '')}"
-        effects.append(AddPullRequestLabel(branch=run.branch, label=label))
+        effects.append(EditPullRequestLabels(branch=run.branch, add=(label,)))
     else:
         effects.append(MarkPullRequestReady(branch=run.branch))
     return effects

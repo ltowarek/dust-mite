@@ -10,11 +10,11 @@ import pytest
 
 from afk import publish
 from afk.effects import (
-    AddPullRequestLabel,
     Comment,
     CreatePullRequest,
     EditLabels,
     EditPullRequest,
+    EditPullRequestLabels,
     Effect,
     MarkPullRequestReady,
     PushBranch,
@@ -102,8 +102,8 @@ class TestPlan:
                 ),
                 pytest.param(
                     make_output(needs_dut_run=True, car_variant="copper"),
-                    AddPullRequestLabel(
-                        branch="afk/issue-7-100", label="needs-car:copper"
+                    EditPullRequestLabels(
+                        branch="afk/issue-7-100", add=("needs-car:copper",)
                     ),
                     id="labels the PR for the car when it needs a DUT run",
                 ),
