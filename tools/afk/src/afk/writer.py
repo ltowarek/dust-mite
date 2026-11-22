@@ -22,6 +22,7 @@ from afk.effects import (
     React,
 )
 
+# Runs one program; its arguments leave out the program name.
 Runner = Callable[[Sequence[str], Mapping[str, str]], str]
 
 
@@ -46,7 +47,7 @@ def git_env(env: Mapping[str, str]) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class GhCommand:
-    """A `gh` command line and the variable that holds the token it runs with."""
+    """A `gh` call's arguments, and the variable that holds its token."""
 
     args: list[str]
     token: Token
@@ -54,7 +55,7 @@ class GhCommand:
 
 @dataclass(frozen=True)
 class GitCommand:
-    """A `git` command line, and whether it runs with the App's token."""
+    """A `git` call's arguments, and whether it runs with the App's token."""
 
     args: list[str]
     authenticated: bool
@@ -68,31 +69,29 @@ def command(effect: Effect) -> GhCommand | GitCommand:
                 arg for key, value in inputs.items() for arg in ("-f", f"{key}={value}")
             ]
             # The App has no Actions write permission, so it cannot dispatch.
-            return GhCommand(
-                ["gh", "workflow", "run", workflow, *fields], Token.WORKFLOW
-            )
+            return GhCommand(["workflow", "run", workflow, *fields], Token.WORKFLOW)
         case EditLabels(number=number, add=add, remove=remove):
-            args = ["gh", "issue", "edit", str(number), *_label_flags(add, remove)]
+            args = ["issue", "edit", str(number), *_label_flags(add, remove)]
         case Comment(number=number, body=body):
-            args = ["gh", "issue", "comment", str(number), "--body", body]
+            args = ["issue", "comment", str(number), "--body", body]
         case React(comment_id=comment_id, content=content):
             # gh has no reaction subcommand; gh api takes {owner}/{repo} from GH_REPO.
             endpoint = (
                 f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}/reactions"
             )
-            args = ["gh", "api", "--method", "POST", endpoint]
+            args = ["api", "--method", "POST", endpoint]
             args += ["-f", f"content={content}"]
         case PushBranch(repository=repository, branch=branch):
             return GitCommand(_push(repository, branch), authenticated=True)
         case CreatePullRequest(branch=branch, title=title, body=body):
             pr = ["--base", "main", "--head", branch, "--title", title, "--body", body]
-            args = ["gh", "pr", "create", "--draft", *pr]
+            args = ["pr", "create", "--draft", *pr]
         case EditPullRequest(branch=branch, title=title, body=body):
-            args = ["gh", "pr", "edit", branch, "--title", title, "--body", body]
+            args = ["pr", "edit", branch, "--title", title, "--body", body]
         case EditPullRequestLabels(branch=branch, add=add, remove=remove):
-            args = ["gh", "pr", "edit", branch, *_label_flags(add, remove)]
+            args = ["pr", "edit", branch, *_label_flags(add, remove)]
         case MarkPullRequestReady(branch=branch):
-            args = ["gh", "pr", "ready", branch]
+            args = ["pr", "ready", branch]
     return GhCommand(args, Token.APP)
 
 
@@ -106,7 +105,6 @@ def _label_flags(add: Sequence[str], remove: Sequence[str]) -> list[str]:
 def _push(repository: str, branch: str) -> list[str]:
     # Runs none of the agent's hooks or credential helpers.
     return [
-        "git",
         "-c",
         "core.hooksPath=/dev/null",
         "-c",

@@ -28,11 +28,12 @@ def _phases(gh: Runner, git: Runner) -> dict[str, Phase]:
 
 def _runner(program: str) -> Runner:
     def run(args: Sequence[str], env: Mapping[str, str]) -> str:
-        if args[0] != program:
-            msg = f"Not a {program} command: {list(args)}"
-            raise ValueError(msg)
         return subprocess.run(  # noqa: S603 - ADR 0008 makes the `gh` and `git` command lines the shell's interface
-            args, env=dict(env), check=True, stdout=subprocess.PIPE, text=True
+            [program, *args],
+            env=dict(env),
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
         ).stdout
 
     return run

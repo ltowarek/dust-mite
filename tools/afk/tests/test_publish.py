@@ -331,7 +331,6 @@ ENV = {
     "GITHUB_SERVER_URL": "https://github.com",
 }
 CHANGED_FILES_READ = (
-    "git",
     "--no-replace-objects",
     "log",
     "-z",
@@ -342,7 +341,6 @@ CHANGED_FILES_READ = (
     "base123..HEAD",
 )
 OPEN_PR_READ = (
-    "gh",
     "pr",
     "list",
     "--head",
@@ -352,7 +350,7 @@ OPEN_PR_READ = (
     "--json",
     "url",
 )
-HEAD_READ = ("git", "rev-parse", "HEAD")
+HEAD_READ = ("rev-parse", "HEAD")
 GH_READS: dict[tuple[str, ...], str] = {OPEN_PR_READ: json.dumps([{"url": PR_URL}])}
 GIT_READS: dict[tuple[str, ...], str] = {
     CHANGED_FILES_READ: "docs/a.md\0",
@@ -384,7 +382,7 @@ class TestRun:
 
         publish.run(gh, git, ENV, Writer(gh, git, ENV, tmp_path / "output"))
 
-        assert {c.token for c in gh.calls if c.args[:3] == ["gh", "pr", "list"]} == {
+        assert {c.token for c in gh.calls if c.args[:2] == ["pr", "list"]} == {
             "app-token"
         }
 
@@ -424,7 +422,7 @@ class TestRun:
         }
 
     def test_sets_the_outcome_before_a_push_that_fails(self, tmp_path: Path) -> None:
-        gh, git = GhSpy(GH_READS), GitSpy(GIT_READS, failing=("git", "-c"))
+        gh, git = GhSpy(GH_READS), GitSpy(GIT_READS, failing=("-c",))
         output = tmp_path / "output"
 
         with pytest.raises(subprocess.CalledProcessError):

@@ -205,7 +205,7 @@ def _target(env: Mapping[str, str]) -> Target:
 def _read_issue(gh: Runner, env: Mapping[str, str]) -> Issue:
     # Read now, not from the event: an earlier command may have changed the labels.
     endpoint = f"repos/{env['GH_REPO']}/issues/{env['AFK_NUMBER']}"
-    return issue(json.loads(run_gh(gh, env, Token.APP, ["gh", "api", endpoint])))
+    return issue(json.loads(run_gh(gh, env, Token.APP, ["api", endpoint])))
 
 
 def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> State:
@@ -219,7 +219,6 @@ def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> S
             env,
             Token.APP,
             [
-                "gh",
                 "api",
                 "graphql",
                 "-f",
@@ -235,9 +234,7 @@ def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> S
         blockers = open_blockers(json.loads(response))
     head_sha = None
     if kind is Kind.PR:
-        pr = run_gh(
-            gh, env, Token.APP, ["gh", "pr", "view", number, "--json", "headRefOid"]
-        )
+        pr = run_gh(gh, env, Token.APP, ["pr", "view", number, "--json", "headRefOid"])
         head_sha = json.loads(pr)["headRefOid"]
     return State(open_blockers=blockers, head_sha=head_sha)
 

@@ -127,7 +127,6 @@ def plan(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effec
 
 
 _CHANGED_FILES = [
-    "git",
     "--no-replace-objects",
     "log",
     "-z",
@@ -151,7 +150,7 @@ def open_pull_request(response: list[dict[str, Any]]) -> str | None:
 def _read_open_pull_request(
     gh: Runner, env: Mapping[str, str], branch: str
 ) -> str | None:
-    args = ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url"]
+    args = ["pr", "list", "--head", branch, "--state", "open", "--json", "url"]
     return open_pull_request(json.loads(run_gh(gh, env, Token.APP, args)))
 
 
@@ -195,6 +194,4 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
     if done:
         pr_url = _read_open_pull_request(gh, env, published.branch)
         writer.set_output("pr-url", pr_url or "")
-        writer.set_output(
-            "sha", git(["git", "rev-parse", "HEAD"], git_env(env)).strip()
-        )
+        writer.set_output("sha", git(["rev-parse", "HEAD"], git_env(env)).strip())

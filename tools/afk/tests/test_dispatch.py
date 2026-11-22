@@ -281,7 +281,7 @@ ENV = {
     "AFK_BODY": "/afk implement",
     "GH_REPO": "owner/repo",
 }
-ISSUE_READ = ("gh", "api", "repos/owner/repo/issues/7")
+ISSUE_READ = ("api", "repos/owner/repo/issues/7")
 NO_BLOCKERS = json.dumps(
     {"data": {"repository": {"issue": {"blockedBy": {"nodes": []}}}}}
 )
@@ -300,9 +300,9 @@ class TestRun:
         gh = GhSpy(
             {
                 ISSUE_READ: json.dumps({"labels": []}),
-                ("gh", "api", "graphql"): NO_BLOCKERS,
+                ("api", "graphql"): NO_BLOCKERS,
             },
-            failing=("gh", "workflow", "run"),
+            failing=("workflow", "run"),
         )
         output = tmp_path / "output"
 

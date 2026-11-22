@@ -53,7 +53,6 @@ class TestWriter:
                         inputs={"number": "7", "comment-id": "555"},
                     ),
                     [
-                        "gh",
                         "workflow",
                         "run",
                         "afk-run.yml",
@@ -72,7 +71,6 @@ class TestWriter:
                         remove=("afk:queued", "afk:in-progress"),
                     ),
                     [
-                        "gh",
                         "issue",
                         "edit",
                         "7",
@@ -90,20 +88,19 @@ class TestWriter:
                 ),
                 pytest.param(
                     EditLabels(number=7, remove=("afk:in-progress",)),
-                    ["gh", "issue", "edit", "7", "--remove-label", "afk:in-progress"],
+                    ["issue", "edit", "7", "--remove-label", "afk:in-progress"],
                     "app-token",
                     id="only removes labels when it adds none",
                 ),
                 pytest.param(
                     Comment(number=7, body="Hello `there`"),
-                    ["gh", "issue", "comment", "7", "--body", "Hello `there`"],
+                    ["issue", "comment", "7", "--body", "Hello `there`"],
                     "app-token",
                     id="comments with the App's token",
                 ),
                 pytest.param(
                     React(comment_id=555, content="eyes"),
                     [
-                        "gh",
                         "api",
                         "--method",
                         "POST",
@@ -119,7 +116,6 @@ class TestWriter:
                         branch="afk/issue-7-100", title="feat: x", body="Closes #7"
                     ),
                     [
-                        "gh",
                         "pr",
                         "create",
                         "--draft",
@@ -140,7 +136,6 @@ class TestWriter:
                         branch="afk/issue-7-100", title="feat: x", body="Closes #7"
                     ),
                     [
-                        "gh",
                         "pr",
                         "edit",
                         "afk/issue-7-100",
@@ -159,7 +154,6 @@ class TestWriter:
                         remove=("afk:blocked",),
                     ),
                     [
-                        "gh",
                         "pr",
                         "edit",
                         "afk/issue-7-100",
@@ -173,7 +167,7 @@ class TestWriter:
                 ),
                 pytest.param(
                     MarkPullRequestReady(branch="afk/issue-7-100"),
-                    ["gh", "pr", "ready", "afk/issue-7-100"],
+                    ["pr", "ready", "afk/issue-7-100"],
                     "app-token",
                     id="marks a branch's PR ready with the App's token",
                 ),
@@ -202,7 +196,6 @@ class TestWriter:
                 [
                     GitCall(
                         [
-                            "git",
                             "-c",
                             "core.hooksPath=/dev/null",
                             "-c",

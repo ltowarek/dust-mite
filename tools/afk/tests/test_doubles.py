@@ -14,9 +14,7 @@ Call = TypeVar("Call")
 
 
 class _Spy(Generic[Call]):
-    """Record one program's calls, answer its reads from canned output, and fail."""
-
-    program: str
+    """Record a program's calls, answer its reads from canned output, and fail."""
 
     def __init__(
         self,
@@ -32,9 +30,6 @@ class _Spy(Generic[Call]):
         self.calls: list[Call] = []
 
     def _answer(self, args: list[str]) -> str:
-        if args[0] != self.program:
-            msg = f"Not a {self.program} command: {args}"
-            raise ValueError(msg)
         if (
             self._failing is not None
             and tuple(args[: len(self._failing)]) == self._failing
@@ -46,7 +41,7 @@ class _Spy(Generic[Call]):
 
 @dataclass(frozen=True)
 class GhCall:
-    """One `gh` command line, and the token and repository it ran with."""
+    """One `gh` call's arguments, and the token and repository it ran with."""
 
     args: list[str]
     token: str
@@ -54,9 +49,7 @@ class GhCall:
 
 
 class GhSpy(_Spy[GhCall]):
-    """Record every `gh` call, and refuse any other program's."""
-
-    program = "gh"
+    """Record every `gh` call."""
 
     def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
         """Record the call, then answer or fail it."""
@@ -67,16 +60,14 @@ class GhSpy(_Spy[GhCall]):
 
 @dataclass(frozen=True)
 class GitCall:
-    """One `git` command line, and the configuration its environment added."""
+    """One `git` call's arguments, and the configuration its environment added."""
 
     args: list[str]
     config: dict[str, str]
 
 
 class GitSpy(_Spy[GitCall]):
-    """Record every `git` call; refuse any other program's, or a token variable."""
-
-    program = "git"
+    """Record every `git` call, and refuse one that carries a token variable."""
 
     def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
         """Record the call, then answer or fail it."""

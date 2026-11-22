@@ -366,9 +366,9 @@ ENV = {
     "GITHUB_RUN_ID": RUN_ID,
     "GH_REPO": "owner/repo",
 }
-ISSUE_READ = ("gh", "api", "repos/owner/repo/issues/7")
-CHILD_TICKETS_READ = ("gh", "api", "repos/owner/repo/issues/7/sub_issues?per_page=100")
-CLOSING_PULL_REQUESTS_READ = ("gh", "api", "graphql")
+ISSUE_READ = ("api", "repos/owner/repo/issues/7")
+CHILD_TICKETS_READ = ("api", "repos/owner/repo/issues/7/sub_issues?per_page=100")
+CLOSING_PULL_REQUESTS_READ = ("api", "graphql")
 PLAIN_TICKET_READS: dict[tuple[str, ...], str] = {
     ISSUE_READ: json.dumps(make_issue(7)),
     CHILD_TICKETS_READ: "[]",
@@ -385,7 +385,7 @@ class TestRun:
         run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, tmp_path / "output"))
 
         assert gh.calls[0] == GhCall(
-            ["gh", "issue", "edit", "7", "--add-label", "afk:in-progress"],
+            ["issue", "edit", "7", "--add-label", "afk:in-progress"],
             "app-token",
             "owner/repo",
         )
@@ -453,7 +453,6 @@ class TestRun:
     ) -> None:
         children = [make_issue(8, blocked_by=1)]
         blockers_read = (
-            "gh",
             "api",
             "repos/owner/repo/issues/8/dependencies/blocked_by?per_page=100",
         )

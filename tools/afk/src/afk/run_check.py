@@ -197,7 +197,7 @@ def check(run_id: str, state: State) -> CheckResult:
 
 
 def _read(gh: Runner, env: Mapping[str, str], *args: str) -> str:
-    return run_gh(gh, env, Token.WORKFLOW, ["gh", *args])
+    return run_gh(gh, env, Token.WORKFLOW, args)
 
 
 def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from afk.__main__ import gh, git, main
+from afk.__main__ import main
 from tests.test_doubles import GhSpy, GitSpy
 
 NO_BLOCKED_TICKETS = json.dumps(
@@ -31,7 +31,7 @@ class TestMain:
 
         main(
             ["promote-queued"],
-            GhSpy({("gh", "api", "graphql"): NO_BLOCKED_TICKETS}),
+            GhSpy({("api", "graphql"): NO_BLOCKED_TICKETS}),
             GitSpy(),
             env,
         )
@@ -58,13 +58,3 @@ class TestMain:
                 GitSpy(),
                 {"GITHUB_OUTPUT": str(tmp_path / "output")},
             )
-
-
-class TestRunners:
-    def test_gh_refuses_a_git_command(self) -> None:
-        with pytest.raises(ValueError, match="Not a gh command"):
-            gh(["git", "rev-parse", "HEAD"], {})
-
-    def test_git_refuses_a_gh_command(self) -> None:
-        with pytest.raises(ValueError, match="Not a git command"):
-            git(["gh", "pr", "list"], {})
