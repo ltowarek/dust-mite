@@ -9,7 +9,15 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from afk import dispatch, finish, promote_queued, publish, run_check, run_pr_check
+from afk import (
+    dispatch,
+    finish,
+    promote_queued,
+    publish,
+    run_check,
+    run_pr_check,
+    run_pr_publish,
+)
 from afk.writer import Runner, Writer
 
 Phase = Callable[[Mapping[str, str], Writer], None]
@@ -25,6 +33,7 @@ def _phases(gh: Runner, git: Runner) -> dict[str, Phase]:
         "publish": functools.partial(publish.run, gh, git),
         "run-check": functools.partial(run_check.run, gh),
         "run-pr-check": functools.partial(run_pr_check.run, gh),
+        "run-pr-publish": functools.partial(run_pr_publish.run, git),
     }
 
 

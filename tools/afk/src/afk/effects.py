@@ -47,10 +47,11 @@ class React:
 
 @dataclass(frozen=True)
 class PushBranch:
-    """Push `HEAD` to a branch of a repository."""
+    """Push `HEAD` to a branch of a repository, only from `lease` when set."""
 
     repository: str
     branch: str
+    lease: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,26 @@ class CommentPullRequest:
 
 
 @dataclass(frozen=True)
+class ReplyToReviewComment:
+    """Reply in the review thread that a PR's review comment starts."""
+
+    number: int
+    comment_id: int
+    body: str
+
+
+@dataclass(frozen=True)
+class CreateReviewComment:
+    """Comment on a line of a PR's diff at a commit."""
+
+    number: int
+    commit: str
+    path: str
+    line: int
+    body: str
+
+
+@dataclass(frozen=True)
 class CreateIssue:
     """Open an issue with labels."""
 
@@ -124,4 +145,7 @@ PullRequestWrite = (
 )
 """A write on a branch's pull request, which `gh pr` makes."""
 
-Effect = DispatchWorkflow | PushBranch | IssueWrite | PullRequestWrite
+ReviewWrite = ReplyToReviewComment | CreateReviewComment
+"""A review comment on a pull request, which `gh api` makes."""
+
+Effect = DispatchWorkflow | PushBranch | IssueWrite | PullRequestWrite | ReviewWrite

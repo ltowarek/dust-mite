@@ -1261,8 +1261,9 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Makes that label and refusal, and reads the unresolved conversation, in its `check` job, which mints the App's write token and passes the pull request's number and `head-sha` to the [afk-run-pr-check](.github/actions/afk-run-pr-check/action.yml) action, which runs `python -m afk run-pr-check` from the same commit
   - Runs Matt Pocock's `implement-pr` prompt on the unresolved conversation through `claude-code-action`, with a read-only token of the [AFK GitHub App](#afk-github-app); the agent changes code, replies, or neither, per comment, and never resolves a thread
   - Validates the agent's structured output against [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json)
-  - Fails when the agent neither commits nor comments
-  - Mints a write token of the App after the agent step, pushes the agent's commits to the pull request's branch with a lease on `head-sha`, and posts the agent's thread replies, inline comments and top-level comments
+  - Mints one write token of the App after the agent step and passes it, with the agent's structured output, to the [afk-run-pr-publish](.github/actions/afk-run-pr-publish/action.yml) action, which runs `python -m afk run-pr-publish` from the workflow's commit
+  - Refuses to publish, and fails the run, when any of the agent's own commits, those after `head-sha`, changes a file under `.github/` or `tools/`, as [afk-run.yml](.github/workflows/afk-run.yml) does, and when the agent neither commits nor comments
+  - Otherwise pushes the agent's commits to the pull request's branch with a lease on `head-sha`, and posts the agent's thread replies, inline comments and top-level comments; GitHub rejects an inline comment on a line outside the pull request's diff, which the run drops with a warning
   - Labels the pull request `needs-car:<variant>` when the agent judges that its commits need a DUT run, and leaves the draft or ready state untouched
   - Files follow-up tickets and comments the follow-ups already covered, as [afk-run.yml](.github/workflows/afk-run.yml) does
   - Removes `afk:in-progress` when the run ends; after a failure, labels the pull request `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries

@@ -401,6 +401,7 @@ class TestRun:
                         "type": "PushBranch",
                         "repository": "owner/repo",
                         "branch": "afk/issue-7-100",
+                        "lease": None,
                     },
                     {
                         "type": "EditPullRequest",

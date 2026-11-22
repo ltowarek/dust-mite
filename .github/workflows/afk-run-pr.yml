@@ -75,7 +75,7 @@ jobs:
       contents: read
 
     outputs:
-      agent-error: ${{ steps.agent-error.outputs.result }}
+      agent-error: ${{ steps.publish.outputs.agent-error }}
       agent-output: ${{ steps.agent.outputs.structured_output }}
 
     env:
@@ -172,86 +172,29 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
-      - name: Read the agent's output
-        id: agent-result
-        env:
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          # Random, so no field's value can end its own output early.
-          eof="EOF_$(openssl rand -hex 16)"
-          for field in needs_dut_run car_variant; do
-            {
-              echo "${field}<<${eof}"
-              jq -r --arg field "$field" '.[$field] | values' <<<"$OUTPUT"
-              echo "$eof"
-            } >> "$GITHUB_OUTPUT"
-          done
-
-      - name: Read the agent's error
-        id: agent-error
-        if: failure() && steps.agent.outputs.execution_file != ''
-        env:
-          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
-        run: |
-          {
-            echo 'result<<AGENT_ERROR_EOF'
-            jq -r 'last | select(.type == "result" and .is_error) | .result // empty' "$EXECUTION_FILE"
-            echo 'AGENT_ERROR_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Check that the agent committed or commented
-        id: acted
-        env:
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          commits=$(git rev-list --count "${HEAD_SHA}..HEAD")
-          comments=$(jq '(.thread_replies + .inline_comments + .top_level_comments) | length' <<<"$OUTPUT")
-          echo "commits=$commits" >> "$GITHUB_OUTPUT"
-          [ "$commits" != 0 ] || [ "$comments" != 0 ]
-
-      - name: Mint the App's write token for the push and comments
+      - name: Mint the App's write token for the push, comments and the label
         id: write-token
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-issues: write
           permission-pull-requests: write
 
-      - name: Push to the PR's branch
-        if: steps.acted.outputs.commits != '0'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: |
-          git push --force-with-lease="refs/heads/${BRANCH}:${HEAD_SHA}" \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
-
-      - name: Post the thread replies, inline and top-level comments
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          jq -c '.thread_replies[]' <<<"$OUTPUT" | while IFS= read -r reply; do
-            jq '{body}' <<<"$reply" | gh api --method POST \
-              "repos/${GH_REPO}/pulls/${PR}/comments/$(jq -r .comment_id <<<"$reply")/replies" --input -
-          done
-          commit=$(git rev-parse HEAD)
-          jq -c '.inline_comments[]' <<<"$OUTPUT" | while IFS= read -r comment; do
-            # GitHub rejects a line outside the diff; that comment is dropped with a warning.
-            jq --arg commit "$commit" '{body, path, line, side: "RIGHT", commit_id: $commit}' <<<"$comment" |
-              gh api --method POST "repos/${GH_REPO}/pulls/${PR}/comments" --input - ||
-              echo "::warning::Dropped the inline comment on $(jq -r '"\(.path):\(.line)"' <<<"$comment")"
-          done
-          jq -r '.top_level_comments[] | @json' <<<"$OUTPUT" | while IFS= read -r body; do
-            jq -r . <<<"$body" | gh pr comment "$PR" --body-file -
-          done
-
-      - name: Hand the PR to a car agent session
-        if: steps.acted.outputs.commits != '0' && steps.agent-result.outputs.needs_dut_run == 'true'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          CAR_VARIANT: ${{ steps.agent-result.outputs.car_variant }}
-        run: gh pr edit "$PR" --add-label "needs-car:${CAR_VARIANT}"
+      # Also after a failed agent, so that the action sets the agent's error for finish.
+      - name: Push the agent's commits and post its replies and comments
+        id: publish
+        if: '!cancelled()'
+        uses: $/.github/actions/afk-run-pr-publish
+        with:
+          number: ${{ inputs.number }}
+          branch: ${{ env.BRANCH }}
+          head-sha: ${{ env.HEAD_SHA }}
+          agent-outcome: ${{ steps.agent.outcome }}
+          agent-output: ${{ steps.agent.outputs.structured_output }}
+          execution-file: ${{ steps.agent.outputs.execution_file }}
+          app-token: ${{ steps.write-token.outputs.token }}
 
   finish:
     needs: [check, implement]

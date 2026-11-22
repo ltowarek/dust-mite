@@ -625,6 +625,119 @@ jobs:
           jq -e -n --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
             "{outcome: \$outcome, effects: \$effects} | $ASSERTION"
 
+  afk-run-pr-publish:
+    name: afk-run-pr-publish (${{ matrix.case }})
+
+    # The production implement job's permissions; publish reads only the checkout, and a dry run skips the writes.
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # The action reads no PR, so each case names the merged #391.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: pushes with a lease on the PR's head and posts the replies and comments
+            changed-file: docs/afk-canary.md
+            output:
+              thread_replies: [{comment_id: 501, body: Added it.}]
+              inline_comments: [{path: docs/afk-canary.md, line: 2, body: The new line.}]
+              top_level_comments: [Appended the line.]
+              needs_dut_run: false
+            assertion: '(.effects | map(.type)) == ["PushBranch","ReplyToReviewComment","CreateReviewComment","Comment"] and .effects[0].lease == .base'
+          - case: labels the PR for the car when its commits need a DUT run
+            changed-file: docs/afk-canary.md
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: []
+              needs_dut_run: true
+              car_variant: copper
+            assertion: '.effects[-1] == {"type":"EditLabels","number":391,"add":["needs-car:copper"],"remove":[]}'
+          - case: posts only the comments when the agent made no commits
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: [Nothing to change.]
+              needs_dut_run: false
+            assertion: '.effects == [{"type":"Comment","number":391,"body":"Nothing to change."}]'
+          - case: fails when the agent neither committed nor commented
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: []
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+          - case: refuses a commit that changes tools/
+            changed-file: tools/afk-canary.md
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: [Appended the line.]
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Switch to the PR's branch
+        id: branch
+        env:
+          BRANCH: afk-test/pr-391-${{ github.run_id }}
+        run: |
+          git switch -c "$BRANCH"
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit the agent's change
+        if: matrix.changed-file != ''
+        env:
+          CHANGED_FILE: ${{ matrix.changed-file }}
+        run: |
+          echo canary >> "$CHANGED_FILE"
+          git add "$CHANGED_FILE"
+          git -c user.name=afk-test -c user.email=afk-test@users.noreply.github.com commit --quiet -m "docs: append canary"
+
+      - name: Mint the App's write token for the push, comments and the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Publish the agent's work as a dry run
+        id: publish
+        # A refusal fails the step; the assertion checks its outcome.
+        continue-on-error: true
+        uses: $/.github/actions/afk-run-pr-publish
+        with:
+          number: 391
+          branch: afk-test/pr-391-${{ github.run_id }}
+          head-sha: ${{ steps.branch.outputs.base }}
+          agent-outcome: success
+          agent-output: ${{ toJSON(matrix.output) }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: true
+
+      - name: Assert on the outcome and the planned effects
+        shell: bash
+        env:
+          BASE: ${{ steps.branch.outputs.base }}
+          OUTCOME: ${{ steps.publish.outcome }}
+          EFFECTS: ${{ steps.publish.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: |
+          jq -e -n --arg base "$BASE" --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
+            "{base: \$base, outcome: \$outcome, effects: \$effects} | $ASSERTION"
+
   afk-finish:
     name: afk-finish (${{ matrix.case }})
 

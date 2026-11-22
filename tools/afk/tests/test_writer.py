@@ -12,6 +12,7 @@ from afk.effects import (
     CommentPullRequest,
     CreateIssue,
     CreatePullRequest,
+    CreateReviewComment,
     DispatchWorkflow,
     EditLabels,
     EditPullRequest,
@@ -20,6 +21,7 @@ from afk.effects import (
     MarkPullRequestReady,
     PushBranch,
     React,
+    ReplyToReviewComment,
 )
 from afk.writer import Writer, write_outputs
 from tests.test_doubles import GhCall, GhSpy, GitCall, GitSpy, read_outputs
@@ -191,6 +193,46 @@ class TestWriter:
                     "app-token",
                     id="closes an issue with a comment with the App's token",
                 ),
+                pytest.param(
+                    ReplyToReviewComment(number=9, comment_id=501, body="Done."),
+                    [
+                        "api",
+                        "--method",
+                        "POST",
+                        "repos/{owner}/{repo}/pulls/9/comments/501/replies",
+                        "-f",
+                        "body=Done.",
+                    ],
+                    "app-token",
+                    id="replies in a PR's review thread with the App's token",
+                ),
+                pytest.param(
+                    CreateReviewComment(
+                        number=9,
+                        commit="abc123",
+                        path="docs/a.md",
+                        line=4,
+                        body="Note.",
+                    ),
+                    [
+                        "api",
+                        "--method",
+                        "POST",
+                        "repos/{owner}/{repo}/pulls/9/comments",
+                        "-f",
+                        "body=Note.",
+                        "-f",
+                        "commit_id=abc123",
+                        "-f",
+                        "path=docs/a.md",
+                        "-F",
+                        "line=4",
+                        "-f",
+                        "side=RIGHT",
+                    ],
+                    "app-token",
+                    id="comments on a line of a PR's diff with the App's token",
+                ),
             ],
         )
         def test_runs_each_gh_write_as_its_command_with_its_token(
@@ -233,6 +275,26 @@ class TestWriter:
                 ],
             )
 
+        def test_pushes_head_with_a_lease_on_the_branch_s_expected_head(
+            self, tmp_path: Path
+        ) -> None:
+            git = GitSpy()
+
+            Writer(GhSpy(), git, ENV, tmp_path / "output").write(
+                PushBranch(repository="owner/repo", branch="feature", lease="head123")
+            )
+
+            assert git.calls[0].args == [
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "credential.helper=",
+                "push",
+                "--force-with-lease=refs/heads/feature:head123",
+                "https://github.com/owner/repo.git",
+                "HEAD:refs/heads/feature",
+            ]
+
         def test_a_dry_run_runs_no_command(self, tmp_path: Path) -> None:
             gh, git = GhSpy(), GitSpy()
             env = {**ENV, "AFK_DRY_RUN": "true"}
@@ -258,6 +320,11 @@ class TestWriter:
                 CommentPullRequest(branch="afk/issue-7-100", body="Covered."),
                 CreateIssue(title="Fix x", body="It breaks.", labels=("bug",)),
                 CloseIssue(number=7, comment="Implemented in abc123"),
+                PushBranch(repository="owner/repo", branch="feature", lease="head123"),
+                ReplyToReviewComment(number=9, comment_id=501, body="Done."),
+                CreateReviewComment(
+                    number=9, commit="abc123", path="docs/a.md", line=4, body="Note."
+                ),
             ]
 
             for effect in effects:

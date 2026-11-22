@@ -15,6 +15,7 @@ from afk.effects import (
     CommentPullRequest,
     CreateIssue,
     CreatePullRequest,
+    CreateReviewComment,
     DispatchWorkflow,
     EditLabels,
     EditPullRequest,
@@ -25,6 +26,8 @@ from afk.effects import (
     PullRequestWrite,
     PushBranch,
     React,
+    ReplyToReviewComment,
+    ReviewWrite,
 )
 
 # Runs one program; its arguments leave out the program name.
@@ -96,8 +99,8 @@ def command_for(effect: Effect) -> Command:
             ]
             # The App has no Actions write permission, so it cannot dispatch.
             command = GhCommand(["workflow", "run", workflow, *fields], Token.WORKFLOW)
-        case PushBranch(repository=repository, branch=branch):
-            command = GitCommand(_push(repository, branch), Token.APP)
+        case PushBranch(repository=repository, branch=branch, lease=lease):
+            command = GitCommand(_push(repository, branch, lease), Token.APP)
         case EditLabels() | Comment() | React() | CreateIssue() | CloseIssue():
             command = GhCommand(_issue_args(effect), Token.APP)
         case (
@@ -108,6 +111,8 @@ def command_for(effect: Effect) -> Command:
             | CommentPullRequest()
         ):
             command = GhCommand(_pull_request_args(effect), Token.APP)
+        case ReplyToReviewComment() | CreateReviewComment():
+            command = GhCommand(_review_args(effect), Token.APP)
         case _:
             assert_never(effect)
     return command
@@ -155,6 +160,34 @@ def _pull_request_args(effect: PullRequestWrite) -> list[str]:
     return args
 
 
+def _review_args(effect: ReviewWrite) -> list[str]:
+    # gh has no review comment subcommand; gh api takes {owner}/{repo} from GH_REPO.
+    comments = f"repos/{{owner}}/{{repo}}/pulls/{effect.number}/comments"
+    fields: list[str]
+    match effect:
+        case ReplyToReviewComment(comment_id=comment_id, body=body):
+            endpoint = f"{comments}/{comment_id}/replies"
+            fields = ["-f", f"body={body}"]
+        case CreateReviewComment(commit=commit, path=path, line=line, body=body):
+            endpoint = comments
+            # -F sends the line as a number.
+            fields = [
+                "-f",
+                f"body={body}",
+                "-f",
+                f"commit_id={commit}",
+                "-f",
+                f"path={path}",
+                "-F",
+                f"line={line}",
+                "-f",
+                "side=RIGHT",
+            ]
+        case _:
+            assert_never(effect)
+    return ["api", "--method", "POST", endpoint, *fields]
+
+
 def _label_flags(add: Sequence[str], remove: Sequence[str]) -> list[str]:
     return [
         *(arg for label in add for arg in ("--add-label", label)),
@@ -162,7 +195,10 @@ def _label_flags(add: Sequence[str], remove: Sequence[str]) -> list[str]:
     ]
 
 
-def _push(repository: str, branch: str) -> list[str]:
+def _push(repository: str, branch: str, lease: str | None) -> list[str]:
+    lease_flag = (
+        [] if lease is None else [f"--force-with-lease=refs/heads/{branch}:{lease}"]
+    )
     # Runs none of the agent's hooks or credential helpers.
     return [
         "-c",
@@ -170,6 +206,7 @@ def _push(repository: str, branch: str) -> list[str]:
         "-c",
         "credential.helper=",
         "push",
+        *lease_flag,
         f"https://github.com/{repository}.git",
         f"HEAD:refs/heads/{branch}",
     ]
