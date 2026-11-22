@@ -77,8 +77,7 @@ class TestCheck:
     def test_goes_ahead_on_the_pr_s_branch(self, head_sha: str, expected: str) -> None:
         assert check(STATE, CONVERSATION, head_sha) == CheckResult(
             url="https://github.com/owner/repo/pull/9",
-            branch="feature",
-            head_sha=expected,
+            pull_request=PullRequest(number=9, branch="feature", head_sha=expected),
             conversation=CONVERSATION,
         )
 
@@ -219,8 +218,9 @@ class TestOutputs:
             pytest.param(
                 CheckResult(
                     url="https://github.com/owner/repo/pull/9",
-                    branch="feature",
-                    head_sha="head123",
+                    pull_request=PullRequest(
+                        number=9, branch="feature", head_sha="head123"
+                    ),
                     conversation=CONVERSATION,
                 ),
                 {

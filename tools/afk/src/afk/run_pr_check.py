@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 from afk.effects import EditLabels
@@ -107,19 +107,19 @@ class CheckResult:
 
     refusal: str | None = None
     url: str | None = None
-    branch: str | None = None
-    head_sha: str | None = None
+    pull_request: PullRequest | None = None
     conversation: Conversation | None = None
 
 
 def outputs(result: CheckResult) -> dict[str, str]:
     """Return the check job's step outputs; an unset field sets none."""
     conversation = result.conversation
+    pr = result.pull_request
     values = {
         "refusal": result.refusal,
         "url": result.url,
-        "branch": result.branch,
-        "head-sha": result.head_sha,
+        "branch": None if pr is None else pr.branch,
+        "head-sha": None if pr is None else pr.head_sha,
         "conversation": None
         if conversation is None
         else json.dumps(asdict(conversation)),
@@ -143,8 +143,9 @@ def check(state: State, conversation: Conversation, head_sha: str) -> CheckResul
         )
     return CheckResult(
         url=state.url,
-        branch=state.pull_request.branch,
-        head_sha=head_sha or state.pull_request.head_sha,
+        pull_request=replace(
+            state.pull_request, head_sha=head_sha or state.pull_request.head_sha
+        ),
         conversation=conversation,
     )
 
