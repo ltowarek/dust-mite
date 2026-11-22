@@ -256,9 +256,12 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
             decision = refusal(target_issue.labels) or decide(
                 verb, kind, _read_state(gh, env, verb, kind)
             )
-            if isinstance(decision, Accept):
-                # Set before the writes, so that the release step sees it if one fails.
-                writer.set_output("accepted", "true")
+            match decision:
+                case Accept():
+                    # Set before the writes, so the release step sees it if one fails.
+                    writer.set_output("accepted", "true")
+                case _:
+                    pass
             effects = plan(target, decision)
     for effect in effects:
         writer.write(effect)
