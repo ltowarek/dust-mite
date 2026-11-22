@@ -76,12 +76,12 @@ jobs:
       BRANCH: ${{ needs.check.outputs.branch }}
 
     outputs:
-      agent-error: ${{ steps.agent-error.outputs.result }}
+      agent-error: ${{ steps.publish.outputs.agent-error }}
       agent-output: ${{ steps.agent.outputs.structured_output }}
-      outcome: ${{ steps.agent-result.outputs.outcome }}
-      needs-car-reason: ${{ steps.agent-result.outputs.needs_car_reason }}
-      pr-url: ${{ steps.pr.outputs.url }}
-      sha: ${{ steps.pr.outputs.sha }}
+      outcome: ${{ steps.publish.outputs.outcome }}
+      needs-car-reason: ${{ steps.publish.outputs.needs-car-reason }}
+      pr-url: ${{ steps.publish.outputs.pr-url }}
+      sha: ${{ steps.publish.outputs.sha }}
 
     steps:
       - name: Checkout
@@ -90,8 +90,12 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # The commit the agent starts from; publish refuses its later commits that change .github/ or tools/.
       - name: Switch to the branch
-        run: git switch "$BRANCH" || git switch -c "$BRANCH"
+        id: branch
+        run: |
+          git switch "$BRANCH" || git switch -c "$BRANCH"
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Write .env
         run: ./scripts/dump_env.sh
@@ -142,121 +146,31 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
-      - name: Read the agent's output
-        id: agent-result
-        env:
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          # Random, so no field's value can end its own output early.
-          eof="EOF_$(openssl rand -hex 16)"
-          for field in outcome pr_title pr_body spec_gaps needs_car_reason needs_dut_run car_variant; do
-            {
-              echo "${field}<<${eof}"
-              jq -r --arg field "$field" '.[$field] | values' <<<"$OUTPUT"
-              echo "$eof"
-            } >> "$GITHUB_OUTPUT"
-          done
-
-      - name: Read the agent's error
-        id: agent-error
-        if: failure() && steps.agent.outputs.execution_file != ''
-        env:
-          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
-        run: |
-          {
-            echo 'result<<AGENT_ERROR_EOF'
-            jq -r 'last | select(.type == "result" and .is_error) | .result // empty' "$EXECUTION_FILE"
-            echo 'AGENT_ERROR_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Mint the App's write token for the push and PR
+      - name: Mint the App's write token for the push, PR, labels and comments
         id: write-token
-        if: steps.agent-result.outputs.outcome == 'done'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-issues: write
           permission-pull-requests: write
 
-      - name: Push the branch and open the PR
-        id: pr
-        if: steps.agent-result.outputs.outcome == 'done'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          PR_TITLE: ${{ steps.agent-result.outputs.pr_title }}
-          PR_BODY: ${{ steps.agent-result.outputs.pr_body }}
-          NEEDS_DUT_RUN: ${{ steps.agent-result.outputs.needs_dut_run }}
-          CAR_VARIANT: ${{ steps.agent-result.outputs.car_variant }}
-          LAST_RUN: ${{ needs.check.outputs.last-run }}
-        run: |
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
-          printf 'Closes #%s\n\n%s\n\n[AFK run](%s)\n' "$TICKET" "$PR_BODY" "$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
-          url=$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty')
-          if [ -z "$url" ]; then
-            url=$(gh pr create --draft --base main --head "$BRANCH" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md")
-          elif [ "$LAST_RUN" = true ]; then
-            gh pr edit "$url" --title "$PR_TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
-          fi
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          if [ "$LAST_RUN" != true ]; then
-            exit 0
-          fi
-          if [ "$NEEDS_DUT_RUN" = true ]; then
-            gh pr edit "$url" --add-label "needs-car:${CAR_VARIANT}"
-          else
-            gh pr ready "$url"
-          fi
-
-      - name: Mint the App's write token for handing the ticket to the car
-        id: car-token
-        if: steps.agent-result.outputs.outcome == 'needs_car'
-        uses: actions/create-github-app-token@v3.3.0
+      # Also after a failed agent, so that the action sets the agent's error for finish.
+      - name: Publish the agent's work, or hand the ticket on
+        id: publish
+        if: '!cancelled()'
+        uses: $/.github/actions/afk-run-publish
         with:
-          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
-          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
-          permission-issues: write
-
-      - name: Hand the ticket to a car agent session
-        if: steps.agent-result.outputs.outcome == 'needs_car'
-        env:
-          GH_TOKEN: ${{ steps.car-token.outputs.token }}
-          CAR_VARIANT: ${{ steps.agent-result.outputs.car_variant }}
-          REASON: ${{ steps.agent-result.outputs.needs_car_reason }}
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          printf 'Finding the fix needs the car, so this AFK run pushed nothing.\n\n**Reason:** %s\n\n**Run:** %s\n' "$REASON" "$RUN_URL" > "$RUNNER_TEMP/needs-car.md"
-          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
-          if [ -n "$already_covered" ]; then
-            printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered" >> "$RUNNER_TEMP/needs-car.md"
-          fi
-          gh issue edit "$WORKED_TICKET" --add-label "needs-car:${CAR_VARIANT}"
-          gh issue comment "$WORKED_TICKET" --body-file "$RUNNER_TEMP/needs-car.md"
-
-      - name: Mint the App's write token for handing the ticket back
-        id: issues-token
-        if: steps.agent-result.outputs.outcome == 'spec_gap'
-        uses: actions/create-github-app-token@v3.3.0
-        with:
-          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
-          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
-          permission-issues: write
-
-      - name: Hand the ticket back to triage
-        if: steps.agent-result.outputs.outcome == 'spec_gap'
-        env:
-          GH_TOKEN: ${{ steps.issues-token.outputs.token }}
-          SPEC_GAPS: ${{ steps.agent-result.outputs.spec_gaps }}
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          printf '> *Spec gap found by an AFK agent session while working this ticket.* ([run](%s))\n\n%s\n' "$RUN_URL" "$SPEC_GAPS" > "$RUNNER_TEMP/spec-gaps.md"
-          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
-          if [ -n "$already_covered" ]; then
-            printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered" >> "$RUNNER_TEMP/spec-gaps.md"
-          fi
-          gh issue edit "$WORKED_TICKET" --remove-label ready-for-agent --add-label needs-triage
-          gh issue comment "$WORKED_TICKET" --body-file "$RUNNER_TEMP/spec-gaps.md"
+          ticket: ${{ inputs.number }}
+          worked-ticket: ${{ env.WORKED_TICKET }}
+          branch: ${{ env.BRANCH }}
+          last-run: ${{ needs.check.outputs.last-run }}
+          base: ${{ steps.branch.outputs.base }}
+          agent-outcome: ${{ steps.agent.outcome }}
+          agent-output: ${{ steps.agent.outputs.structured_output }}
+          execution-file: ${{ steps.agent.outputs.execution_file }}
+          app-token: ${{ steps.write-token.outputs.token }}
 
   finish:
     needs: [check, implement]

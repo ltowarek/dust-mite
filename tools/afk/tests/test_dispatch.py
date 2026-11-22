@@ -26,7 +26,7 @@ from afk.dispatch import (
 )
 from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect, React
 from afk.writer import Writer
-from tests.test_doubles import GhSpy, read_outputs
+from tests.test_doubles import GhSpy, GitSpy, read_outputs
 
 
 class TestParse:
@@ -281,10 +281,7 @@ ENV = {
     "AFK_BODY": "/afk implement",
     "GH_REPO": "owner/repo",
 }
-ISSUE_READ = ("gh", "api", "repos/owner/repo/issues/7")
-NO_BLOCKERS = json.dumps(
-    {"data": {"repository": {"issue": {"blockedBy": {"nodes": []}}}}}
-)
+ISSUE_READ = ("api", "repos/owner/repo/issues/7")
 
 
 class TestRun:
@@ -292,7 +289,7 @@ class TestRun:
         gh = GhSpy({ISSUE_READ: json.dumps({"labels": [{"name": "afk:in-progress"}]})})
         env = {**ENV, "AFK_DRY_RUN": "true"}
 
-        dispatch.run(gh, env, Writer(gh, env, tmp_path / "output"))
+        dispatch.run(gh, env, Writer(gh, GitSpy(), env, tmp_path / "output"))
 
         assert [call.args for call in gh.calls] == [list(ISSUE_READ)]
 
@@ -300,13 +297,15 @@ class TestRun:
         gh = GhSpy(
             {
                 ISSUE_READ: json.dumps({"labels": []}),
-                ("gh", "api", "graphql"): NO_BLOCKERS,
+                ("api", "graphql"): json.dumps(
+                    {"data": {"repository": {"issue": {"blockedBy": {"nodes": []}}}}}
+                ),
             },
-            failing=("gh", "workflow", "run"),
+            failing=("workflow", "run"),
         )
         output = tmp_path / "output"
 
         with pytest.raises(subprocess.CalledProcessError):
-            dispatch.run(gh, ENV, Writer(gh, ENV, output))
+            dispatch.run(gh, ENV, Writer(gh, GitSpy(), ENV, output))
 
         assert read_outputs(output) == {"accepted": "true"}

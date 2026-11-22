@@ -11,7 +11,6 @@ from afk.effects import EditLabels
 from afk.labels import Label
 from afk.writer import Runner, Token, Writer, run_gh
 
-_ASCII_LOWERCASE = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 _SLUG_SEPARATOR = re.compile(r"[^a-z0-9]+")
 _CLOSING_PULL_REQUESTS_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -89,7 +88,8 @@ def blocked_child_tickets(children: Sequence[Ticket]) -> list[int]:
 
 
 def _slug(title: str) -> str:
-    slug = _SLUG_SEPARATOR.sub("-", title.translate(_ASCII_LOWERCASE))
+    lowercase = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+    slug = _SLUG_SEPARATOR.sub("-", title.translate(lowercase))
     return slug.removeprefix("-")[:50].removesuffix("-")
 
 
@@ -197,7 +197,7 @@ def check(run_id: str, state: State) -> CheckResult:
 
 
 def _read(gh: Runner, env: Mapping[str, str], *args: str) -> str:
-    return run_gh(gh, env, Token.WORKFLOW, ["gh", *args])
+    return run_gh(gh, env, Token.WORKFLOW, args)
 
 
 def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:

@@ -156,7 +156,6 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
         env,
         Token.WORKFLOW,
         [
-            "gh",
             "api",
             "graphql",
             "-f",
@@ -181,7 +180,7 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
                         gh,
                         env,
                         Token.WORKFLOW,
-                        ["gh", "api", "--paginate", "--slurp", endpoint],
+                        ["api", "--paginate", "--slurp", endpoint],
                     )
                 )
                 command_ids[number] = command_id(pages, int(env["AFK_BOT_ID"]))

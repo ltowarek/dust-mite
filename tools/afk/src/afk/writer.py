@@ -1,21 +1,28 @@
-"""Carry out a phase's writes with `gh`, or report them in a dry run; set outputs."""
+"""Carry out a phase's writes with `gh` or `git`, or report them in a dry run."""
 
+import base64
 import json
 import secrets
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, assert_never
 
 from afk.effects import (
     Comment,
+    CreatePullRequest,
     DispatchWorkflow,
     EditLabels,
+    EditPullRequest,
+    EditPullRequestLabels,
     Effect,
+    MarkPullRequestReady,
+    PushBranch,
     React,
 )
 
+# Runs one program; its arguments leave out the program name.
 Runner = Callable[[Sequence[str], Mapping[str, str]], str]
 
 
@@ -33,42 +40,106 @@ def run_gh(
     return gh(args, {**env, "GH_TOKEN": env[token]})
 
 
+def _authorization(token: str) -> dict[str, str]:
+    # Keyed to github.com, so a URL rewrite in the agent's config sends it nowhere else.
+    credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {credentials}",
+    }
+
+
+def run_git(
+    git: Runner, env: Mapping[str, str], token: Token | None, args: Sequence[str]
+) -> str:
+    """Run a git command without token variables, authenticated by `token` if set."""
+    # The agent's repository config can run code, so git sees no token variable.
+    clean = {
+        key: value for key, value in env.items() if key not in {"GH_TOKEN", *Token}
+    }
+    auth = _authorization(env[token]) if token is not None else {}
+    return git(args, {**clean, **auth})
+
+
 @dataclass(frozen=True)
 class GhCommand:
-    """A `gh` command line and the variable that holds the token it runs with."""
+    """A `gh` call's arguments, and the variable that holds its token."""
 
     args: list[str]
     token: Token
 
 
-def gh_command(effect: Effect) -> GhCommand:
-    """Return the `gh` command that carries out a write."""
+@dataclass(frozen=True)
+class GitCommand:
+    """A `git` call's arguments, and the variable that holds its token, if any."""
+
+    args: list[str]
+    token: Token | None
+
+
+Command = GhCommand | GitCommand
+
+
+def command_for(effect: Effect) -> Command:
+    """Return the command that carries out a write."""
+    command: Command
     match effect:
         case DispatchWorkflow(workflow=workflow, inputs=inputs):
             fields = [
                 arg for key, value in inputs.items() for arg in ("-f", f"{key}={value}")
             ]
             # The App has no Actions write permission, so it cannot dispatch.
-            return GhCommand(
-                ["gh", "workflow", "run", workflow, *fields], Token.WORKFLOW
-            )
+            command = GhCommand(["workflow", "run", workflow, *fields], Token.WORKFLOW)
         case EditLabels(number=number, add=add, remove=remove):
-            flags = [
-                *(arg for label in add for arg in ("--add-label", label)),
-                *(arg for label in remove for arg in ("--remove-label", label)),
-            ]
-            return GhCommand(["gh", "issue", "edit", str(number), *flags], Token.APP)
+            args = ["issue", "edit", str(number), *_label_flags(add, remove)]
+            command = GhCommand(args, Token.APP)
         case Comment(number=number, body=body):
-            return GhCommand(
-                ["gh", "issue", "comment", str(number), "--body", body], Token.APP
-            )
+            args = ["issue", "comment", str(number), "--body", body]
+            command = GhCommand(args, Token.APP)
         case React(comment_id=comment_id, content=content):
             # gh has no reaction subcommand; gh api takes {owner}/{repo} from GH_REPO.
             endpoint = (
                 f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}/reactions"
             )
             args = ["api", "--method", "POST", endpoint, "-f", f"content={content}"]
-            return GhCommand(["gh", *args], Token.APP)
+            command = GhCommand(args, Token.APP)
+        case PushBranch(repository=repository, branch=branch):
+            command = GitCommand(_push(repository, branch), Token.APP)
+        case CreatePullRequest(branch=branch, title=title, body=body):
+            pr = ["--base", "main", "--head", branch, "--title", title, "--body", body]
+            command = GhCommand(["pr", "create", "--draft", *pr], Token.APP)
+        case EditPullRequest(branch=branch, title=title, body=body):
+            args = ["pr", "edit", branch, "--title", title, "--body", body]
+            command = GhCommand(args, Token.APP)
+        case EditPullRequestLabels(branch=branch, add=add, remove=remove):
+            args = ["pr", "edit", branch, *_label_flags(add, remove)]
+            command = GhCommand(args, Token.APP)
+        case MarkPullRequestReady(branch=branch):
+            command = GhCommand(["pr", "ready", branch], Token.APP)
+        case _:
+            assert_never(effect)
+    return command
+
+
+def _label_flags(add: Sequence[str], remove: Sequence[str]) -> list[str]:
+    return [
+        *(arg for label in add for arg in ("--add-label", label)),
+        *(arg for label in remove for arg in ("--remove-label", label)),
+    ]
+
+
+def _push(repository: str, branch: str) -> list[str]:
+    # Runs none of the agent's hooks or credential helpers.
+    return [
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "credential.helper=",
+        "push",
+        f"https://github.com/{repository}.git",
+        f"HEAD:refs/heads/{branch}",
+    ]
 
 
 def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:
@@ -83,9 +154,12 @@ def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:
 class Writer:
     """Route every write of a phase, so that a dry run carries out none."""
 
-    def __init__(self, gh: Runner, env: Mapping[str, str], output: Path) -> None:
-        """Write through `gh`, with tokens and `AFK_DRY_RUN` from `env`, to `output`."""
+    def __init__(
+        self, gh: Runner, git: Runner, env: Mapping[str, str], output: Path
+    ) -> None:
+        """Write through `gh` and `git`, with tokens and `AFK_DRY_RUN` from `env`."""
         self._gh = gh
+        self._git = git
         self._env = env
         self._output = output
         self._dry_run = env.get("AFK_DRY_RUN") == "true"
@@ -96,8 +170,13 @@ class Writer:
         self._planned.append(effect)
         if self._dry_run:
             return
-        invocation = gh_command(effect)
-        run_gh(self._gh, self._env, invocation.token, invocation.args)
+        match command_for(effect):
+            case GhCommand(args=args, token=token):
+                run_gh(self._gh, self._env, token, args)
+            case GitCommand(args=args, token=token):
+                run_git(self._git, self._env, token, args)
+            case command:
+                assert_never(command)
 
     def set_output(self, name: str, value: str) -> None:
         """Set a step output now, so that it outlives a later write that fails."""

@@ -461,6 +461,110 @@ jobs:
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$OUTPUTS"
 
+  afk-run-publish:
+    name: afk-run-publish (${{ matrix.case }})
+
+    # The production implement job's permissions; the App's token does the reads, and a dry run skips the writes.
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # #315 is closed; publish reads only the open PRs of the test's own branch, which has none.
+          - case: pushes and opens a draft PR that closes the ticket
+            changed-file: docs/afk-canary.md
+            output:
+              outcome: done
+              pr_title: "docs: append canary"
+              pr_body: Appends the line.
+              needs_dut_run: false
+            assertion: '(.effects | map(.type)) == ["PushBranch","CreatePullRequest","MarkPullRequestReady"] and (.effects[1].body | startswith("Closes #315\n"))'
+          - case: hands a spec gap back to triage
+            output:
+              outcome: spec_gap
+              spec_gaps: Which line?
+              needs_dut_run: false
+            assertion: '.effects[0] == {"type":"EditLabels","number":315,"add":["needs-triage"],"remove":["ready-for-agent"]}'
+          - case: hands a needs-car stop to a car agent session
+            output:
+              outcome: needs_car
+              needs_car_reason: Only the car shows it.
+              car_variant: copper
+              needs_dut_run: false
+            assertion: '.effects[0] == {"type":"EditLabels","number":315,"add":["needs-car:copper"],"remove":[]}'
+          - case: refuses a commit that changes .github/
+            changed-file: .github/afk-canary.md
+            output:
+              outcome: done
+              pr_title: "docs: append canary"
+              pr_body: Appends the line.
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Switch to the branch
+        id: branch
+        env:
+          BRANCH: afk/issue-315-${{ github.run_id }}
+        run: |
+          git switch -c "$BRANCH"
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit the agent's change
+        if: matrix.changed-file != ''
+        env:
+          CHANGED_FILE: ${{ matrix.changed-file }}
+        run: |
+          echo canary >> "$CHANGED_FILE"
+          git add "$CHANGED_FILE"
+          git -c user.name=afk-test -c user.email=afk-test@users.noreply.github.com commit --quiet -m "docs: append canary"
+
+      - name: Mint the App's write token for the push, PR, labels and comments
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Publish the agent's work as a dry run
+        id: publish
+        # A refusal fails the step; the assertion checks its outcome.
+        continue-on-error: true
+        uses: $/.github/actions/afk-run-publish
+        with:
+          ticket: 315
+          worked-ticket: 315
+          branch: afk/issue-315-${{ github.run_id }}
+          last-run: true
+          base: ${{ steps.branch.outputs.base }}
+          agent-outcome: success
+          agent-output: ${{ toJSON(matrix.output) }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: true
+
+      - name: Assert on the outcome and the planned effects
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.publish.outcome }}
+          EFFECTS: ${{ steps.publish.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: |
+          jq -e -n --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
+            "{outcome: \$outcome, effects: \$effects} | $ASSERTION"
+
   actions-lock:
     permissions:
       contents: read

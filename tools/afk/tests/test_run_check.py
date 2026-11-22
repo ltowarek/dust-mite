@@ -19,7 +19,7 @@ from afk.run_check import (
     ticket,
 )
 from afk.writer import Writer
-from tests.test_doubles import GhCall, GhSpy, read_outputs
+from tests.test_doubles import GhCall, GhSpy, GitSpy, read_outputs
 
 RUN_ID = "4242"
 URL = "https://github.com/owner/repo/issues"
@@ -65,12 +65,6 @@ def make_pr_refusal(number: int) -> str:
     )
 
 
-CHILD_TICKET_REFUSAL = (
-    "Refused to run: this ticket is a child ticket of #3. Child tickets run only "
-    "through their spec; comment `/afk implement` on #3 instead."
-)
-
-
 class TestCheck:
     @pytest.mark.parametrize(
         ("state", "result"),
@@ -94,7 +88,11 @@ class TestCheck:
                 State(make_ticket(parent=3, blocked_by=1)),
                 CheckResult(
                     url=f"{URL}/7",
-                    refusal=CHILD_TICKET_REFUSAL,
+                    refusal=(
+                        "Refused to run: this ticket is a child ticket of #3. Child "
+                        "tickets run only through their spec; comment "
+                        "`/afk implement` on #3 instead."
+                    ),
                     block=True,
                     branch="afk/issue-7-4242",
                     last_run=True,
@@ -366,9 +364,9 @@ ENV = {
     "GITHUB_RUN_ID": RUN_ID,
     "GH_REPO": "owner/repo",
 }
-ISSUE_READ = ("gh", "api", "repos/owner/repo/issues/7")
-CHILD_TICKETS_READ = ("gh", "api", "repos/owner/repo/issues/7/sub_issues?per_page=100")
-CLOSING_PULL_REQUESTS_READ = ("gh", "api", "graphql")
+ISSUE_READ = ("api", "repos/owner/repo/issues/7")
+CHILD_TICKETS_READ = ("api", "repos/owner/repo/issues/7/sub_issues?per_page=100")
+CLOSING_PULL_REQUESTS_READ = ("api", "graphql")
 PLAIN_TICKET_READS: dict[tuple[str, ...], str] = {
     ISSUE_READ: json.dumps(make_issue(7)),
     CHILD_TICKETS_READ: "[]",
@@ -382,10 +380,10 @@ class TestRun:
     ) -> None:
         gh = GhSpy(PLAIN_TICKET_READS)
 
-        run_check.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, tmp_path / "output"))
 
         assert gh.calls[0] == GhCall(
-            ["gh", "issue", "edit", "7", "--add-label", "afk:in-progress"],
+            ["issue", "edit", "7", "--add-label", "afk:in-progress"],
             "app-token",
             "owner/repo",
         )
@@ -393,7 +391,7 @@ class TestRun:
     def test_reads_with_the_workflow_token(self, tmp_path: Path) -> None:
         gh = GhSpy(PLAIN_TICKET_READS)
 
-        run_check.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, tmp_path / "output"))
 
         assert {call.token for call in gh.calls[1:]} == {"workflow-token"}
 
@@ -408,7 +406,7 @@ class TestRun:
         )
         output = tmp_path / "output"
 
-        run_check.run(gh, ENV, Writer(gh, ENV, output))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, output))
 
         closing_read = next(c for c in gh.calls if "graphql" in c.args)
         assert closing_read.args[-6:] == [
@@ -427,7 +425,7 @@ class TestRun:
         gh = GhSpy(PLAIN_TICKET_READS)
         env = {**ENV, "AFK_DRY_RUN": "true"}
         output = tmp_path / "output"
-        writer = Writer(gh, env, output)
+        writer = Writer(gh, GitSpy(), env, output)
 
         run_check.run(gh, env, writer)
         writer.report()
@@ -453,7 +451,6 @@ class TestRun:
     ) -> None:
         children = [make_issue(8, blocked_by=1)]
         blockers_read = (
-            "gh",
             "api",
             "repos/owner/repo/issues/8/dependencies/blocked_by?per_page=100",
         )
@@ -466,6 +463,6 @@ class TestRun:
         )
         output = tmp_path / "output"
 
-        run_check.run(gh, ENV, Writer(gh, ENV, output))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, output))
 
         assert read_outputs(output) == {"url": f"{URL}/7", "queue": "true"}

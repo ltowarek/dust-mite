@@ -6,11 +6,7 @@ from pathlib import Path
 import pytest
 
 from afk.__main__ import main
-from tests.test_doubles import GhSpy
-
-NO_BLOCKED_TICKETS = json.dumps(
-    {"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}}
-)
+from tests.test_doubles import GhSpy, GitSpy
 
 
 class TestMain:
@@ -31,7 +27,14 @@ class TestMain:
 
         main(
             ["promote-queued"],
-            GhSpy({("gh", "api", "graphql"): NO_BLOCKED_TICKETS}),
+            GhSpy(
+                {
+                    ("api", "graphql"): json.dumps(
+                        {"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}}
+                    )
+                }
+            ),
+            GitSpy(),
             env,
         )
 
@@ -39,6 +42,21 @@ class TestMain:
         delimiter = lines[1].removeprefix("effects<<")
         assert lines == ["earlier=1", f"effects<<{delimiter}", "[]", delimiter]
 
+    def test_runs_the_publish_phase(self, tmp_path: Path) -> None:
+        output = tmp_path / "output"
+        env = {"AFK_AGENT_OUTCOME": "skipped", "GITHUB_OUTPUT": str(output)}
+
+        main(["publish"], GhSpy(), GitSpy(), env)
+
+        lines = output.read_text().splitlines()
+        delimiter = lines[0].removeprefix("agent-error<<")
+        assert lines == [f"agent-error<<{delimiter}", "", delimiter]
+
     def test_rejects_an_unknown_phase(self, tmp_path: Path) -> None:
         with pytest.raises(SystemExit):
-            main(["unknown"], GhSpy(), {"GITHUB_OUTPUT": str(tmp_path / "output")})
+            main(
+                ["unknown"],
+                GhSpy(),
+                GitSpy(),
+                {"GITHUB_OUTPUT": str(tmp_path / "output")},
+            )
