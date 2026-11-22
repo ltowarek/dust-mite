@@ -1,13 +1,13 @@
 """End an AFK run: report how it ended, then release or continue its ticket."""
 
 import json
-import re
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from afk.agent import already_covered
 from afk.effects import (
     CloseIssue,
     Comment,
@@ -25,7 +25,6 @@ from afk.runner import Runner
 from afk.writer import Writer
 
 _STOPPED = {"failure", "cancelled"}
-_LINE_BREAK = re.compile(r"\s*\n\s*")
 _STEP_SEPARATOR = " \N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK} "
 
 
@@ -76,7 +75,7 @@ class Needs:
     child_ticket: int | None
     branch: str
     last_run: bool
-    implement_result: str
+    work_result: str
     agent_output: Mapping[str, Any]
     agent_error: str
     outcome: str
@@ -100,7 +99,7 @@ class Needs:
             child_ticket=int(child_ticket) if child_ticket else None,
             branch=check.get("branch", ""),
             last_run=check.get("last-run") == "true",
-            implement_result=needs[workflow.work_job]["result"],
+            work_result=needs[workflow.work_job]["result"],
             agent_output=json.loads(agent_output) if agent_output else {},
             agent_error=implement.get("agent-error", ""),
             outcome=implement.get("outcome", ""),
@@ -112,12 +111,12 @@ class Needs:
     @property
     def failed(self) -> bool:
         """Whether the check or implement job failed or was cancelled."""
-        return self.check_result in _STOPPED or self.implement_result in _STOPPED
+        return self.check_result in _STOPPED or self.work_result in _STOPPED
 
     @property
     def implemented(self) -> bool:
         """Whether the implement job succeeded."""
-        return self.implement_result == "success"
+        return self.work_result == "success"
 
 
 def failed_step(response: Mapping[str, Any]) -> str | None:
@@ -175,15 +174,11 @@ def _follow_ups(run: Run, needs: Needs) -> list[Effect]:
 
 
 def _already_covered(run: Run, needs: Needs) -> list[Effect]:
-    lines = [
-        f"- {_LINE_BREAK.sub(' ', item['problem'])} Covered by #{item['covered_by']}."
-        for item in needs.agent_output.get("already_covered", [])
-    ]
-    if not lines:
-        return []
-    body = "## Follow-ups already covered\n\n{}\n".format("\n".join(lines))
     # A branch update lists them in its merge comment.
     if run.workflow == Workflow.AFK_UPDATE_BRANCH:
+        return []
+    body = already_covered(needs.agent_output).lstrip()
+    if not body:
         return []
     if run.on_pr:
         return [Comment(number=run.number, body=body)]

@@ -1,4 +1,4 @@
-"""Refuse the AFK agent's protected changes, and read its error, for every publish."""
+"""Refuse the AFK agent's protected changes; read its error and covered follow-ups."""
 
 import json
 import re

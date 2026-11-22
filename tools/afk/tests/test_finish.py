@@ -492,7 +492,7 @@ class TestNeeds:
 
             parsed = Needs.parse(context, Workflow.AFK_UPDATE_BRANCH)
 
-            assert (parsed.implement_result, parsed.agent_error) == (
+            assert (parsed.work_result, parsed.agent_error) == (
                 "failure",
                 "Out of turns.",
             )
