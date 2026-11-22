@@ -37,7 +37,7 @@ class ReaderStub:
         return self.pull_requests
 
 
-def ticket(
+def make_ticket(
     title: str = "Fix the thing",
     child_tickets: int = 0,
     parent: int | None = None,
@@ -52,7 +52,9 @@ def ticket(
     )
 
 
-def child(number: int, *, is_open: bool = True, blocked_by: int = 0) -> ChildTicket:
+def make_child(
+    number: int, *, is_open: bool = True, blocked_by: int = 0
+) -> ChildTicket:
     return ChildTicket(
         number=number,
         url=f"{URL}/{number}",
@@ -61,15 +63,15 @@ def child(number: int, *, is_open: bool = True, blocked_by: int = 0) -> ChildTic
     )
 
 
-def blocking(number: int, *, is_open: bool = True) -> BlockingTicket:
+def make_blocking(number: int, *, is_open: bool = True) -> BlockingTicket:
     return BlockingTicket(url=f"{URL}/{number}", open=is_open)
 
 
-def pull_request(number: int, body: str) -> PullRequest:
+def make_pull_request(number: int, body: str) -> PullRequest:
     return PullRequest(url=f"https://github.com/owner/repo/pull/{number}", body=body)
 
 
-def pr_refusal(number: int) -> str:
+def make_pr_refusal(number: int) -> str:
     return (
         f"Refused to run: PR https://github.com/owner/repo/pull/{number} already "
         "targets this ticket. Close it first, then comment `/afk implement` again."
@@ -87,12 +89,12 @@ class TestCheck:
         ("reader", "result"),
         [
             pytest.param(
-                ReaderStub(ticket()),
+                ReaderStub(make_ticket()),
                 CheckResult(url=f"{URL}/7", branch="afk/issue-7-4242", last_run=True),
                 id="runs a plain ticket on its own branch in one run",
             ),
             pytest.param(
-                ReaderStub(ticket(open_blocking_tickets=1)),
+                ReaderStub(make_ticket(open_blocking_tickets=1)),
                 CheckResult(
                     url=f"{URL}/7",
                     refusal="Refused to run: this ticket has an open blocking "
@@ -102,7 +104,7 @@ class TestCheck:
                 id="refuses a ticket with an open blocking ticket",
             ),
             pytest.param(
-                ReaderStub(ticket(parent=3, open_blocking_tickets=1)),
+                ReaderStub(make_ticket(parent=3, open_blocking_tickets=1)),
                 CheckResult(
                     url=f"{URL}/7",
                     refusal=CHILD_TICKET_REFUSAL,
@@ -114,8 +116,8 @@ class TestCheck:
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(child_tickets=2),
-                    [child(8, is_open=False), child(9, is_open=False)],
+                    make_ticket(child_tickets=2),
+                    [make_child(8, is_open=False), make_child(9, is_open=False)],
                 ),
                 CheckResult(
                     url=f"{URL}/7",
@@ -126,12 +128,12 @@ class TestCheck:
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(title="Fix the thing", child_tickets=4),
+                    make_ticket(title="Fix the thing", child_tickets=4),
                     [
-                        child(8, is_open=False),
-                        child(9, blocked_by=1),
-                        child(10),
-                        child(11),
+                        make_child(8, is_open=False),
+                        make_child(9, blocked_by=1),
+                        make_child(10),
+                        make_child(11),
                     ],
                 ),
                 CheckResult(
@@ -146,8 +148,8 @@ class TestCheck:
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(title="Fix the thing", child_tickets=2),
-                    [child(8, is_open=False), child(9)],
+                    make_ticket(title="Fix the thing", child_tickets=2),
+                    [make_child(8, is_open=False), make_child(9)],
                 ),
                 CheckResult(
                     url=f"{URL}/7",
@@ -161,11 +163,11 @@ class TestCheck:
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(child_tickets=2),
-                    [child(8, blocked_by=1), child(9, blocked_by=1)],
+                    make_ticket(child_tickets=2),
+                    [make_child(8, blocked_by=1), make_child(9, blocked_by=1)],
                     blocking={
-                        8: [blocking(9), blocking(50, is_open=False)],
-                        9: [blocking(8)],
+                        8: [make_blocking(9), make_blocking(50, is_open=False)],
+                        9: [make_blocking(8)],
                     },
                 ),
                 CheckResult(
@@ -180,24 +182,24 @@ class TestCheck:
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(child_tickets=2),
-                    [child(8, blocked_by=1), child(9, blocked_by=1)],
-                    blocking={8: [blocking(9)], 9: [blocking(50)]},
+                    make_ticket(child_tickets=2),
+                    [make_child(8, blocked_by=1), make_child(9, blocked_by=1)],
+                    blocking={8: [make_blocking(9)], 9: [make_blocking(50)]},
                 ),
                 CheckResult(url=f"{URL}/7", queue=True),
                 id="queues a spec whose open child tickets wait on another ticket",
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(),
+                    make_ticket(),
                     pull_requests=[
-                        pull_request(20, "#7"),
-                        pull_request(21, "Closes #7"),
+                        make_pull_request(20, "#7"),
+                        make_pull_request(21, "Closes #7"),
                     ],
                 ),
                 CheckResult(
                     url=f"{URL}/7",
-                    refusal=pr_refusal(21),
+                    refusal=make_pr_refusal(21),
                     branch="afk/issue-7-4242",
                     last_run=True,
                 ),
@@ -205,12 +207,12 @@ class TestCheck:
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(child_tickets=1),
-                    [child(8, blocked_by=1)],
-                    blocking={8: [blocking(50)]},
-                    pull_requests=[pull_request(20, "Closes #7")],
+                    make_ticket(child_tickets=1),
+                    [make_child(8, blocked_by=1)],
+                    blocking={8: [make_blocking(50)]},
+                    pull_requests=[make_pull_request(20, "Closes #7")],
                 ),
-                CheckResult(url=f"{URL}/7", refusal=pr_refusal(20), queue=True),
+                CheckResult(url=f"{URL}/7", refusal=make_pr_refusal(20), queue=True),
                 id="queues and refuses a spec that an open PR closes",
             ),
         ],
@@ -229,30 +231,36 @@ class TestCheck:
         ],
     )
     def test_refuses_a_ticket_that_an_open_pr_closes(self, body: str) -> None:
-        reader = ReaderStub(ticket(), pull_requests=[pull_request(20, body)])
+        reader = ReaderStub(make_ticket(), pull_requests=[make_pull_request(20, body)])
 
-        assert check(7, RUN_ID, reader).refusal == pr_refusal(20)
+        assert check(7, RUN_ID, reader).refusal == make_pr_refusal(20)
 
     @pytest.mark.parametrize(
         "reader",
         [
             pytest.param(
-                ReaderStub(ticket(), pull_requests=[pull_request(20, "Refs #7")]),
+                ReaderStub(
+                    make_ticket(), pull_requests=[make_pull_request(20, "Refs #7")]
+                ),
                 id="refers to the ticket",
             ),
             pytest.param(
-                ReaderStub(ticket(), pull_requests=[pull_request(20, "Closes #70")]),
+                ReaderStub(
+                    make_ticket(), pull_requests=[make_pull_request(20, "Closes #70")]
+                ),
                 id="closes a longer number",
             ),
             pytest.param(
-                ReaderStub(ticket(), pull_requests=[pull_request(20, "Closes#7")]),
+                ReaderStub(
+                    make_ticket(), pull_requests=[make_pull_request(20, "Closes#7")]
+                ),
                 id="has no space before the number",
             ),
             pytest.param(
                 ReaderStub(
-                    ticket(child_tickets=1),
-                    [child(8)],
-                    pull_requests=[pull_request(20, "Closes #7")],
+                    make_ticket(child_tickets=1),
+                    [make_child(8)],
+                    pull_requests=[make_pull_request(20, "Closes #7")],
                 ),
                 id="closes the spec whose child ticket runs",
             ),
@@ -284,7 +292,7 @@ class TestCheck:
     def test_names_a_spec_s_branch_after_its_title(
         self, title: str, branch: str
     ) -> None:
-        reader = ReaderStub(ticket(title=title, child_tickets=1), [child(8)])
+        reader = ReaderStub(make_ticket(title=title, child_tickets=1), [make_child(8)])
 
         assert check(7, RUN_ID, reader).branch == branch
 

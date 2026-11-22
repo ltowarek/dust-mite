@@ -37,7 +37,7 @@ class Blocked:
         }
 
 
-def response(*tickets: Blocked) -> dict[str, Any]:
+def make_response(*tickets: Blocked) -> dict[str, Any]:
     nodes = [ticket.node() for ticket in tickets]
     return {"data": {"repository": {"issue": {"blocking": {"nodes": nodes}}}}}
 
@@ -108,7 +108,7 @@ class TestSelect:
     def test_selects_one_blocked_ticket(
         self, ticket: Blocked, selection: list[Promotion | Refusal]
     ) -> None:
-        assert select(response(ticket), REPOSITORY) == selection
+        assert select(make_response(ticket), REPOSITORY) == selection
 
     def test_promotes_a_spec_once_when_several_of_its_child_tickets_unblock(
         self,
@@ -119,7 +119,7 @@ class TestSelect:
             Blocked(7, parent=3, parent_labels=spec),
         )
 
-        assert select(response(*tickets), REPOSITORY) == [Promotion(number=3)]
+        assert select(make_response(*tickets), REPOSITORY) == [Promotion(number=3)]
 
     def test_orders_the_selection_by_number(self) -> None:
         tickets = (
@@ -127,7 +127,7 @@ class TestSelect:
             Blocked(4, labels=("afk:queued",)),
         )
 
-        assert select(response(*tickets), REPOSITORY) == [
+        assert select(make_response(*tickets), REPOSITORY) == [
             Promotion(number=4),
             Promotion(number=9),
         ]
@@ -180,7 +180,7 @@ class TestPlan:
 BOT_ID = 900
 
 
-def comment(user_id: int, body: str) -> dict[str, Any]:
+def make_comment(user_id: int, body: str) -> dict[str, Any]:
     return {"user": {"id": user_id}, "body": body}
 
 
@@ -191,9 +191,11 @@ class TestCommandId:
             pytest.param(
                 [
                     [
-                        comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->"),
-                        comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->"),
-                        comment(BOT_ID, "Promoted."),
+                        make_comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->"),
+                        make_comment(
+                            BOT_ID, "Queued again.\n<!-- afk-command: 222 -->"
+                        ),
+                        make_comment(BOT_ID, "Promoted."),
                     ]
                 ],
                 "222",
@@ -201,8 +203,8 @@ class TestCommandId:
             ),
             pytest.param(
                 [
-                    [comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->")],
-                    [comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->")],
+                    [make_comment(BOT_ID, "Queued.\n<!-- afk-command: 111 -->")],
+                    [make_comment(BOT_ID, "Queued again.\n<!-- afk-command: 222 -->")],
                 ],
                 "222",
                 id="finds the command on the latest page",
@@ -210,8 +212,8 @@ class TestCommandId:
             pytest.param(
                 [
                     [
-                        comment(BOT_ID, "<!-- afk-command: 111 -->"),
-                        comment(1, "<!-- afk-command: 333 -->"),
+                        make_comment(BOT_ID, "<!-- afk-command: 111 -->"),
+                        make_comment(1, "<!-- afk-command: 333 -->"),
                     ]
                 ],
                 "111",
@@ -220,15 +222,15 @@ class TestCommandId:
             pytest.param(
                 [
                     [
-                        comment(BOT_ID, "<!-- afk-command: 111 -->"),
-                        comment(BOT_ID, "<!-- afk-command:  -->"),
+                        make_comment(BOT_ID, "<!-- afk-command: 111 -->"),
+                        make_comment(BOT_ID, "<!-- afk-command:  -->"),
                     ]
                 ],
                 None,
                 id="finds no command when the latest marker is empty",
             ),
             pytest.param(
-                [[comment(BOT_ID, "Queued.")]],
+                [[make_comment(BOT_ID, "Queued.")]],
                 None,
                 id="finds no command without a marker",
             ),
