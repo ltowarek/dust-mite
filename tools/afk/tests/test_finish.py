@@ -1,7 +1,9 @@
 """Guards the writes that end an AFK run, and the release after a failed one."""
 
+import functools
 import json
 import subprocess
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,7 @@ from afk.effects import (
     CreateIssue,
     DispatchWorkflow,
     EditLabels,
+    Effect,
     React,
 )
 from afk.finish import Needs, Run, Workflow, failed_step, plan, plan_failure
@@ -25,7 +28,7 @@ from tests.test_doubles import GhCall, GhSpy, GitSpy, read_outputs
 # Joins a job and its step in a failure reason.
 SEP = " \N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK} "
 RUN_URL = "https://github.com/owner/repo/actions/runs/99"
-RUN = Run(workflow=Workflow.AFK_RUN, ticket=12, comment_id=None, url=RUN_URL)
+RUN = Run(workflow=Workflow.AFK_RUN, number=12, comment_id=None, url=RUN_URL)
 BRANCH = "afk/issue-12-99"
 SPEC_RUN = {"spec": "true", "child-ticket": "14"}
 DONE = {
@@ -36,6 +39,7 @@ DONE = {
 BLOCK = EditLabels(number=12, add=("afk:blocked",))
 UNBLOCK = EditLabels(number=12, remove=("afk:blocked",))
 RELEASE = EditLabels(number=12, remove=("afk:in-progress",))
+PR_RUN = Run(workflow=Workflow.AFK_RUN_PR, number=12, comment_id=555, url=RUN_URL)
 
 
 def needs_context(
@@ -68,12 +72,26 @@ def failure_report(text: str, reason: str) -> Comment:
 
 
 class TestPlan:
-    def test_refuses_the_ticket_with_the_check_jobs_reason(self) -> None:
+    @pytest.mark.parametrize(
+        ("run", "reaction"),
+        [
+            pytest.param(RUN, [], id="on a ticket"),
+            pytest.param(
+                PR_RUN,
+                [React(comment_id=555, content="confused")],
+                id="on a PR, reacting confused",
+            ),
+        ],
+    )
+    def test_refuses_with_the_check_jobs_reason_then_releases(
+        self, run: Run, reaction: list[Effect]
+    ) -> None:
         refused = needs(check={"refusal": "Refused."}, implement_result="skipped")
 
-        assert plan(RUN, refused, None) == [
+        assert plan(run, refused, None) == [
             Comment(number=12, body="Refused."),
             RELEASE,
+            *reaction,
         ]
 
     def test_labels_a_blocked_refusal_afk_blocked_before_commenting(self) -> None:
@@ -86,8 +104,25 @@ class TestPlan:
             Comment(number=12, body="Refused."),
         ]
 
-    def test_clears_afk_blocked_then_releases_the_ticket_after_its_work(self) -> None:
-        assert plan(RUN, needs(implement=DONE), None) == [UNBLOCK, RELEASE]
+    @pytest.mark.parametrize(
+        ("run", "reaction"),
+        [
+            pytest.param(RUN, [], id="on a ticket"),
+            pytest.param(
+                PR_RUN,
+                [React(comment_id=555, content="rocket")],
+                id="on a PR, reacting rocket",
+            ),
+        ],
+    )
+    def test_clears_afk_blocked_then_releases_after_its_work(
+        self, run: Run, reaction: list[Effect]
+    ) -> None:
+        assert plan(run, needs(implement=DONE), None) == [
+            UNBLOCK,
+            RELEASE,
+            *reaction,
+        ]
 
     @pytest.mark.parametrize(
         ("finished", "content"),
@@ -175,8 +210,19 @@ class TestPlan:
             ),
         ]
 
-    def test_comments_the_follow_ups_already_covered_on_the_branch_s_pr(
-        self,
+    @pytest.mark.parametrize(
+        ("run", "comment"),
+        [
+            pytest.param(
+                RUN,
+                functools.partial(CommentPullRequest, branch=BRANCH),
+                id="on a ticket, on its branch's PR",
+            ),
+            pytest.param(PR_RUN, functools.partial(Comment, number=12), id="on the PR"),
+        ],
+    )
+    def test_comments_the_follow_ups_already_covered(
+        self, run: Run, comment: Callable[..., Effect]
     ) -> None:
         output = {
             "outcome": "done",
@@ -190,8 +236,7 @@ class TestPlan:
             implement={**DONE, "agent-output": json.dumps(output)},
         )
 
-        assert plan(RUN, finished, None)[0] == CommentPullRequest(
-            branch=BRANCH,
+        assert plan(run, finished, None)[0] == comment(
             body="## Follow-ups already covered\n\n"
             "- The camera breaks. Covered by #30.\n"
             "- The drive stalls. Covered by #31.\n",
@@ -262,58 +307,90 @@ class TestPlan:
         ]
 
     @pytest.mark.parametrize(
-        ("check", "implement", "step", "report"),
+        ("run", "failed", "step", "effects"),
         [
             pytest.param(
-                {},
-                {},
+                RUN,
+                needs(implement_result="failure"),
                 f"implement{SEP}Run the AFK agent session",
-                failure_report(
-                    "The AFK run failed",
-                    f"`implement{SEP}Run the AFK agent session` failed.",
-                ),
+                [
+                    BLOCK,
+                    failure_report(
+                        "The AFK run failed",
+                        f"`implement{SEP}Run the AFK agent session` failed.",
+                    ),
+                    RELEASE,
+                ],
                 id="names the failed step",
             ),
             pytest.param(
-                {},
-                {"agent-error": "Out of turns."},
-                f"implement{SEP}Run the AFK agent session",
-                failure_report(
-                    "The AFK run failed",
-                    f"`implement{SEP}Run the AFK agent session` failed. "
-                    "The agent reported: Out of turns.",
+                RUN,
+                needs(
+                    implement={"agent-error": "Out of turns."},
+                    implement_result="failure",
                 ),
+                f"implement{SEP}Run the AFK agent session",
+                [
+                    BLOCK,
+                    failure_report(
+                        "The AFK run failed",
+                        f"`implement{SEP}Run the AFK agent session` failed. "
+                        "The agent reported: Out of turns.",
+                    ),
+                    RELEASE,
+                ],
                 id="adds the agent's error",
             ),
             pytest.param(
-                {},
-                {},
+                RUN,
+                needs(implement_result="failure"),
                 None,
-                failure_report("The AFK run failed", "`unknown step` failed."),
+                [
+                    BLOCK,
+                    failure_report("The AFK run failed", "`unknown step` failed."),
+                    RELEASE,
+                ],
                 id="names an unknown step when no step failed",
             ),
             pytest.param(
-                SPEC_RUN,
-                {},
+                RUN,
+                needs(check=SPEC_RUN, implement_result="failure"),
                 f"implement{SEP}Run the AFK agent session",
-                failure_report(
-                    "The AFK run failed on child ticket #14",
-                    f"`implement{SEP}Run the AFK agent session` failed.",
-                ),
+                [
+                    BLOCK,
+                    failure_report(
+                        "The AFK run failed on child ticket #14",
+                        f"`implement{SEP}Run the AFK agent session` failed.",
+                    ),
+                    RELEASE,
+                ],
                 id="names the spec's child ticket",
+            ),
+            pytest.param(
+                PR_RUN,
+                needs(
+                    implement={"agent-error": "Out of turns."},
+                    implement_result="failure",
+                ),
+                f"implement{SEP}Run the agent",
+                [
+                    BLOCK,
+                    failure_report(
+                        "The AFK run on this PR failed",
+                        f"`implement{SEP}Run the agent` failed. "
+                        "The agent reported: Out of turns.",
+                    ),
+                    RELEASE,
+                    *[React(comment_id=555, content="confused")],
+                ],
+                id="on a PR, reacting confused",
             ),
         ],
     )
-    def test_reports_a_failed_job_then_releases_the_ticket(
-        self,
-        check: dict[str, str],
-        implement: dict[str, str],
-        step: str | None,
-        report: Comment,
+    def test_reports_a_failed_job_then_releases(
+        self, run: Run, failed: Needs, step: str | None, effects: list[Effect]
     ) -> None:
-        failed = needs(check=check, implement=implement, implement_result="failure")
-
-        assert plan(RUN, failed, step) == [BLOCK, report, RELEASE]
+        assert plan(run, failed, step) == effects
 
     def test_reports_a_cancelled_check_job(self) -> None:
         cancelled = needs(check_result="cancelled", implement_result="skipped")

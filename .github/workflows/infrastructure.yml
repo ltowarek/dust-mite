@@ -463,6 +463,64 @@ jobs:
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$OUTPUTS"
 
+  afk-run-pr-check:
+    name: afk-run-pr-check (${{ matrix.case }})
+
+    # The production job's permissions.
+    permissions:
+      pull-requests: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # #391 is merged.
+          - case: refuses a PR that is not open
+            number: 391
+            assertion: '.refusal == "Refused to run: this PR is not open."'
+          # The canary PR is an open draft from this repository with one unresolved review thread.
+          - case: reads the canary PR's unresolved conversation
+            number: ${{ vars.AFK_CANARY_PR }}
+            assertion: '(.refusal // "") == "" and .branch != "" and (.conversation | fromjson | .review_threads | length) >= 1'
+          - case: works on the head that the AFK command was accepted at
+            number: ${{ vars.AFK_CANARY_PR }}
+            head-sha: 0123456789abcdef0123456789abcdef01234567
+            assertion: '.["head-sha"] == "0123456789abcdef0123456789abcdef01234567"'
+          - case: reports the in-progress mark as a dry run
+            number: ${{ vars.AFK_CANARY_PR }}
+            assertion: '.effects | fromjson == [{"type": "EditLabels", "number": (env.AFK_CANARY_PR | tonumber), "add": ["afk:in-progress"], "remove": []}]'
+
+    steps:
+      - name: Mint the App's write token for the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Check the PR as a dry run
+        id: check
+        uses: $/.github/actions/afk-run-pr-check
+        with:
+          number: ${{ matrix.number }}
+          head-sha: ${{ matrix.head-sha }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: true
+
+      - name: Assert on the outputs
+        shell: bash
+        env:
+          AFK_CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+          OUTPUTS: ${{ toJSON(steps.check.outputs) }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: jq -e "$ASSERTION" <<<"$OUTPUTS"
+
   afk-run-publish:
     name: afk-run-publish (${{ matrix.case }})
 
@@ -567,6 +625,119 @@ jobs:
           jq -e -n --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
             "{outcome: \$outcome, effects: \$effects} | $ASSERTION"
 
+  afk-run-pr-publish:
+    name: afk-run-pr-publish (${{ matrix.case }})
+
+    # The production implement job's permissions; publish reads only the checkout, and a dry run skips the writes.
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # The action reads no PR, so each case names the merged #391.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: pushes with a lease on the PR's head and posts the replies and comments
+            changed-file: docs/afk-canary.md
+            output:
+              thread_replies: [{comment_id: 501, body: Added it.}]
+              inline_comments: [{path: docs/afk-canary.md, line: 2, body: The new line.}]
+              top_level_comments: [Appended the line.]
+              needs_dut_run: false
+            assertion: '(.effects | map(.type)) == ["PushBranch","ReplyToReviewComment","CreateReviewComment","Comment"] and .effects[0].lease == .base'
+          - case: labels the PR for the car when its commits need a DUT run
+            changed-file: docs/afk-canary.md
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: []
+              needs_dut_run: true
+              car_variant: copper
+            assertion: '.effects[-1] == {"type":"EditLabels","number":391,"add":["needs-car:copper"],"remove":[]}'
+          - case: posts only the comments when the agent made no commits
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: [Nothing to change.]
+              needs_dut_run: false
+            assertion: '.effects == [{"type":"Comment","number":391,"body":"Nothing to change."}]'
+          - case: fails when the agent neither committed nor commented
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: []
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+          - case: refuses a commit that changes tools/
+            changed-file: tools/afk-canary.md
+            output:
+              thread_replies: []
+              inline_comments: []
+              top_level_comments: [Appended the line.]
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Switch to the PR's branch
+        id: branch
+        env:
+          BRANCH: afk-test/pr-391-${{ github.run_id }}
+        run: |
+          git switch -c "$BRANCH"
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit the agent's change
+        if: matrix.changed-file != ''
+        env:
+          CHANGED_FILE: ${{ matrix.changed-file }}
+        run: |
+          echo canary >> "$CHANGED_FILE"
+          git add "$CHANGED_FILE"
+          git -c user.name=afk-test -c user.email=afk-test@users.noreply.github.com commit --quiet -m "docs: append canary"
+
+      - name: Mint the App's write token for the push, comments and the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Publish the agent's work as a dry run
+        id: publish
+        # A refusal fails the step; the assertion checks its outcome.
+        continue-on-error: true
+        uses: $/.github/actions/afk-run-pr-publish
+        with:
+          number: 391
+          branch: afk-test/pr-391-${{ github.run_id }}
+          head-sha: ${{ steps.branch.outputs.base }}
+          agent-outcome: success
+          agent-output: ${{ toJSON(matrix.output) }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: true
+
+      - name: Assert on the outcome and the planned effects
+        shell: bash
+        env:
+          BASE: ${{ steps.branch.outputs.base }}
+          OUTCOME: ${{ steps.publish.outcome }}
+          EFFECTS: ${{ steps.publish.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: |
+          jq -e -n --arg base "$BASE" --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
+            "{base: \$base, outcome: \$outcome, effects: \$effects} | $ASSERTION"
+
   afk-finish:
     name: afk-finish (${{ matrix.case }})
 
@@ -577,7 +748,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
-    # The action reads no ticket, so each case names a closed one: #331 is the spec of the closed #363.
+    # The action reads no ticket, so each case names a closed one: #331 is the spec of the closed #363, and #391 is a merged PR.
     strategy:
       fail-fast: false
       matrix:
@@ -647,6 +818,33 @@ jobs:
                 and .[0].title == "Fix the camera"
                 and .[0].labels == ["needs-triage", "source:follow-up", "bug", "camera"]
                 and (.[0].body | startswith("> *Follow-up ticket filed by an AFK agent session while working #363.*"))
+          - case: reports a failed implement job on a PR
+            workflow: afk-run-pr
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              implement:
+                result: failure
+                outputs:
+                  agent-error: Out of turns.
+            assertion: >-
+              any(.[]; .type == "Comment" and .number == 391
+                and (.body | startswith("The AFK run on this PR failed.\n\n**Reason:** ")))
+          - case: comments the follow-ups already covered on the PR
+            workflow: afk-run-pr
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              implement:
+                result: success
+                outputs:
+                  agent-output: '{"thread_replies": [], "inline_comments": [], "top_level_comments": [], "needs_dut_run": false, "already_covered": [{"problem": "The camera breaks.", "covered_by": 363}]}'
+            assertion: >-
+              .[0] == {"type": "Comment", "number": 391, "body": "## Follow-ups already covered\n\n- The camera breaks. Covered by #363.\n"}
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments
@@ -662,7 +860,7 @@ jobs:
         id: finish
         uses: $/.github/actions/afk-finish
         with:
-          workflow: afk-run
+          workflow: ${{ matrix.workflow || 'afk-run' }}
           ticket: ${{ matrix.ticket }}
           needs: ${{ toJSON(matrix.needs) }}
           app-token: ${{ steps.write-token.outputs.token }}
@@ -726,6 +924,64 @@ jobs:
       - name: Assert that finish plans no failure comment
         run: |
           jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run failed") | not))' <<<"$FINISH_EFFECTS"
+
+  # The canary PR is an open draft whose branch creates docs/afk-canary.md holding the line `canary`, with one unresolved review comment that asks for a second line.
+  afk-run-pr-workflow:
+    # The production jobs' permissions.
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+
+    uses: $/.github/workflows/afk-run-pr.yml
+    with:
+      number: ${{ fromJSON(vars.AFK_CANARY_PR) }}
+      dry-run: true
+      model: claude-haiku-5-5
+      effort: low
+    secrets:
+      AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  afk-run-pr-workflow-assertions:
+    needs: afk-run-pr-workflow
+    # Also after a failed run, whose finish effects then hold its failure comment.
+    if: '!cancelled()'
+    permissions:
+      pull-requests: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+      GH_REPO: ${{ github.repository }}
+      PUBLISH_EFFECTS: ${{ needs.afk-run-pr-workflow.outputs.publish-effects }}
+      FINISH_EFFECTS: ${{ needs.afk-run-pr-workflow.outputs.finish-effects }}
+
+    steps:
+      - name: Assert that publish pushes the agent's commits with a lease on the canary PR's head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh pr view "$CANARY_PR" --json headRefOid --jq .headRefOid)
+          jq -e --arg head "$head" 'any(.[]; .type == "PushBranch" and .lease == $head)' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that publish replies on the canary PR's review thread
+        run: |
+          jq -e 'any(.[]; .type == "ReplyToReviewComment" and .number == (env.CANARY_PR | tonumber))' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that finish clears afk:in-progress
+        run: |
+          jq -e 'any(.[]; . == {"type": "EditLabels", "number": (env.CANARY_PR | tonumber), "add": [], "remove": ["afk:in-progress"]})' <<<"$FINISH_EFFECTS"
+
+      - name: Assert that finish plans no failure comment
+        run: |
+          jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run on this PR failed") | not))' <<<"$FINISH_EFFECTS"
 
   actions-lock:
     permissions:

@@ -5,7 +5,7 @@ import string
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, assert_never
 
 from afk.effects import (
     Comment,
@@ -15,8 +15,10 @@ from afk.effects import (
     React,
     Reaction,
 )
+from afk.github import Token, run_gh
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 _BLOCKERS_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -254,9 +256,14 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
             decision = refusal(target_issue.labels) or decide(
                 verb, kind, _read_state(gh, env, verb, kind)
             )
-            if isinstance(decision, Accept):
-                # Set before the writes, so that the release step sees it if one fails.
-                writer.set_output("accepted", "true")
+            match decision:
+                case Accept():
+                    # Set before the writes, so the release step sees it if one fails.
+                    writer.set_output("accepted", "true")
+                case Refusal() | Queue():
+                    pass
+                case _:
+                    assert_never(decision)
             effects = plan(target, decision)
     for effect in effects:
         writer.write(effect)

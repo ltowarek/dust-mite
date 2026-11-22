@@ -3,7 +3,7 @@ description: Report how an AFK run ended, file its follow-up tickets, and releas
 
 inputs:
   workflow:
-    description: The AFK run workflow that ends, without .yml; only afk-run for now
+    description: The AFK run workflow that ends, without .yml; afk-run or afk-run-pr
     required: true
   ticket:
     description: The ticket or spec that the AFK run runs on

@@ -8,8 +8,10 @@ from dataclasses import dataclass, field, fields, replace
 from typing import Any
 
 from afk.effects import EditLabels
+from afk.github import Token, read_graphql, run_gh
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 _SLUG_SEPARATOR = re.compile(r"[^a-z0-9]+")
 _CLOSING_PULL_REQUESTS_QUERY = """
@@ -196,39 +198,24 @@ def check(run_id: str, state: State) -> CheckResult:
     )
 
 
-def _read(gh: Runner, env: Mapping[str, str], *args: str) -> str:
-    return run_gh(gh, env, Token.WORKFLOW, args)
-
-
 def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:
     issues = f"repos/{env['GH_REPO']}/issues"
-    issue = _read(gh, env, "api", f"{issues}/{number}")
-    sub_issues = _read(gh, env, "api", f"{issues}/{number}/sub_issues?per_page=100")
+    issue = run_gh(gh, env, Token.WORKFLOW, ["api", f"{issues}/{number}"])
+    sub_issues = run_gh(
+        gh, env, Token.WORKFLOW, ["api", f"{issues}/{number}/sub_issues?per_page=100"]
+    )
     children = [ticket(child) for child in json.loads(sub_issues)]
     blockers: dict[int, tuple[str, ...]] = {}
     for child in blocked_child_tickets(children):
         endpoint = f"{issues}/{child}/dependencies/blocked_by?per_page=100"
-        blockers[child] = open_blocker_urls(json.loads(_read(gh, env, "api", endpoint)))
-    owner, repo = env["GH_REPO"].split("/")
-    closing = _read(
-        gh,
-        env,
-        "api",
-        "graphql",
-        "-f",
-        f"query={_CLOSING_PULL_REQUESTS_QUERY}",
-        "-f",
-        f"owner={owner}",
-        "-f",
-        f"repo={repo}",
-        "-F",
-        f"number={number}",
-    )
+        response = run_gh(gh, env, Token.WORKFLOW, ["api", endpoint])
+        blockers[child] = open_blocker_urls(json.loads(response))
+    closing = read_graphql(gh, env, _CLOSING_PULL_REQUESTS_QUERY, number)
     return State(
         ticket(json.loads(issue)),
         children,
         blockers,
-        open_closing_pull_requests(json.loads(closing)),
+        open_closing_pull_requests(closing),
     )
 
 

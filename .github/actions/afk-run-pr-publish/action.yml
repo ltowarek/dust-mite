@@ -1,0 +1,63 @@
+name: AFK run PR publish
+description: Push an AFK PR run's commits to the PR's branch and post its replies and comments, and refuse agent commits that change .github/ or tools/
+
+inputs:
+  number:
+    description: The PR
+    required: true
+  branch:
+    description: The PR's branch, which the agent's commits are pushed to
+    required: true
+  head-sha:
+    description: The commit that the agent started from; the push leases on it, and every commit after it is the agent's own
+    required: true
+  agent-outcome:
+    description: The outcome of the agent step
+    required: true
+  agent-output:
+    description: The agent's structured output
+    required: false
+    default: ""
+  execution-file:
+    description: The agent's execution file, read for its error when the agent step did not succeed
+    required: false
+    default: ""
+  app-token:
+    description: The AFK App's token with Contents, Issues and Pull requests write, for the push, comments and the label
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  agent-error:
+    description: The error that the agent reports, set only when the agent step did not succeed
+    value: ${{ steps.publish.outputs.agent-error }}
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.publish.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Push the agent's commits and post its replies and comments
+      id: publish
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_PR: ${{ inputs.number }}
+        AFK_BRANCH: ${{ inputs.branch }}
+        AFK_HEAD_SHA: ${{ inputs.head-sha }}
+        AFK_AGENT_OUTCOME: ${{ inputs.agent-outcome }}
+        AFK_AGENT_OUTPUT: ${{ inputs.agent-output }}
+        AFK_EXECUTION_FILE: ${{ inputs.execution-file }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        "$AFK_PYTHON" -m afk run-pr-publish

@@ -72,7 +72,7 @@ class GitSpy(_Spy[GitCall]):
     def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
         """Record the call, then answer or fail it."""
         args = list(args)
-        tokens = {"GH_TOKEN", "AFK_APP_TOKEN", "AFK_WORKFLOW_TOKEN"} & env.keys()
+        tokens = {key for key in env if key.endswith("_TOKEN")}
         if tokens:
             msg = f"git ran with {sorted(tokens)}"
             raise ValueError(msg)

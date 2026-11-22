@@ -4,13 +4,21 @@ import argparse
 import functools
 import logging
 import os
-import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from afk import dispatch, finish, promote_queued, publish, run_check
-from afk.writer import Runner, Writer
+from afk import (
+    dispatch,
+    finish,
+    promote_queued,
+    publish,
+    run_check,
+    run_pr_check,
+    run_pr_publish,
+)
+from afk.runner import Runner, runner
+from afk.writer import Writer
 
 Phase = Callable[[Mapping[str, str], Writer], None]
 
@@ -24,24 +32,13 @@ def _phases(gh: Runner, git: Runner) -> dict[str, Phase]:
         "promote-queued": functools.partial(promote_queued.run, gh),
         "publish": functools.partial(publish.run, gh, git),
         "run-check": functools.partial(run_check.run, gh),
+        "run-pr-check": functools.partial(run_pr_check.run, gh),
+        "run-pr-publish": functools.partial(run_pr_publish.run, git),
     }
 
 
-def _runner(program: str) -> Runner:
-    def run(args: Sequence[str], env: Mapping[str, str]) -> str:
-        return subprocess.run(  # noqa: S603 - ADR 0008 makes the `gh` and `git` command lines the shell's interface
-            [program, *args],
-            env=dict(env),
-            check=True,
-            stdout=subprocess.PIPE,
-            text=True,
-        ).stdout
-
-    return run
-
-
-gh = _runner("gh")
-git = _runner("git")
+gh = runner("gh")
+git = runner("git")
 
 
 def main(argv: Sequence[str], gh: Runner, git: Runner, env: Mapping[str, str]) -> None:

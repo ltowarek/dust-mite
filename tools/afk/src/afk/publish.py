@@ -2,11 +2,11 @@
 
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
+from afk.agent import read_agent_error, refuse_protected_changes
 from afk.effects import (
     Comment,
     CreatePullRequest,
@@ -17,7 +17,11 @@ from afk.effects import (
     MarkPullRequestReady,
     PushBranch,
 )
-from afk.writer import Runner, Token, Writer, run_gh, run_git
+from afk.git import read_head
+from afk.github import Token, run_gh
+from afk.labels import needs_car
+from afk.runner import Runner
+from afk.writer import Writer
 
 _LINE_BREAK = re.compile(r"\s*\n\s*")
 
@@ -32,22 +36,6 @@ class Run:
     branch: str
     last_run: bool
     url: str
-
-
-def protected(paths: Iterable[str]) -> list[str]:
-    """Return the changed files under `.github/` or `tools/`, sorted and unique."""
-    # Code here runs with the AFK App's write token in later runs (ADR 0008).
-    return sorted({path for path in paths if path.startswith((".github/", "tools/"))})
-
-
-def agent_error(execution: list[dict[str, Any]]) -> str:
-    """Return the error that the agent's last message reports, if any."""
-    if not execution:
-        return ""
-    last = execution[-1]
-    if last.get("type") != "result" or not last.get("is_error"):
-        return ""
-    return str(last.get("result") or "")
 
 
 def _already_covered(output: Mapping[str, Any]) -> str:
@@ -73,7 +61,7 @@ def _done(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effe
     if not run.last_run:
         return effects
     if output["needs_dut_run"]:
-        label = f"needs-car:{output.get('car_variant', '')}"
+        label = needs_car(output.get("car_variant", ""))
         effects.append(EditPullRequestLabels(branch=run.branch, add=(label,)))
     else:
         effects.append(MarkPullRequestReady(branch=run.branch))
@@ -89,7 +77,7 @@ def _needs_car(output: Mapping[str, Any], run: Run) -> list[Effect]:
     return [
         EditLabels(
             number=run.worked_ticket,
-            add=(f"needs-car:{output.get('car_variant', '')}",),
+            add=(needs_car(output.get("car_variant", "")),),
         ),
         Comment(number=run.worked_ticket, body=body),
     ]
@@ -125,29 +113,9 @@ def plan(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effec
             raise ValueError(msg)
 
 
-def changed_files(log: str) -> list[str]:
-    """Return the files in the NUL-separated `git log` of the agent's commits."""
-    return [path for path in log.split("\0") if path]
-
-
 def open_pull_request(response: list[dict[str, Any]]) -> str | None:
     """Return the URL of the branch's open PR from `gh pr list`."""
     return str(response[0]["url"]) if response else None
-
-
-def _read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[str]:
-    # Per commit and unquoted; replace refs could hide a commit that the push sends.
-    args = [
-        "--no-replace-objects",
-        "log",
-        "-z",
-        "--format=",
-        "--name-only",
-        "--no-renames",
-        "--diff-merges=first-parent",
-        f"{base}..HEAD",
-    ]
-    return changed_files(run_git(git, env, None, args))
 
 
 def _read_open_pull_request(
@@ -155,21 +123,6 @@ def _read_open_pull_request(
 ) -> str | None:
     args = ["pr", "list", "--head", branch, "--state", "open", "--json", "url"]
     return open_pull_request(json.loads(run_gh(gh, env, Token.APP, args)))
-
-
-def _read_execution(env: Mapping[str, str]) -> list[dict[str, Any]]:
-    execution_file = env.get("AFK_EXECUTION_FILE", "")
-    return json.loads(Path(execution_file).read_text()) if execution_file else []
-
-
-def _refuse(refused: list[str]) -> None:
-    if refused:
-        msg = (
-            f"Refused to publish: the agent's commits change {', '.join(refused)}. "
-            "Code under .github/ and tools/ runs with the AFK App's write token, "
-            "so only a human changes it."
-        )
-        raise SystemExit(msg)
 
 
 def _published(env: Mapping[str, str]) -> Run:
@@ -185,16 +138,12 @@ def _published(env: Mapping[str, str]) -> Run:
     )
 
 
-def _read_head(git: Runner, env: Mapping[str, str]) -> str:
-    return run_git(git, env, None, ["rev-parse", "HEAD"]).strip()
-
-
 def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Refuse protected changes, then publish the work or hand the ticket on."""
     if env["AFK_AGENT_OUTCOME"] != "success":
-        writer.set_output("agent-error", agent_error(_read_execution(env)))
+        writer.set_output("agent-error", read_agent_error(env))
         return
-    _refuse(protected(_read_changed_files(git, env, env["AFK_BASE"])))
+    refuse_protected_changes(git, env, env["AFK_BASE"])
     output = json.loads(env["AFK_AGENT_OUTPUT"])
     published = _published(env)
     done = output["outcome"] == "done"
@@ -206,4 +155,4 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
     if done:
         pr_url = _read_open_pull_request(gh, env, published.branch)
         writer.set_output("pr-url", pr_url or "")
-        writer.set_output("sha", _read_head(git, env))
+        writer.set_output("sha", read_head(git, env))

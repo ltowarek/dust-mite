@@ -12,6 +12,7 @@ workflows:
     '.github/workflows/afk-run-pr.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
+        - 'actions/setup-python@v7.1.0'
         - 'anthropics/claude-code-action@v1.0.269'
     '.github/workflows/afk-run.yml':
         - 'actions/checkout@v7.0.1'

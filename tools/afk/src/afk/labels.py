@@ -9,3 +9,8 @@ class Label(StrEnum):
     QUEUED = "afk:queued"
     IN_PROGRESS = "afk:in-progress"
     BLOCKED = "afk:blocked"
+
+
+def needs_car(variant: str) -> str:
+    """Return the label that hands a change to a car agent session on `variant`."""
+    return f"needs-car:{variant}"
