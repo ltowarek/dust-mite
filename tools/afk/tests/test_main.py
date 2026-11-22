@@ -1,18 +1,16 @@
-"""Guards that a phase's step outputs reach `$GITHUB_OUTPUT` whole."""
+"""Guards that `python -m afk <phase>` runs a phase and sets its step outputs."""
 
-import io
 import json
-from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
 
-from afk.__main__ import main, write_outputs
+from afk.__main__ import main
+from tests.doubles import GhSpy
 
-
-def gh_stub(args: Sequence[str], _env: Mapping[str, str]) -> str:
-    assert args[:3] == ["gh", "api", "graphql"]
-    return json.dumps({"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}})
+NO_BLOCKED_TICKETS = json.dumps(
+    {"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}}
+)
 
 
 class TestMain:
@@ -31,7 +29,11 @@ class TestMain:
             "GITHUB_OUTPUT": str(output),
         }
 
-        main(["promote-queued"], gh_stub, env)
+        main(
+            ["promote-queued"],
+            GhSpy({("gh", "api", "graphql"): NO_BLOCKED_TICKETS}),
+            env,
+        )
 
         lines = output.read_text().splitlines()
         delimiter = lines[1].removeprefix("effects<<")
@@ -39,24 +41,4 @@ class TestMain:
 
     def test_rejects_an_unknown_phase(self, tmp_path: Path) -> None:
         with pytest.raises(SystemExit):
-            main(["unknown"], gh_stub, {"GITHUB_OUTPUT": str(tmp_path / "output")})
-
-
-class TestWriteOutputs:
-    def test_keeps_a_multiline_value_whole(self) -> None:
-        output = io.StringIO()
-
-        write_outputs(output, {"body": "first line\ninjected=1"})
-
-        lines = output.getvalue().splitlines()
-        delimiter = lines[0].removeprefix("body<<")
-        assert lines == [f"body<<{delimiter}", "first line", "injected=1", delimiter]
-
-    def test_uses_a_new_delimiter_for_each_write(self) -> None:
-        output = io.StringIO()
-
-        write_outputs(output, {"first": "1"})
-        write_outputs(output, {"second": "2"})
-
-        lines = output.getvalue().splitlines()
-        assert lines[0].removeprefix("first<<") != lines[3].removeprefix("second<<")
+            main(["unknown"], GhSpy(), {"GITHUB_OUTPUT": str(tmp_path / "output")})

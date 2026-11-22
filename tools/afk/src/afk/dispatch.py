@@ -16,7 +16,7 @@ from afk.effects import (
     Reaction,
 )
 from afk.labels import Label
-from afk.writer import Runner, StepOutput, Token, Writer
+from afk.writer import Runner, Token, Writer
 
 _BLOCKERS_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -241,7 +241,7 @@ def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> S
     return State(open_blockers=blockers, head_sha=head_sha)
 
 
-def run(gh: Runner, env: Mapping[str, str], output: StepOutput) -> None:
+def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Refuse, queue or dispatch the AFK command in `AFK_BODY`."""
     target = _target(env)
     effects: list[Effect] = []
@@ -258,17 +258,13 @@ def run(gh: Runner, env: Mapping[str, str], output: StepOutput) -> None:
             )
             if isinstance(decision, Accept):
                 # Set before the writes, so that the release step sees it if one fails.
-                output({"accepted": "true"})
+                writer.set_output("accepted", "true")
             effects = plan(target, decision)
-    writer = Writer(gh, env)
     for effect in effects:
         writer.write(effect)
-    output(writer.outputs())
 
 
-def run_release(gh: Runner, env: Mapping[str, str], output: StepOutput) -> None:
+def run_release(_gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Release the command's target after its job failed."""
-    writer = Writer(gh, env)
     for effect in release(_target(env), accepted=env["AFK_ACCEPTED"] == "true"):
         writer.write(effect)
-    output(writer.outputs())

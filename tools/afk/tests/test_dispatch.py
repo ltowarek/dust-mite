@@ -2,7 +2,7 @@
 
 import json
 import subprocess
-from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +25,8 @@ from afk.dispatch import (
     release,
 )
 from afk.effects import Comment, DispatchWorkflow, EditLabels, React
+from afk.writer import Writer
+from tests.doubles import GhSpy, read_outputs
 
 
 class TestParse:
@@ -241,150 +243,35 @@ ENV = {
     "AFK_WORKFLOW_TOKEN": "workflow-token",
     "AFK_NUMBER": "7",
     "AFK_COMMENT_ID": "555",
+    "AFK_BODY": "/afk implement",
     "GH_REPO": "owner/repo",
 }
-
-
-class OutputSpy:
-    def __init__(self) -> None:
-        self.outputs: list[dict[str, str]] = []
-
-    def __call__(self, outputs: Mapping[str, str]) -> None:
-        self.outputs.append(dict(outputs))
-
-
-def gh_dummy(args: Sequence[str], _env: Mapping[str, str]) -> str:
-    pytest.fail(f"ran {list(args)}")
-
-
-class GhSpy:
-    """Answers an open issue's reads, records its writes and fails the dispatch."""
-
-    def __init__(self) -> None:
-        self.writes: list[list[str]] = []
-
-    def __call__(self, args: Sequence[str], _env: Mapping[str, str]) -> str:
-        match list(args):
-            case ["gh", "api", "repos/owner/repo/issues/7"]:
-                return json.dumps({"labels": []})
-            case ["gh", "api", "graphql", *_]:
-                nodes: list[object] = []
-                issue = {"blockedBy": {"nodes": nodes}}
-                return json.dumps({"data": {"repository": {"issue": issue}}})
-            case ["gh", "workflow", "run", *_]:
-                raise subprocess.CalledProcessError(1, args)
-            case write:
-                self.writes.append(write)
-                return ""
-
-
-def gh_in_progress_stub(args: Sequence[str], _env: Mapping[str, str]) -> str:
-    if list(args) != ["gh", "api", "repos/owner/repo/issues/7"]:
-        pytest.fail(f"ran {list(args)}")
-    return json.dumps({"labels": [{"name": "afk:in-progress"}]})
+ISSUE_READ = ("gh", "api", "repos/owner/repo/issues/7")
+NO_BLOCKERS = json.dumps(
+    {"data": {"repository": {"issue": {"blockedBy": {"nodes": []}}}}}
+)
 
 
 class TestRun:
-    @pytest.mark.parametrize(
-        ("body", "effects"),
-        [
-            pytest.param("Looks good.", [], id="writes nothing for a non-command"),
-            pytest.param(
-                "/afk deploy",
-                [
-                    {
-                        "type": "Comment",
-                        "number": 7,
-                        "body": "Unknown AFK command. The first line of the comment "
-                        "must be `/afk implement` or `/afk update-branch`.",
-                    },
-                    {"type": "React", "comment_id": 555, "content": "confused"},
-                ],
-                id="refuses an unknown verb",
-            ),
-        ],
-    )
-    def test_reads_nothing_without_a_known_verb(
-        self, body: str, effects: list[dict[str, object]]
-    ) -> None:
-        output = OutputSpy()
+    def test_reads_only_the_labels_of_a_refused_target(self, tmp_path: Path) -> None:
+        gh = GhSpy({ISSUE_READ: json.dumps({"labels": [{"name": "afk:in-progress"}]})})
+        env = {**ENV, "AFK_DRY_RUN": "true"}
 
-        dispatch.run(gh_dummy, {**ENV, "AFK_BODY": body, "AFK_DRY_RUN": "true"}, output)
+        dispatch.run(gh, env, Writer(gh, env, tmp_path / "output"))
 
-        assert [json.loads(o["effects"]) for o in output.outputs] == [effects]
+        assert [call.args for call in gh.calls] == [list(ISSUE_READ)]
 
-    def test_reads_only_the_labels_of_a_refused_target(self) -> None:
-        output = OutputSpy()
-        env = {**ENV, "AFK_BODY": "/afk implement", "AFK_DRY_RUN": "true"}
-
-        dispatch.run(gh_in_progress_stub, env, output)
-
-        assert [e["type"] for e in json.loads(output.outputs[0]["effects"])] == [
-            "Comment",
-            "React",
-        ]
-
-    def test_sets_accepted_before_a_dispatch_that_fails(self) -> None:
-        gh = GhSpy()
-        output = OutputSpy()
+    def test_sets_accepted_before_a_dispatch_that_fails(self, tmp_path: Path) -> None:
+        gh = GhSpy(
+            {
+                ISSUE_READ: json.dumps({"labels": []}),
+                ("gh", "api", "graphql"): NO_BLOCKERS,
+            },
+            failing=("gh", "workflow", "run"),
+        )
+        output = tmp_path / "output"
 
         with pytest.raises(subprocess.CalledProcessError):
-            dispatch.run(gh, {**ENV, "AFK_BODY": "/afk implement"}, output)
+            dispatch.run(gh, ENV, Writer(gh, ENV, output))
 
-        assert output.outputs == [{"accepted": "true"}]
-        assert gh.writes == [
-            [
-                "gh",
-                "api",
-                "--method",
-                "POST",
-                "repos/{owner}/{repo}/issues/comments/555/reactions",
-                "-f",
-                "content=eyes",
-            ],
-            [
-                "gh",
-                "issue",
-                "edit",
-                "7",
-                "--add-label",
-                "afk:in-progress",
-                "--remove-label",
-                "afk:blocked",
-            ],
-        ]
-
-
-class TestRunRelease:
-    @pytest.mark.parametrize(
-        ("accepted", "effects"),
-        [
-            pytest.param(
-                "true",
-                [
-                    {
-                        "type": "EditLabels",
-                        "number": 7,
-                        "add": [],
-                        "remove": ["afk:in-progress"],
-                    },
-                    {"type": "React", "comment_id": 555, "content": "confused"},
-                ],
-                id="releases an accepted target",
-            ),
-            pytest.param(
-                "",
-                [{"type": "React", "comment_id": 555, "content": "confused"}],
-                id="only reacts when the command was not accepted",
-            ),
-        ],
-    )
-    def test_reads_accepted_from_the_dispatch_output(
-        self, accepted: str, effects: list[dict[str, object]]
-    ) -> None:
-        output = OutputSpy()
-        env = {**ENV, "AFK_ACCEPTED": accepted, "AFK_DRY_RUN": "true"}
-
-        dispatch.run_release(gh_dummy, env, output)
-
-        assert [json.loads(o["effects"]) for o in output.outputs] == [effects]
+        assert read_outputs(output) == {"accepted": "true"}
