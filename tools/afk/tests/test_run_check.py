@@ -9,14 +9,13 @@ import pytest
 from afk import run_check
 from afk.run_check import (
     CheckResult,
-    PullRequest,
     State,
     Ticket,
     blocked_child_tickets,
     check,
     open_blocker_urls,
+    open_closing_pull_requests,
     outputs,
-    pull_requests,
     ticket,
 )
 from afk.writer import Writer
@@ -56,14 +55,13 @@ def make_issue(
     }
 
 
-def make_pull_request(number: int, body: str) -> PullRequest:
-    return PullRequest(url=f"https://github.com/owner/repo/pull/{number}", body=body)
+PR_URL = "https://github.com/owner/repo/pull"
 
 
 def make_pr_refusal(number: int) -> str:
     return (
-        f"Refused to run: PR https://github.com/owner/repo/pull/{number} already "
-        "targets this ticket. Close it first, then comment `/afk implement` again."
+        f"Refused to run: PR {PR_URL}/{number} already targets this ticket. "
+        "Close it first, then comment `/afk implement` again."
     )
 
 
@@ -178,25 +176,22 @@ class TestCheck:
             pytest.param(
                 State(
                     make_ticket(),
-                    pull_requests=[
-                        make_pull_request(20, "#7"),
-                        make_pull_request(21, "Closes #7"),
-                    ],
+                    closing_pull_requests=[f"{PR_URL}/20", f"{PR_URL}/21"],
                 ),
                 CheckResult(
                     url=f"{URL}/7",
-                    refusal=make_pr_refusal(21),
+                    refusal=make_pr_refusal(20),
                     branch="afk/issue-7-4242",
                     last_run=True,
                 ),
-                id="refuses a ticket that the first open PR to close it names",
+                id="refuses a ticket that an open PR closes, naming the first",
             ),
             pytest.param(
                 State(
                     make_ticket(),
                     [make_ticket(8, blocked_by=1)],
                     open_blocker_urls={8: [f"{URL}/50"]},
-                    pull_requests=[make_pull_request(20, "Closes #7")],
+                    closing_pull_requests=[f"{PR_URL}/20"],
                 ),
                 CheckResult(url=f"{URL}/7", refusal=make_pr_refusal(20), queue=True),
                 id="queues and refuses a spec that an open PR closes",
@@ -208,47 +203,11 @@ class TestCheck:
     ) -> None:
         assert check(RUN_ID, state) == result
 
-    @pytest.mark.parametrize(
-        "body",
-        [
-            pytest.param("Closes #7", id="closes"),
-            pytest.param("Some text.\n\nfixes\n#7.", id="fixes on the next line"),
-            pytest.param("RESOLVES #7", id="resolves in capitals"),
-        ],
-    )
-    def test_refuses_a_ticket_that_an_open_pr_closes(self, body: str) -> None:
-        state = State(make_ticket(), pull_requests=[make_pull_request(20, body)])
+    def test_runs_a_spec_s_child_ticket_despite_the_spec_s_open_pr(self) -> None:
+        state = State(
+            make_ticket(), [make_ticket(8)], closing_pull_requests=[f"{PR_URL}/20"]
+        )
 
-        assert check(RUN_ID, state).refusal == make_pr_refusal(20)
-
-    @pytest.mark.parametrize(
-        "state",
-        [
-            pytest.param(
-                State(make_ticket(), pull_requests=[make_pull_request(20, "Refs #7")]),
-                id="refers to the ticket",
-            ),
-            pytest.param(
-                State(
-                    make_ticket(), pull_requests=[make_pull_request(20, "Closes #70")]
-                ),
-                id="closes a longer number",
-            ),
-            pytest.param(
-                State(make_ticket(), pull_requests=[make_pull_request(20, "Closes#7")]),
-                id="has no space before the number",
-            ),
-            pytest.param(
-                State(
-                    make_ticket(),
-                    [make_ticket(8)],
-                    pull_requests=[make_pull_request(20, "Closes #7")],
-                ),
-                id="closes the spec whose child ticket runs",
-            ),
-        ],
-    )
-    def test_runs_a_ticket_despite_an_open_pr_that(self, state: State) -> None:
         assert check(RUN_ID, state).refusal is None
 
     @pytest.mark.parametrize(
@@ -384,11 +343,20 @@ class TestOpenBlockerUrls:
         assert open_blocker_urls(response) == (f"{URL}/9",)
 
 
-class TestPullRequests:
-    def test_reads_each_pull_request_s_url_and_body(self) -> None:
-        response = [{"url": "https://github.com/owner/repo/pull/20", "body": "#7"}]
+def make_closing_response(*nodes: tuple[int, str]) -> dict[str, Any]:
+    references = {"nodes": [{"url": f"{PR_URL}/{n}", "state": s} for n, s in nodes]}
+    return {
+        "data": {
+            "repository": {"issue": {"closedByPullRequestsReferences": references}}
+        }
+    }
 
-        assert pull_requests(response) == [make_pull_request(20, "#7")]
+
+class TestOpenClosingPullRequests:
+    def test_reads_the_urls_of_the_open_closing_pull_requests(self) -> None:
+        response = make_closing_response((20, "MERGED"), (21, "OPEN"), (22, "CLOSED"))
+
+        assert open_closing_pull_requests(response) == (f"{PR_URL}/21",)
 
 
 ENV = {
@@ -400,11 +368,11 @@ ENV = {
 }
 ISSUE_READ = ("gh", "api", "repos/owner/repo/issues/7")
 CHILD_TICKETS_READ = ("gh", "api", "repos/owner/repo/issues/7/sub_issues?per_page=100")
-PULL_REQUESTS_READ = ("gh", "pr", "list")
+CLOSING_PULL_REQUESTS_READ = ("gh", "api", "graphql")
 PLAIN_TICKET_READS: dict[tuple[str, ...], str] = {
     ISSUE_READ: json.dumps(make_issue(7)),
     CHILD_TICKETS_READ: "[]",
-    PULL_REQUESTS_READ: "[]",
+    CLOSING_PULL_REQUESTS_READ: json.dumps(make_closing_response()),
 }
 
 
@@ -428,6 +396,30 @@ class TestRun:
         run_check.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
 
         assert {call.token for call in gh.calls[1:]} == {"workflow-token"}
+
+    def test_refuses_a_ticket_that_an_open_pr_closes(self, tmp_path: Path) -> None:
+        gh = GhSpy(
+            {
+                **PLAIN_TICKET_READS,
+                CLOSING_PULL_REQUESTS_READ: json.dumps(
+                    make_closing_response((20, "OPEN"))
+                ),
+            }
+        )
+        output = tmp_path / "output"
+
+        run_check.run(gh, ENV, Writer(gh, ENV, output))
+
+        closing_read = next(c for c in gh.calls if "graphql" in c.args)
+        assert closing_read.args[-6:] == [
+            "-f",
+            "owner=owner",
+            "-f",
+            "repo=repo",
+            "-F",
+            "number=7",
+        ]
+        assert read_outputs(output)["refusal"] == make_pr_refusal(20)
 
     def test_sets_the_decision_and_the_planned_mark_as_outputs(
         self, tmp_path: Path

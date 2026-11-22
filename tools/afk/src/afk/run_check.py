@@ -13,6 +13,15 @@ from afk.writer import Runner, Token, Writer
 
 _ASCII_LOWERCASE = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 _SLUG_SEPARATOR = re.compile(r"[^a-z0-9]+")
+_CLOSING_PULL_REQUESTS_QUERY = """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      closedByPullRequestsReferences(first: 100) { nodes { url state } }
+    }
+  }
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -28,21 +37,13 @@ class Ticket:
 
 
 @dataclass(frozen=True)
-class PullRequest:
-    """An open pull request whose body mentions a ticket."""
-
-    url: str
-    body: str
-
-
-@dataclass(frozen=True)
 class State:
     """What the shell read about the ticket or spec; a spec has child tickets."""
 
     ticket: Ticket
     child_tickets: Sequence[Ticket] = ()
     open_blocker_urls: Mapping[int, Sequence[str]] = field(default_factory=dict)
-    pull_requests: Sequence[PullRequest] = ()
+    closing_pull_requests: Sequence[str] = ()
 
 
 def ticket(issue: dict[str, Any]) -> Ticket:
@@ -64,9 +65,11 @@ def open_blocker_urls(response: list[dict[str, Any]]) -> tuple[str, ...]:
     return tuple(i["html_url"] for i in response if i["state"] == "open")
 
 
-def pull_requests(response: list[dict[str, Any]]) -> list[PullRequest]:
-    """Return the pull requests from `gh pr list`."""
-    return [PullRequest(url=pr["url"], body=pr["body"]) for pr in response]
+def open_closing_pull_requests(response: dict[str, Any]) -> tuple[str, ...]:
+    """Return the URLs of the open PRs that close the ticket, from the query."""
+    issue = response["data"]["repository"]["issue"]
+    nodes = issue["closedByPullRequestsReferences"]["nodes"]
+    return tuple(node["url"] for node in nodes if node["state"] == "OPEN")
 
 
 def _open(children: Sequence[Ticket]) -> list[Ticket]:
@@ -180,25 +183,16 @@ def _check_ticket(run_id: str, state: State) -> CheckResult:
     )
 
 
-def _closing_pull_request(state: State) -> str | None:
-    number = state.ticket.number
-    closes = re.compile(rf"(closes|fixes|resolves)\s+#{number}\b", re.IGNORECASE)
-    return next((pr.url for pr in state.pull_requests if closes.search(pr.body)), None)
-
-
 def check(run_id: str, state: State) -> CheckResult:
     """Decide whether an AFK run on the ticket is refused, queued or goes ahead."""
     result = _check_ticket(run_id, state)
     # A spec's own PR closes it while its child tickets run.
-    if result.spec or result.refusal is not None:
-        return result
-    pull_request = _closing_pull_request(state)
-    if pull_request is None:
+    if result.spec or result.refusal is not None or not state.closing_pull_requests:
         return result
     return replace(
         result,
-        refusal=f"Refused to run: PR {pull_request} already targets this ticket. "
-        "Close it first, then comment `/afk implement` again.",
+        refusal=f"Refused to run: PR {state.closing_pull_requests[0]} already targets "
+        "this ticket. Close it first, then comment `/afk implement` again.",
     )
 
 
@@ -215,24 +209,26 @@ def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:
     for child in blocked_child_tickets(children):
         endpoint = f"{issues}/{child}/dependencies/blocked_by?per_page=100"
         blockers[child] = open_blocker_urls(json.loads(_read(gh, env, "api", endpoint)))
-    search = f'in:body "#{number}"'
-    prs = _read(
+    owner, repo = env["GH_REPO"].split("/")
+    closing = _read(
         gh,
         env,
-        "pr",
-        "list",
-        "--state",
-        "open",
-        "--search",
-        search,
-        "--json",
-        "url,body",
+        "api",
+        "graphql",
+        "-f",
+        f"query={_CLOSING_PULL_REQUESTS_QUERY}",
+        "-f",
+        f"owner={owner}",
+        "-f",
+        f"repo={repo}",
+        "-F",
+        f"number={number}",
     )
     return State(
         ticket(json.loads(issue)),
         children,
         blockers,
-        pull_requests(json.loads(prs)),
+        open_closing_pull_requests(json.loads(closing)),
     )
 
 
