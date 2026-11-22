@@ -157,12 +157,16 @@ def _read_open_pull_request(
     return open_pull_request(json.loads(run_gh(gh, env, Token.APP, args)))
 
 
-def _read_execution(env: Mapping[str, str]) -> list[dict[str, Any]]:
+def read_agent_error(env: Mapping[str, str]) -> str:
+    """Return the error in the agent's execution file, if any."""
     execution_file = env.get("AFK_EXECUTION_FILE", "")
-    return json.loads(Path(execution_file).read_text()) if execution_file else []
+    execution = json.loads(Path(execution_file).read_text()) if execution_file else []
+    return agent_error(execution)
 
 
-def _refuse(refused: list[str]) -> None:
+def refuse_protected_changes(git: Runner, env: Mapping[str, str], base: str) -> None:
+    """Fail when an agent commit after `base` changes `.github/` or `tools/`."""
+    refused = protected(_read_changed_files(git, env, base))
     if refused:
         msg = (
             f"Refused to publish: the agent's commits change {', '.join(refused)}. "
@@ -192,9 +196,9 @@ def _read_head(git: Runner, env: Mapping[str, str]) -> str:
 def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Refuse protected changes, then publish the work or hand the ticket on."""
     if env["AFK_AGENT_OUTCOME"] != "success":
-        writer.set_output("agent-error", agent_error(_read_execution(env)))
+        writer.set_output("agent-error", read_agent_error(env))
         return
-    _refuse(protected(_read_changed_files(git, env, env["AFK_BASE"])))
+    refuse_protected_changes(git, env, env["AFK_BASE"])
     output = json.loads(env["AFK_AGENT_OUTPUT"])
     published = _published(env)
     done = output["outcome"] == "done"
