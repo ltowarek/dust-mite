@@ -19,7 +19,7 @@ from afk.run_check import (
     ticket,
 )
 from afk.writer import Writer
-from tests.test_doubles import GhCall, GhSpy, read_outputs
+from tests.test_doubles import GhCall, GhSpy, GitSpy, read_outputs
 
 RUN_ID = "4242"
 URL = "https://github.com/owner/repo/issues"
@@ -382,7 +382,7 @@ class TestRun:
     ) -> None:
         gh = GhSpy(PLAIN_TICKET_READS)
 
-        run_check.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, tmp_path / "output"))
 
         assert gh.calls[0] == GhCall(
             ["gh", "issue", "edit", "7", "--add-label", "afk:in-progress"],
@@ -393,7 +393,7 @@ class TestRun:
     def test_reads_with_the_workflow_token(self, tmp_path: Path) -> None:
         gh = GhSpy(PLAIN_TICKET_READS)
 
-        run_check.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, tmp_path / "output"))
 
         assert {call.token for call in gh.calls[1:]} == {"workflow-token"}
 
@@ -408,7 +408,7 @@ class TestRun:
         )
         output = tmp_path / "output"
 
-        run_check.run(gh, ENV, Writer(gh, ENV, output))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, output))
 
         closing_read = next(c for c in gh.calls if "graphql" in c.args)
         assert closing_read.args[-6:] == [
@@ -427,7 +427,7 @@ class TestRun:
         gh = GhSpy(PLAIN_TICKET_READS)
         env = {**ENV, "AFK_DRY_RUN": "true"}
         output = tmp_path / "output"
-        writer = Writer(gh, env, output)
+        writer = Writer(gh, GitSpy(), env, output)
 
         run_check.run(gh, env, writer)
         writer.report()
@@ -466,6 +466,6 @@ class TestRun:
         )
         output = tmp_path / "output"
 
-        run_check.run(gh, ENV, Writer(gh, ENV, output))
+        run_check.run(gh, ENV, Writer(gh, GitSpy(), ENV, output))
 
         assert read_outputs(output) == {"url": f"{URL}/7", "queue": "true"}

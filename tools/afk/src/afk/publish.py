@@ -155,7 +155,7 @@ def _read_open_pull_request(
     return open_pull_request(json.loads(run_gh(gh, env, Token.APP, args)))
 
 
-def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
+def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Refuse protected changes, then publish the work or hand the ticket on."""
     if env["AFK_AGENT_OUTCOME"] != "success":
         execution_file = env.get("AFK_EXECUTION_FILE", "")
@@ -166,7 +166,7 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
         return
     # Per commit and unquoted; replace refs could hide a commit that the push sends.
     # Without a token: git needs none to read, and the agent's config could run code.
-    log = gh([*_CHANGED_FILES, f"{env['AFK_BASE']}..HEAD"], env)
+    log = git([*_CHANGED_FILES, f"{env['AFK_BASE']}..HEAD"], env)
     refused = protected(changed_files(log))
     if refused:
         msg = (
@@ -195,4 +195,4 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     if done:
         pr_url = _read_open_pull_request(gh, env, published.branch)
         writer.set_output("pr-url", pr_url or "")
-        writer.set_output("sha", gh(["git", "rev-parse", "HEAD"], env).strip())
+        writer.set_output("sha", git(["git", "rev-parse", "HEAD"], env).strip())

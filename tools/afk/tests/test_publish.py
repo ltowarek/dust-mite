@@ -28,7 +28,7 @@ from afk.publish import (
     protected,
 )
 from afk.writer import Writer
-from tests.test_doubles import GhCall, GhSpy, read_outputs
+from tests.test_doubles import GhSpy, GitCall, GitSpy, read_outputs
 
 RUN = Run(
     repository="owner/repo",
@@ -353,9 +353,9 @@ OPEN_PR_READ = (
     "url",
 )
 HEAD_READ = ("git", "rev-parse", "HEAD")
-DONE_READS: dict[tuple[str, ...], str] = {
+GH_READS: dict[tuple[str, ...], str] = {OPEN_PR_READ: json.dumps([{"url": PR_URL}])}
+GIT_READS: dict[tuple[str, ...], str] = {
     CHANGED_FILES_READ: "docs/a.md\0",
-    OPEN_PR_READ: json.dumps([{"url": PR_URL}]),
     HEAD_READ: "abc123\n",
 }
 
@@ -364,24 +364,25 @@ class TestRun:
     def test_refuses_commits_that_change_github_or_tools_and_writes_nothing(
         self, tmp_path: Path
     ) -> None:
-        gh = GhSpy({CHANGED_FILES_READ: "docs/a.md\0.github/workflows/é.yml\0"})
+        gh = GhSpy()
+        git = GitSpy({CHANGED_FILES_READ: "docs/a.md\0.github/workflows/é.yml\0"})
 
         with pytest.raises(SystemExit, match=r"\.github/workflows/é\.yml"):
-            publish.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
+            publish.run(gh, git, ENV, Writer(gh, git, ENV, tmp_path / "output"))
 
-        assert gh.calls == [GhCall(list(CHANGED_FILES_READ), "", "owner/repo")]
+        assert (gh.calls, git.calls) == ([], [GitCall(list(CHANGED_FILES_READ), "")])
 
     def test_reads_the_agent_s_commits_without_a_token(self, tmp_path: Path) -> None:
-        gh = GhSpy(DONE_READS)
+        gh, git = GhSpy(GH_READS), GitSpy(GIT_READS)
 
-        publish.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
+        publish.run(gh, git, ENV, Writer(gh, git, ENV, tmp_path / "output"))
 
-        assert gh.calls[0] == GhCall(list(CHANGED_FILES_READ), "", "owner/repo")
+        assert git.calls[0] == GitCall(list(CHANGED_FILES_READ), "")
 
     def test_reads_the_open_pr_with_the_app_token(self, tmp_path: Path) -> None:
-        gh = GhSpy(DONE_READS)
+        gh, git = GhSpy(GH_READS), GitSpy(GIT_READS)
 
-        publish.run(gh, ENV, Writer(gh, ENV, tmp_path / "output"))
+        publish.run(gh, git, ENV, Writer(gh, git, ENV, tmp_path / "output"))
 
         assert {c.token for c in gh.calls if c.args[:3] == ["gh", "pr", "list"]} == {
             "app-token"
@@ -390,12 +391,12 @@ class TestRun:
     def test_sets_the_outcome_the_pr_the_head_and_the_planned_writes_as_outputs(
         self, tmp_path: Path
     ) -> None:
-        gh = GhSpy(DONE_READS)
+        gh, git = GhSpy(GH_READS), GitSpy(GIT_READS)
         env = {**ENV, "AFK_DRY_RUN": "true"}
         output = tmp_path / "output"
-        writer = Writer(gh, env, output)
+        writer = Writer(gh, git, env, output)
 
-        publish.run(gh, env, writer)
+        publish.run(gh, git, env, writer)
         writer.report()
 
         assert read_outputs(output) == {
@@ -423,11 +424,11 @@ class TestRun:
         }
 
     def test_sets_the_outcome_before_a_push_that_fails(self, tmp_path: Path) -> None:
-        gh = GhSpy(DONE_READS, failing=("git", "-c"))
+        gh, git = GhSpy(GH_READS), GitSpy(GIT_READS, failing=("git", "-c"))
         output = tmp_path / "output"
 
         with pytest.raises(subprocess.CalledProcessError):
-            publish.run(gh, ENV, Writer(gh, ENV, output))
+            publish.run(gh, git, ENV, Writer(gh, git, ENV, output))
 
         assert read_outputs(output) == {"outcome": "done", "needs-car-reason": ""}
 
@@ -441,10 +442,10 @@ class TestRun:
             "needs_car_reason": "Only on the car.",
         }
         env = {**ENV, "AFK_AGENT_OUTPUT": json.dumps(agent_output)}
-        gh = GhSpy({CHANGED_FILES_READ: ""})
+        gh, git = GhSpy(), GitSpy({CHANGED_FILES_READ: ""})
         output = tmp_path / "output"
 
-        publish.run(gh, env, Writer(gh, env, output))
+        publish.run(gh, git, env, Writer(gh, git, env, output))
 
         assert read_outputs(output) == {
             "outcome": "needs_car",
@@ -462,18 +463,22 @@ class TestRun:
             "AFK_AGENT_OUTPUT": "",
             "AFK_EXECUTION_FILE": str(execution),
         }
-        gh = GhSpy()
+        gh, git = GhSpy(), GitSpy()
         output = tmp_path / "output"
 
-        publish.run(gh, env, Writer(gh, env, output))
+        publish.run(gh, git, env, Writer(gh, git, env, output))
 
-        assert (read_outputs(output), gh.calls) == ({"agent-error": "Stuck."}, [])
+        assert (read_outputs(output), gh.calls, git.calls) == (
+            {"agent-error": "Stuck."},
+            [],
+            [],
+        )
 
     def test_after_an_agent_that_never_ran_sets_no_error(self, tmp_path: Path) -> None:
         env = {**ENV, "AFK_AGENT_OUTCOME": "skipped", "AFK_AGENT_OUTPUT": ""}
-        gh = GhSpy()
+        gh, git = GhSpy(), GitSpy()
         output = tmp_path / "output"
 
-        publish.run(gh, env, Writer(gh, env, output))
+        publish.run(gh, git, env, Writer(gh, git, env, output))
 
         assert read_outputs(output) == {"agent-error": ""}

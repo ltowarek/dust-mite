@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from afk.__main__ import main
-from tests.test_doubles import GhSpy
+from afk.__main__ import gh, git, main
+from tests.test_doubles import GhSpy, GitSpy
 
 NO_BLOCKED_TICKETS = json.dumps(
     {"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}}
@@ -32,6 +32,7 @@ class TestMain:
         main(
             ["promote-queued"],
             GhSpy({("gh", "api", "graphql"): NO_BLOCKED_TICKETS}),
+            GitSpy(),
             env,
         )
 
@@ -43,7 +44,7 @@ class TestMain:
         output = tmp_path / "output"
         env = {"AFK_AGENT_OUTCOME": "skipped", "GITHUB_OUTPUT": str(output)}
 
-        main(["publish"], GhSpy(), env)
+        main(["publish"], GhSpy(), GitSpy(), env)
 
         lines = output.read_text().splitlines()
         delimiter = lines[0].removeprefix("agent-error<<")
@@ -51,4 +52,19 @@ class TestMain:
 
     def test_rejects_an_unknown_phase(self, tmp_path: Path) -> None:
         with pytest.raises(SystemExit):
-            main(["unknown"], GhSpy(), {"GITHUB_OUTPUT": str(tmp_path / "output")})
+            main(
+                ["unknown"],
+                GhSpy(),
+                GitSpy(),
+                {"GITHUB_OUTPUT": str(tmp_path / "output")},
+            )
+
+
+class TestRunners:
+    def test_gh_refuses_a_git_command(self) -> None:
+        with pytest.raises(ValueError, match="Not a gh command"):
+            gh(["git", "rev-parse", "HEAD"], {})
+
+    def test_git_refuses_a_gh_command(self) -> None:
+        with pytest.raises(ValueError, match="Not a git command"):
+            git(["gh", "pr", "list"], {})

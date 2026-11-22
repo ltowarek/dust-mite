@@ -1,4 +1,4 @@
-"""Carry out a phase's writes with `gh`, or report them in a dry run; set outputs."""
+"""Carry out a phase's writes with `gh` or `git`, or report them in a dry run."""
 
 import json
 import secrets
@@ -46,7 +46,15 @@ class GhCommand:
     token: Token
 
 
-def gh_command(effect: Effect) -> GhCommand:
+@dataclass(frozen=True)
+class GitCommand:
+    """A `git` command line, and whether it runs with the App's token."""
+
+    args: list[str]
+    authenticated: bool
+
+
+def command(effect: Effect) -> GhCommand | GitCommand:
     """Return the command that carries out a write."""
     match effect:
         case DispatchWorkflow(workflow=workflow, inputs=inputs):
@@ -69,7 +77,7 @@ def gh_command(effect: Effect) -> GhCommand:
             args = ["gh", "api", "--method", "POST", endpoint]
             args += ["-f", f"content={content}"]
         case PushBranch(repository=repository, branch=branch):
-            args = _push(repository, branch)
+            return GitCommand(_push(repository, branch), authenticated=True)
         case CreatePullRequest(branch=branch, title=title, body=body):
             pr = ["--base", "main", "--head", branch, "--title", title, "--body", body]
             args = ["gh", "pr", "create", "--draft", *pr]
@@ -117,9 +125,12 @@ def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:
 class Writer:
     """Route every write of a phase, so that a dry run carries out none."""
 
-    def __init__(self, gh: Runner, env: Mapping[str, str], output: Path) -> None:
-        """Write through `gh`, with tokens and `AFK_DRY_RUN` from `env`, to `output`."""
+    def __init__(
+        self, gh: Runner, git: Runner, env: Mapping[str, str], output: Path
+    ) -> None:
+        """Write through `gh` and `git`, with tokens and `AFK_DRY_RUN` from `env`."""
         self._gh = gh
+        self._git = git
         self._env = env
         self._output = output
         self._dry_run = env.get("AFK_DRY_RUN") == "true"
@@ -130,8 +141,12 @@ class Writer:
         self._planned.append(effect)
         if self._dry_run:
             return
-        invocation = gh_command(effect)
-        run_gh(self._gh, self._env, invocation.token, invocation.args)
+        match command(effect):
+            case GhCommand(args=args, token=token):
+                run_gh(self._gh, self._env, token, args)
+            case GitCommand(args=args, authenticated=authenticated):
+                auth = {"GH_TOKEN": self._env[Token.APP]} if authenticated else {}
+                self._git(args, {**self._env, **auth})
 
     def set_output(self, name: str, value: str) -> None:
         """Set a step output now, so that it outlives a later write that fails."""

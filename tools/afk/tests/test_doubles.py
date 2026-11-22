@@ -9,17 +9,10 @@ from pathlib import Path
 __test__ = False
 
 
-@dataclass(frozen=True)
-class GhCall:
-    """One `gh` or `git` command line, and the token and repository it ran with."""
+class _Spy:
+    """Answer one program's reads from canned output, and fail on request."""
 
-    args: list[str]
-    token: str
-    repo: str
-
-
-class GhSpy:
-    """Answer `gh` reads from canned output, record every call, and fail on request."""
+    program: str
 
     def __init__(
         self,
@@ -32,13 +25,11 @@ class GhSpy:
         """
         self._answers = answers or {}
         self._failing = failing
-        self.calls: list[GhCall] = []
 
-    def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
-        """Record the call, then answer or fail it."""
-        args = list(args)
-        # A git read runs without a token.
-        self.calls.append(GhCall(args, env.get("GH_TOKEN", ""), env["GH_REPO"]))
+    def _answer(self, args: list[str]) -> str:
+        if args[0] != self.program:
+            msg = f"Not a {self.program} command: {args}"
+            raise ValueError(msg)
         if (
             self._failing is not None
             and tuple(args[: len(self._failing)]) == self._failing
@@ -46,6 +37,65 @@ class GhSpy:
             raise subprocess.CalledProcessError(1, args)
         prefixes = [p for p in self._answers if tuple(args[: len(p)]) == p]
         return self._answers[max(prefixes, key=len)] if prefixes else ""
+
+
+@dataclass(frozen=True)
+class GhCall:
+    """One `gh` command line, and the token and repository it ran with."""
+
+    args: list[str]
+    token: str
+    repo: str
+
+
+class GhSpy(_Spy):
+    """Record every `gh` call, and refuse any other program's."""
+
+    program = "gh"
+
+    def __init__(
+        self,
+        answers: Mapping[tuple[str, ...], str] | None = None,
+        failing: tuple[str, ...] | None = None,
+    ) -> None:
+        """Answer and fail calls as `_Spy` does."""
+        super().__init__(answers, failing)
+        self.calls: list[GhCall] = []
+
+    def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
+        """Record the call, then answer or fail it."""
+        args = list(args)
+        self.calls.append(GhCall(args, env["GH_TOKEN"], env["GH_REPO"]))
+        return self._answer(args)
+
+
+@dataclass(frozen=True)
+class GitCall:
+    """One `git` command line, and the token it ran with, if any."""
+
+    args: list[str]
+    token: str
+
+
+class GitSpy(_Spy):
+    """Record every `git` call, and refuse any other program's."""
+
+    program = "git"
+
+    def __init__(
+        self,
+        answers: Mapping[tuple[str, ...], str] | None = None,
+        failing: tuple[str, ...] | None = None,
+    ) -> None:
+        """Answer and fail calls as `_Spy` does."""
+        super().__init__(answers, failing)
+        self.calls: list[GitCall] = []
+
+    def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
+        """Record the call, then answer or fail it."""
+        args = list(args)
+        self.calls.append(GitCall(args, env.get("GH_TOKEN", "")))
+        return self._answer(args)
 
 
 _OUTPUT = re.compile(
