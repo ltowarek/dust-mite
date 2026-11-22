@@ -1,0 +1,71 @@
+name: AFK update-branch publish
+description: Check an AFK update-branch run's merge, push it to the PR's branch and comment it, and refuse agent changes to .github/ or tools/
+
+inputs:
+  number:
+    description: The PR
+    required: true
+  branch:
+    description: The PR's branch, which the merge is pushed to
+    required: true
+  head-sha:
+    description: The PR's head that main was merged into; the push leases on it
+    required: true
+  main-sha:
+    description: The main commit that was merged
+    required: true
+  merge:
+    description: The afk-update-branch-merge action's merge output; up-to-date, clean or conflict
+    required: true
+  agent-outcome:
+    description: The outcome of the agent step, which runs only after conflicts
+    required: true
+  agent-output:
+    description: The agent's structured output
+    required: false
+    default: ""
+  execution-file:
+    description: The agent's execution file, read for its error when the agent step did not succeed
+    required: false
+    default: ""
+  app-token:
+    description: The AFK App's token with Contents, Issues and Pull requests write, for the push, the comment and the label
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  agent-error:
+    description: The error that the agent reports, set only when the agent step did not succeed after conflicts
+    value: ${{ steps.publish.outputs.agent-error }}
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.publish.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Check the agent's merge, push it and comment it
+      id: publish
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_PR: ${{ inputs.number }}
+        AFK_BRANCH: ${{ inputs.branch }}
+        AFK_HEAD_SHA: ${{ inputs.head-sha }}
+        AFK_MAIN_SHA: ${{ inputs.main-sha }}
+        AFK_MERGE: ${{ inputs.merge }}
+        AFK_AGENT_OUTCOME: ${{ inputs.agent-outcome }}
+        AFK_AGENT_OUTPUT: ${{ inputs.agent-output }}
+        AFK_EXECUTION_FILE: ${{ inputs.execution-file }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        "$AFK_PYTHON" -m afk update-branch-publish

@@ -654,6 +654,141 @@ jobs:
             --argjson parents "$(git rev-list --parents -n 1 HEAD | wc -w)" \
             ". + {unmerged: \$unmerged, head_parents: (\$parents - 1)} | $ASSERTION" <<<"$OUTPUTS"
 
+  afk-update-branch-publish:
+    name: afk-update-branch-publish (${{ matrix.case }})
+
+    # The production job's permissions; publish reads only the checkout, and a dry run skips the writes.
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # The action reads no PR, so each case names the merged #391.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: comments that an up-to-date branch needs no push
+            branch-change: docs/afk-canary.md
+            assertion: '(.effects | map(.type)) == ["Comment"] and (.effects[0].body | startswith("The branch already contains `main`"))'
+          - case: pushes a clean merge with a lease on the PR's head
+            main-change: docs/afk-canary-main.md
+            branch-change: docs/afk-canary.md
+            assertion: '(.effects | map(.type)) == ["PushBranch","Comment"] and .effects[0].lease == .head and (.effects[1].body | startswith("Merged `main`"))'
+          # main also changes tools/, which the refusal ignores because the agent did not write it.
+          - case: pushes the agent's resolution, comments it and labels the PR for the car
+            main-change: docs/afk-canary.md tools/afk-canary.md
+            branch-change: docs/afk-canary.md
+            resolve: true
+            output:
+              conflict_summary: Kept both lines.
+              needs_dut_run: true
+              car_variant: copper
+            assertion: '(.effects | map(.type)) == ["PushBranch","Comment","EditLabels"] and (.effects[1].body | endswith("\n\nKept both lines.\n")) and .effects[2].add == ["needs-car:copper"]'
+          - case: fails when the agent leaves the merge unfinished
+            main-change: docs/afk-canary.md
+            branch-change: docs/afk-canary.md
+            output:
+              conflict_summary: Kept both lines.
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+          - case: refuses an agent resolution that changes tools/
+            main-change: docs/afk-canary.md
+            branch-change: docs/afk-canary.md
+            resolve: true
+            agent-change: tools/afk-canary.md
+            output:
+              conflict_summary: Kept both lines.
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # main gains its changes on top of the checkout, and the PR's head gains its own beside it.
+      - name: Build main and the PR's head
+        id: commits
+        env:
+          MAIN_CHANGE: ${{ matrix.main-change }}
+          BRANCH_CHANGE: ${{ matrix.branch-change }}
+        run: |
+          commit() {
+            for path in $1; do
+              echo "$2" >> "$path"
+              git add "$path"
+            done
+            git -c user.name=afk-test -c user.email=afk-test@users.noreply.github.com commit --quiet -m "docs: $2"
+          }
+          base=$(git rev-parse HEAD)
+          if [ -n "$MAIN_CHANGE" ]; then commit "$MAIN_CHANGE" main; fi
+          git update-ref refs/remotes/origin/main HEAD
+          git switch --quiet --detach "$base"
+          commit "$BRANCH_CHANGE" branch
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Merge main
+        id: merge
+        uses: $/.github/actions/afk-update-branch-merge
+        with:
+          bot-name: afk-test[bot]
+          bot-id: "1"
+
+      - name: Resolve the conflicts as the agent
+        if: matrix.resolve
+        env:
+          AGENT_CHANGE: ${{ matrix.agent-change }}
+        run: |
+          git diff --name-only --diff-filter=U | while IFS= read -r path; do
+            echo resolved > "$path"
+            git add "$path"
+          done
+          if [ -n "$AGENT_CHANGE" ]; then
+            echo agent >> "$AGENT_CHANGE"
+            git add "$AGENT_CHANGE"
+          fi
+          git commit --quiet --no-edit
+
+      - name: Mint the App's write token for the push, the comment and the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Publish the merge as a dry run
+        id: publish
+        # A refusal fails the step; the assertion checks its outcome.
+        continue-on-error: true
+        uses: $/.github/actions/afk-update-branch-publish
+        with:
+          number: 391
+          branch: afk-test/update-branch-391-${{ github.run_id }}
+          head-sha: ${{ steps.commits.outputs.head }}
+          main-sha: ${{ steps.merge.outputs.main-sha }}
+          merge: ${{ steps.merge.outputs.merge }}
+          agent-outcome: success
+          agent-output: ${{ matrix.output && toJSON(matrix.output) || '' }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: true
+
+      - name: Assert on the outcome and the planned effects
+        shell: bash
+        env:
+          HEAD: ${{ steps.commits.outputs.head }}
+          OUTCOME: ${{ steps.publish.outcome }}
+          EFFECTS: ${{ steps.publish.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: |
+          jq -e -n --arg head "$HEAD" --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
+            "{head: \$head, outcome: \$outcome, effects: \$effects} | $ASSERTION"
+
   afk-run-publish:
     name: afk-run-publish (${{ matrix.case }})
 

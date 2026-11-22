@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from afk.git import read_changed_files
+from afk.git import read_changed_files, read_merged_files
 from afk.runner import Runner
 
 _LINE_BREAK = re.compile(r"\s*\n\s*")
@@ -49,6 +49,13 @@ def read_agent_error(env: Mapping[str, str]) -> str:
 def refuse_protected_changes(git: Runner, env: Mapping[str, str], base: str) -> None:
     """Fail when an agent commit after `base` changes `.github/` or `tools/`."""
     _refuse(read_changed_files(git, env, base))
+
+
+def refuse_protected_merge(
+    git: Runner, env: Mapping[str, str], head: str, main: str
+) -> None:
+    """Fail when an agent commit beyond `head` and `main` changes a protected path."""
+    _refuse(read_merged_files(git, env, head, main))
 
 
 def _refuse(changed: Iterable[str]) -> None:

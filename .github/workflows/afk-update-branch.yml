@@ -63,7 +63,6 @@ env:
   COMMENT_ID: ${{ inputs.comment-id }}
   GH_REPO: ${{ github.repository }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-  ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
 
 jobs:
   check:
@@ -109,13 +108,9 @@ jobs:
       contents: read
 
     outputs:
-      merge: ${{ steps.merge.outputs.merge }}
-      main-sha: ${{ steps.merge.outputs.main-sha }}
-      agent-error: ${{ steps.agent-error.outputs.result }}
+      agent-error: ${{ steps.publish.outputs.agent-error }}
       agent-output: ${{ steps.agent.outputs.structured_output }}
-      conflict-summary: ${{ steps.agent-result.outputs.conflict_summary }}
-      needs-dut-run: ${{ steps.agent-result.outputs.needs_dut_run }}
-      car-variant: ${{ steps.agent-result.outputs.car_variant }}
+      effects: ${{ steps.publish.outputs.effects }}
 
     env:
       BRANCH: ${{ needs.check.outputs.branch }}
@@ -185,64 +180,32 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
-      - name: Read the agent's output
-        id: agent-result
-        if: steps.merge.outputs.merge == 'conflict'
-        env:
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          # Random, so no field's value can end its own output early.
-          eof="EOF_$(openssl rand -hex 16)"
-          for field in conflict_summary needs_dut_run car_variant; do
-            {
-              echo "${field}<<${eof}"
-              jq -r --arg field "$field" '.[$field] | values' <<<"$OUTPUT"
-              echo "$eof"
-            } >> "$GITHUB_OUTPUT"
-          done
-
-      - name: Read the agent's error
-        id: agent-error
-        if: failure() && steps.agent.outputs.execution_file != ''
-        env:
-          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
-        run: |
-          {
-            echo 'result<<AGENT_ERROR_EOF'
-            jq -r 'last | select(.type == "result" and .is_error) | .result // empty' "$EXECUTION_FILE"
-            echo 'AGENT_ERROR_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Check that the agent finished the merge
-        if: steps.merge.outputs.merge == 'conflict'
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::The working tree has uncommitted changes."
-            exit 1
-          fi
-          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
-            echo "::error::The merge is not committed."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$HEAD_SHA" HEAD || ! git merge-base --is-ancestor origin/main HEAD; then
-            echo "::error::HEAD does not contain both the branch and main."
-            exit 1
-          fi
-
-      - name: Mint the App's write token for the push
+      - name: Mint the App's write token for the push, the comment and the label
         id: write-token
-        if: steps.merge.outputs.merge != 'up-to-date'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
 
-      - name: Push the branch with lease
-        if: steps.merge.outputs.merge != 'up-to-date'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: git push --force-with-lease="refs/heads/${BRANCH}:${HEAD_SHA}" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
+      # Also after a failed agent, so that the action sets the agent's error for finish.
+      - name: Check the agent's merge, push it and comment it
+        id: publish
+        if: "!cancelled() && steps.merge.outcome == 'success'"
+        uses: $/.github/actions/afk-update-branch-publish
+        with:
+          number: ${{ inputs.number }}
+          branch: ${{ env.BRANCH }}
+          head-sha: ${{ env.HEAD_SHA }}
+          main-sha: ${{ steps.merge.outputs.main-sha }}
+          merge: ${{ steps.merge.outputs.merge }}
+          agent-outcome: ${{ steps.agent.outcome }}
+          agent-output: ${{ steps.agent.outputs.structured_output }}
+          execution-file: ${{ steps.agent.outputs.execution_file }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: ${{ inputs.dry-run }}
 
   finish:
     needs: [check, update-branch]
@@ -268,40 +231,6 @@ jobs:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
           REFUSAL: ${{ needs.check.outputs.refusal }}
         run: gh issue comment "$PR" --body "$REFUSAL"
-
-      - name: Comment the merge
-        if: always() && needs.update-branch.result == 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          MERGE: ${{ needs.update-branch.outputs.merge }}
-          MAIN_SHA: ${{ needs.update-branch.outputs.main-sha }}
-          CONFLICT_SUMMARY: ${{ needs.update-branch.outputs.conflict-summary }}
-          OUTPUT: ${{ needs.update-branch.outputs.agent-output }}
-        run: |
-          case "$MERGE" in
-            up-to-date)
-              printf "The branch already contains \`main\` (%s); this AFK run pushed nothing.\n\n**Run:** %s\n" "$MAIN_SHA" "$RUN_URL"
-              ;;
-            clean)
-              printf "Merged \`main\` (%s) into the branch with no conflicts.\n\n**Run:** %s\n" "$MAIN_SHA" "$RUN_URL"
-              ;;
-            conflict)
-              printf "> *Conflicts with \`main\` (%s) resolved by an AFK agent session.* ([run](%s))\n\n" "$MAIN_SHA" "$RUN_URL"
-              printf '%s\n' "$CONFLICT_SUMMARY"
-              already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
-              if [ -n "$already_covered" ]; then
-                printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered"
-              fi
-              ;;
-          esac > "$RUNNER_TEMP/merge.md"
-          gh pr comment "$PR" --body-file "$RUNNER_TEMP/merge.md"
-
-      - name: Hand the PR to a car agent session
-        if: always() && needs.update-branch.result == 'success' && needs.update-branch.outputs.needs-dut-run == 'true'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          CAR_VARIANT: ${{ needs.update-branch.outputs.car-variant }}
-        run: gh pr edit "$PR" --add-label "needs-car:${CAR_VARIANT}"
 
       - name: File the follow-up tickets
         if: always() && needs.update-branch.outputs.agent-output != ''

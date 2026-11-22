@@ -53,6 +53,14 @@ def read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[s
     return _read_log_files(git, env, "first-parent", [f"{base}..HEAD"])
 
 
+def read_merged_files(
+    git: Runner, env: Mapping[str, str], head: str, main: str
+) -> list[str]:
+    """Return the files that each commit beyond `head` and `main` changes."""
+    # A merge commit lists only what differs from git's own re-merge of its parents.
+    return _read_log_files(git, env, "remerge", ["HEAD", "--not", head, main])
+
+
 def read_commit_count(git: Runner, env: Mapping[str, str], base: str) -> int:
     """Return how many commits HEAD holds after `base`."""
     return int(run_git(git, env, ["rev-list", "--count", f"{base}..HEAD"]))
