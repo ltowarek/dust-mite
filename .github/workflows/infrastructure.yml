@@ -1278,7 +1278,7 @@ jobs:
         run: |
           jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run on this PR failed") | not))' <<<"$FINISH_EFFECTS"
 
-  # The canary PR's branch is behind main without conflicting with it, so its update merges cleanly and runs no agent.
+  # The canary PR's branch sits on an older commit of main without conflicting with it, so its update merges cleanly and runs no agent.
   afk-update-branch-workflow:
     # The production jobs' permissions.
     permissions:
