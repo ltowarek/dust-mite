@@ -17,21 +17,13 @@ _SLUG_SEPARATOR = re.compile(r"[^a-z0-9]+")
 
 @dataclass(frozen=True)
 class Ticket:
-    """The ticket or spec that an AFK run works on."""
-
-    url: str
-    title: str
-    parent: int | None
-    open_blocking_tickets: int
-
-
-@dataclass(frozen=True)
-class ChildTicket:
-    """A child ticket of a spec."""
+    """A ticket on the tracker; a spec is a ticket with child tickets."""
 
     number: int
     url: str
+    title: str
     open: bool
+    parent: int | None
     open_blocking_tickets: int
 
 
@@ -48,33 +40,23 @@ class State:
     """What the shell read about the ticket or spec; a spec has child tickets."""
 
     ticket: Ticket
-    child_tickets: Sequence[ChildTicket] = ()
+    child_tickets: Sequence[Ticket] = ()
     open_blocker_urls: Mapping[int, Sequence[str]] = field(default_factory=dict)
     pull_requests: Sequence[PullRequest] = ()
 
 
-def ticket(view: dict[str, Any], issue: dict[str, Any]) -> Ticket:
-    """Return the ticket from `gh issue view` and the issues API."""
-    parent = view["parent"]
+def ticket(issue: dict[str, Any]) -> Ticket:
+    """Return a ticket from the issues API."""
+    # The API leaves out parent_issue_url for a ticket without a parent.
+    parent = issue.get("parent_issue_url")
     return Ticket(
-        url=view["url"],
-        title=view["title"],
-        parent=None if parent is None else parent["number"],
+        number=issue["number"],
+        url=issue["html_url"],
+        title=issue["title"],
+        open=issue["state"] == "open",
+        parent=None if parent is None else int(parent.rsplit("/", 1)[1]),
         open_blocking_tickets=issue["issue_dependencies_summary"]["blocked_by"],
     )
-
-
-def child_tickets(response: list[dict[str, Any]]) -> list[ChildTicket]:
-    """Return a spec's child tickets, in their order on the spec, from the API."""
-    return [
-        ChildTicket(
-            number=issue["number"],
-            url=issue["html_url"],
-            open=issue["state"] == "open",
-            open_blocking_tickets=issue["issue_dependencies_summary"]["blocked_by"],
-        )
-        for issue in response
-    ]
 
 
 def open_blocker_urls(response: list[dict[str, Any]]) -> tuple[str, ...]:
@@ -87,15 +69,15 @@ def pull_requests(response: list[dict[str, Any]]) -> list[PullRequest]:
     return [PullRequest(url=pr["url"], body=pr["body"]) for pr in response]
 
 
-def _open(children: Sequence[ChildTicket]) -> list[ChildTicket]:
+def _open(children: Sequence[Ticket]) -> list[Ticket]:
     return [c for c in children if c.open]
 
 
-def _frontier(open_children: Sequence[ChildTicket]) -> list[ChildTicket]:
+def _frontier(open_children: Sequence[Ticket]) -> list[Ticket]:
     return [c for c in open_children if not c.open_blocking_tickets]
 
 
-def blocked_child_tickets(children: Sequence[ChildTicket]) -> list[int]:
+def blocked_child_tickets(children: Sequence[Ticket]) -> list[int]:
     """Return the open child tickets whose blockers decide a spec with no frontier."""
     open_children = _open(children)
     if _frontier(open_children):
@@ -109,7 +91,7 @@ def _slug(title: str) -> str:
 
 
 def _block_only_each_other(
-    open_children: Sequence[ChildTicket],
+    open_children: Sequence[Ticket],
     open_blocker_urls: Mapping[int, Sequence[str]],
 ) -> bool:
     # URLs, not numbers: a blocking ticket can live in another repository.
@@ -151,7 +133,7 @@ class CheckResult:
         return {name: value for name, value in outputs.items() if value is not None}
 
 
-def _check_spec(number: int, state: State) -> CheckResult:
+def _check_spec(state: State) -> CheckResult:
     url = state.ticket.url
     open_children = _open(state.child_tickets)
     if not open_children:
@@ -176,12 +158,12 @@ def _check_spec(number: int, state: State) -> CheckResult:
         spec=True,
         child_ticket=frontier[0].number,
         child_ticket_url=frontier[0].url,
-        branch=f"agent/prd-{number}-{_slug(state.ticket.title)}",
+        branch=f"agent/prd-{state.ticket.number}-{_slug(state.ticket.title)}",
         last_run=len(open_children) == 1,
     )
 
 
-def _check_ticket(number: int, run_id: str, state: State) -> CheckResult:
+def _check_ticket(run_id: str, state: State) -> CheckResult:
     ticket = state.ticket
     if ticket.parent is None and ticket.open_blocking_tickets:
         return CheckResult(
@@ -191,9 +173,9 @@ def _check_ticket(number: int, run_id: str, state: State) -> CheckResult:
             "closes.",
         )
     if state.child_tickets:
-        return _check_spec(number, state)
+        return _check_spec(state)
     result = CheckResult(
-        url=ticket.url, branch=f"afk/issue-{number}-{run_id}", last_run=True
+        url=ticket.url, branch=f"afk/issue-{ticket.number}-{run_id}", last_run=True
     )
     if ticket.parent is None:
         return result
@@ -206,18 +188,19 @@ def _check_ticket(number: int, run_id: str, state: State) -> CheckResult:
     )
 
 
-def _closing_pull_request(number: int, state: State) -> str | None:
+def _closing_pull_request(state: State) -> str | None:
+    number = state.ticket.number
     closes = re.compile(rf"(closes|fixes|resolves)\s+#{number}\b", re.IGNORECASE)
     return next((pr.url for pr in state.pull_requests if closes.search(pr.body)), None)
 
 
-def check(number: int, run_id: str, state: State) -> CheckResult:
-    """Decide whether an AFK run on `number` is refused, queued or goes ahead."""
-    result = _check_ticket(number, run_id, state)
+def check(run_id: str, state: State) -> CheckResult:
+    """Decide whether an AFK run on the ticket is refused, queued or goes ahead."""
+    result = _check_ticket(run_id, state)
     # A spec's own PR closes it while its child tickets run.
     if result.spec or result.refusal is not None:
         return result
-    pull_request = _closing_pull_request(number, state)
+    pull_request = _closing_pull_request(state)
     if pull_request is None:
         return result
     return replace(
@@ -233,11 +216,9 @@ def _read(gh: Runner, env: Mapping[str, str], *args: str) -> str:
 
 def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:
     issues = f"repos/{env['GH_REPO']}/issues"
-    view = _read(gh, env, "issue", "view", str(number), "--json", "title,url,parent")
     issue = _read(gh, env, "api", f"{issues}/{number}")
-    children = child_tickets(
-        json.loads(_read(gh, env, "api", f"{issues}/{number}/sub_issues?per_page=100"))
-    )
+    sub_issues = _read(gh, env, "api", f"{issues}/{number}/sub_issues?per_page=100")
+    children = [ticket(child) for child in json.loads(sub_issues)]
     blockers: dict[int, tuple[str, ...]] = {}
     for child in blocked_child_tickets(children):
         endpoint = f"{issues}/{child}/dependencies/blocked_by?per_page=100"
@@ -256,7 +237,7 @@ def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:
         "url,body",
     )
     return State(
-        ticket(json.loads(view), json.loads(issue)),
+        ticket(json.loads(issue)),
         children,
         blockers,
         pull_requests(json.loads(prs)),
@@ -267,6 +248,6 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Mark the ticket in progress, then decide whether its AFK run goes ahead."""
     number = int(env["AFK_TICKET"])
     writer.write(EditLabels(number=number, add=(Label.IN_PROGRESS,)))
-    result = check(number, env["GITHUB_RUN_ID"], _read_state(gh, env, number))
+    result = check(env["GITHUB_RUN_ID"], _read_state(gh, env, number))
     for name, value in result.outputs().items():
         writer.set_output(name, value)
