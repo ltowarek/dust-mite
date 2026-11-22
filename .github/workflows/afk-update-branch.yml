@@ -109,7 +109,7 @@ jobs:
       contents: read
 
     outputs:
-      merge: ${{ steps.merge.outputs.result }}
+      merge: ${{ steps.merge.outputs.merge }}
       main-sha: ${{ steps.merge.outputs.main-sha }}
       agent-error: ${{ steps.agent-error.outputs.result }}
       agent-output: ${{ steps.agent.outputs.structured_output }}
@@ -119,6 +119,7 @@ jobs:
 
     env:
       BRANCH: ${{ needs.check.outputs.branch }}
+      HEAD_SHA: ${{ needs.check.outputs.head-sha }}
 
     steps:
       - name: Checkout
@@ -130,39 +131,26 @@ jobs:
 
       - name: Merge main
         id: merge
-        env:
-          BOT_NAME: ${{ vars.AFK_APP_SLUG }}[bot]
-          BOT_ID: ${{ vars.AFK_APP_BOT_ID }}
-        run: |
-          git config user.name "$BOT_NAME"
-          git config user.email "${BOT_ID}+${BOT_NAME}@users.noreply.github.com"
-          echo "head-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "main-sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
-          if git merge-base --is-ancestor origin/main HEAD; then
-            echo "result=up-to-date" >> "$GITHUB_OUTPUT"
-          elif git merge --no-edit origin/main; then
-            echo "result=clean" >> "$GITHUB_OUTPUT"
-          elif [ -n "$(git diff --name-only --diff-filter=U)" ]; then
-            echo "result=conflict" >> "$GITHUB_OUTPUT"
-          else
-            exit 1
-          fi
+        uses: $/.github/actions/afk-update-branch-merge
+        with:
+          bot-name: ${{ vars.AFK_APP_SLUG }}[bot]
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}
 
       - name: Write .env
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         run: ./scripts/dump_env.sh
 
       # From the workflow's own commit, not the checkout.
       - name: Read the agent's output schema
         id: schema
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         uses: $/.github/actions/afk-agent-schema
         with:
           schema: afk-update-branch-output.schema.json
 
       - name: Mint the App's read-only token for the agent
         id: read-token
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -173,7 +161,7 @@ jobs:
 
       - name: Run the AFK agent session
         id: agent
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         uses: anthropics/claude-code-action@v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -199,7 +187,7 @@ jobs:
 
       - name: Read the agent's output
         id: agent-result
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         env:
           OUTPUT: ${{ steps.agent.outputs.structured_output }}
         run: |
@@ -226,9 +214,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Check that the agent finished the merge
-        if: steps.merge.outputs.result == 'conflict'
-        env:
-          HEAD_SHA: ${{ steps.merge.outputs.head-sha }}
+        if: steps.merge.outputs.merge == 'conflict'
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             echo "::error::The working tree has uncommitted changes."
@@ -245,7 +231,7 @@ jobs:
 
       - name: Mint the App's write token for the push
         id: write-token
-        if: steps.merge.outputs.result != 'up-to-date'
+        if: steps.merge.outputs.merge != 'up-to-date'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -253,10 +239,9 @@ jobs:
           permission-contents: write
 
       - name: Push the branch with lease
-        if: steps.merge.outputs.result != 'up-to-date'
+        if: steps.merge.outputs.merge != 'up-to-date'
         env:
           GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          HEAD_SHA: ${{ steps.merge.outputs.head-sha }}
         run: git push --force-with-lease="refs/heads/${BRANCH}:${HEAD_SHA}" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
 
   finish:

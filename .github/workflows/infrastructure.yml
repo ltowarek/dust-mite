@@ -584,6 +584,76 @@ jobs:
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$OUTPUTS"
 
+  afk-update-branch-merge:
+    name: afk-update-branch-merge (${{ matrix.case }})
+
+    # The production job's permissions; the merge is local.
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: merges nothing when the branch already contains main
+            branch-change: docs/afk-canary.md
+            assertion: '.merge == "up-to-date" and .unmerged == ""'
+          - case: merges main without conflicts
+            main-change: docs/afk-canary-main.md
+            branch-change: docs/afk-canary.md
+            assertion: '.merge == "clean" and .unmerged == "" and .head_parents == 2'
+          - case: leaves the conflicts for the agent
+            main-change: docs/afk-canary.md
+            branch-change: docs/afk-canary.md
+            assertion: '.merge == "conflict" and .unmerged == "docs/afk-canary.md"'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # main gains its change on top of the checkout, and the PR's head gains its own beside it.
+      - name: Build main and the PR's head
+        id: commits
+        env:
+          MAIN_CHANGE: ${{ matrix.main-change }}
+          BRANCH_CHANGE: ${{ matrix.branch-change }}
+        run: |
+          commit() {
+            echo "$2" >> "$1"
+            git add "$1"
+            git -c user.name=afk-test -c user.email=afk-test@users.noreply.github.com commit --quiet -m "docs: $2"
+          }
+          base=$(git rev-parse HEAD)
+          if [ -n "$MAIN_CHANGE" ]; then commit "$MAIN_CHANGE" main; fi
+          git update-ref refs/remotes/origin/main HEAD
+          echo "main=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git switch --quiet --detach "$base"
+          commit "$BRANCH_CHANGE" branch
+
+      - name: Merge main
+        id: merge
+        uses: $/.github/actions/afk-update-branch-merge
+        with:
+          bot-name: afk-test[bot]
+          bot-id: "1"
+
+      - name: Assert on the outputs and the working tree
+        shell: bash
+        env:
+          MAIN: ${{ steps.commits.outputs.main }}
+          OUTPUTS: ${{ toJSON(steps.merge.outputs) }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: |
+          jq -e --arg main "$MAIN" '.["main-sha"] == $main' <<<"$OUTPUTS"
+          jq -e --arg unmerged "$(git diff --name-only --diff-filter=U)" \
+            --argjson parents "$(git rev-list --parents -n 1 HEAD | wc -w)" \
+            ". + {unmerged: \$unmerged, head_parents: (\$parents - 1)} | $ASSERTION" <<<"$OUTPUTS"
+
   afk-run-publish:
     name: afk-run-publish (${{ matrix.case }})
 
