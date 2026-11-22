@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from afk import run_pr_check
-from afk.pull_request import PullRequest
+from afk.github import PullRequest
 from afk.run_pr_check import (
     CheckResult,
     Conversation,

@@ -15,7 +15,7 @@ from afk.effects import (
     PushBranch,
     ReplyToReviewComment,
 )
-from afk.pull_request import PullRequest
+from afk.github import PullRequest
 from afk.run_pr_publish import Write, acted, plan
 from afk.writer import Writer
 from tests.test_doubles import GhSpy, GitCall, GitSpy, read_outputs

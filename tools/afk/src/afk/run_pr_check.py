@@ -6,9 +6,8 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from afk.effects import EditLabels
-from afk.github import read_graphql
+from afk.github import PullRequest, read_graphql
 from afk.labels import Label
-from afk.pull_request import PullRequest
 from afk.writer import Runner, Token, Writer, run_gh
 
 _REVIEW_THREADS_QUERY = """

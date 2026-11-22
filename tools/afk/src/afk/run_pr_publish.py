@@ -16,7 +16,7 @@ from afk.effects import (
     PushBranch,
     ReplyToReviewComment,
 )
-from afk.pull_request import PullRequest
+from afk.github import PullRequest
 from afk.writer import Runner, Writer, run_git
 
 
