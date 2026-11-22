@@ -6,6 +6,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+__test__ = False
+
 
 @dataclass(frozen=True)
 class GhCall:

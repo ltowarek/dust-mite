@@ -14,7 +14,7 @@ from afk.effects import (
     React,
 )
 from afk.writer import Writer, write_outputs
-from tests.doubles import GhCall, GhSpy, read_outputs
+from tests.test_doubles import GhCall, GhSpy, read_outputs
 
 ENV = {
     "AFK_APP_TOKEN": "app-token",

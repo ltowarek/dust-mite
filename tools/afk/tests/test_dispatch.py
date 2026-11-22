@@ -26,7 +26,7 @@ from afk.dispatch import (
 )
 from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect, React
 from afk.writer import Writer
-from tests.doubles import GhSpy, read_outputs
+from tests.test_doubles import GhSpy, read_outputs
 
 
 class TestParse:

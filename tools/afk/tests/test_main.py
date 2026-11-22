@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from afk.__main__ import main
-from tests.doubles import GhSpy
+from tests.test_doubles import GhSpy
 
 NO_BLOCKED_TICKETS = json.dumps(
     {"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}}
