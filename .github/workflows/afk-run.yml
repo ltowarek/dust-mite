@@ -12,11 +12,49 @@ on:
         description: The AFK command's comment; empty when started from the Actions tab
         required: false
         type: string
+  workflow_call:
+    inputs:
+      number:
+        description: The ticket or spec
+        required: true
+        type: number
+      comment-id:
+        description: The AFK command's comment; empty when started from the Actions tab
+        required: false
+        type: string
+      dry-run:
+        description: Report the writes in the effects outputs instead of making them
+        required: false
+        type: boolean
+        default: false
+      model:
+        description: The agent's model
+        required: false
+        type: string
+        default: claude-opus-5-5
+      effort:
+        description: The agent's effort
+        required: false
+        type: string
+        default: medium
+    secrets:
+      AFK_APP_PRIVATE_KEY:
+        required: true
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+    outputs:
+      publish-effects:
+        description: The publish phase's planned writes as a JSON array, set only in a dry run
+        value: ${{ jobs.implement.outputs.effects }}
+      finish-effects:
+        description: The finish phase's planned writes as a JSON array, set only in a dry run
+        value: ${{ jobs.finish.outputs.effects }}
 
 permissions: {}
 
+# A dry run stays out of the AFK run queue.
 concurrency:
-  group: afk-run
+  group: ${{ inputs.dry-run && format('afk-run-dry-run-{0}', github.run_id) || 'afk-run' }}
   queue: max
 
 jobs:
@@ -54,6 +92,7 @@ jobs:
           number: ${{ inputs.number }}
           app-token: ${{ steps.write-token.outputs.token }}
           workflow-token: ${{ github.token }}
+          dry-run: ${{ inputs.dry-run }}
 
   implement:
     needs: check
@@ -75,6 +114,7 @@ jobs:
       needs-car-reason: ${{ steps.publish.outputs.needs-car-reason }}
       pr-url: ${{ steps.publish.outputs.pr-url }}
       sha: ${{ steps.publish.outputs.sha }}
+      effects: ${{ steps.publish.outputs.effects }}
 
     steps:
       - name: Checkout
@@ -134,8 +174,9 @@ jobs:
             Otherwise set outcome to done, write a Conventional Commits PR title in pr_title, and write the PR body with the pr skill in pr_body.
             Set needs_dut_run to whether your change can only be confirmed by a DUT run on the car, judged from the change itself; if it can, set car_variant.
             ${{ needs.check.outputs.spec == 'true' && format('This ticket is a child ticket of the spec #{0}, and the current branch already holds the commits of its earlier child tickets. Review only your own commits, but write pr_title and pr_body and judge needs_dut_run for the branch''s whole change against main.', inputs.number) || '' }}
+          # A dispatch has no model or effort input.
           claude_args: >-
-            --model claude-opus-5-5 --effort medium
+            --model ${{ inputs.model || 'claude-opus-5-5' }} --effort ${{ inputs.effort || 'medium' }}
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
@@ -164,6 +205,7 @@ jobs:
           agent-output: ${{ steps.agent.outputs.structured_output }}
           execution-file: ${{ steps.agent.outputs.execution_file }}
           app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: ${{ inputs.dry-run }}
 
   finish:
     needs: [check, implement]
@@ -172,6 +214,9 @@ jobs:
 
     permissions:
       actions: write
+
+    outputs:
+      effects: ${{ steps.finish.outputs.effects }}
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments
@@ -184,6 +229,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Report how the run ended, and release or continue its ticket
+        id: finish
         uses: $/.github/actions/afk-finish
         with:
           workflow: afk-run
@@ -192,3 +238,4 @@ jobs:
           needs: ${{ toJSON(needs) }}
           app-token: ${{ steps.write-token.outputs.token }}
           workflow-token: ${{ github.token }}
+          dry-run: ${{ inputs.dry-run }}
