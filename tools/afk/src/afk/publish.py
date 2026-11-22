@@ -17,7 +17,7 @@ from afk.effects import (
     MarkPullRequestReady,
     PushBranch,
 )
-from afk.writer import Runner, Token, Writer
+from afk.writer import Runner, Token, Writer, run_gh
 
 _LINE_BREAK = re.compile(r"\s*\n\s*")
 # Code here runs with the AFK App's write token in later runs (ADR 0008).
@@ -126,33 +126,33 @@ def plan(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effec
             raise ValueError(msg)
 
 
-def _changed_files(gh: Runner, base: str, env: Mapping[str, str]) -> list[str]:
-    # Per commit and unquoted; replace refs could hide a commit that the push sends.
-    log = gh(
-        [
-            "git",
-            "--no-replace-objects",
-            "log",
-            "-z",
-            "--format=",
-            "--name-only",
-            "--no-renames",
-            "--diff-merges=first-parent",
-            f"{base}..HEAD",
-        ],
-        env,
-    )
+_CHANGED_FILES = [
+    "git",
+    "--no-replace-objects",
+    "log",
+    "-z",
+    "--format=",
+    "--name-only",
+    "--no-renames",
+    "--diff-merges=first-parent",
+]
+
+
+def changed_files(log: str) -> list[str]:
+    """Return the files in the NUL-separated `git log` of the agent's commits."""
     return [path for path in log.split("\0") if path]
 
 
-def _open_pr(gh: Runner, branch: str, env: Mapping[str, str]) -> str | None:
-    prs = json.loads(
-        gh(
-            ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url"],
-            env,
-        )
-    )
-    return str(prs[0]["url"]) if prs else None
+def open_pull_request(response: list[dict[str, Any]]) -> str | None:
+    """Return the URL of the branch's open PR from `gh pr list`."""
+    return str(response[0]["url"]) if response else None
+
+
+def _read_open_pull_request(
+    gh: Runner, env: Mapping[str, str], branch: str
+) -> str | None:
+    args = ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url"]
+    return open_pull_request(json.loads(run_gh(gh, env, Token.APP, args)))
 
 
 def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
@@ -164,7 +164,10 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
         )
         writer.set_output("agent-error", agent_error(execution))
         return
-    refused = protected(_changed_files(gh, env["AFK_BASE"], env))
+    # Per commit and unquoted; replace refs could hide a commit that the push sends.
+    # Without a token: git needs none to read, and the agent's config could run code.
+    log = gh([*_CHANGED_FILES, f"{env['AFK_BASE']}..HEAD"], env)
+    refused = protected(changed_files(log))
     if refused:
         msg = (
             f"Refused to publish: the agent's commits change {', '.join(refused)}. "
@@ -173,21 +176,23 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
         )
         raise SystemExit(msg)
     output = json.loads(env["AFK_AGENT_OUTPUT"])
+    repository = env["GH_REPO"]
     published = Run(
-        repository=env["GH_REPO"],
+        repository=repository,
         ticket=int(env["AFK_TICKET"]),
         worked_ticket=int(env["AFK_WORKED_TICKET"]),
         branch=env["AFK_BRANCH"],
         last_run=env["AFK_LAST_RUN"] == "true",
-        url=env["AFK_RUN_URL"],
+        url=f"{env['GITHUB_SERVER_URL']}/{repository}/actions/runs/"
+        f"{env['GITHUB_RUN_ID']}",
     )
-    read_env = {**env, "GH_TOKEN": env[Token.APP]}
     done = output["outcome"] == "done"
-    open_pr = _open_pr(gh, published.branch, read_env) if done else None
+    open_pr = _read_open_pull_request(gh, env, published.branch) if done else None
     writer.set_output("outcome", output["outcome"])
     writer.set_output("needs-car-reason", output.get("needs_car_reason", ""))
     for effect in plan(output, published, open_pr):
         writer.write(effect)
     if done:
-        writer.set_output("pr-url", _open_pr(gh, published.branch, read_env) or "")
+        pr_url = _read_open_pull_request(gh, env, published.branch)
+        writer.set_output("pr-url", pr_url or "")
         writer.set_output("sha", gh(["git", "rev-parse", "HEAD"], env).strip())

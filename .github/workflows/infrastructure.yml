@@ -483,24 +483,20 @@ jobs:
               pr_title: "docs: append canary"
               pr_body: Appends the line.
               needs_dut_run: false
-            assertion: >-
-              (.effects | map(.type)) == ["PushBranch", "CreatePullRequest", "MarkPullRequestReady"]
-              and (.effects[1].body | startswith("Closes #315\n"))
+            assertion: '(.effects | map(.type)) == ["PushBranch","CreatePullRequest","MarkPullRequestReady"] and (.effects[1].body | startswith("Closes #315\n"))'
           - case: hands a spec gap back to triage
             output:
               outcome: spec_gap
               spec_gaps: Which line?
               needs_dut_run: false
-            assertion: >-
-              .effects[0] == {"type": "EditLabels", "number": 315, "add": ["needs-triage"], "remove": ["ready-for-agent"]}
+            assertion: '.effects[0] == {"type":"EditLabels","number":315,"add":["needs-triage"],"remove":["ready-for-agent"]}'
           - case: hands a needs-car stop to a car agent session
             output:
               outcome: needs_car
               needs_car_reason: Only the car shows it.
               car_variant: copper
               needs_dut_run: false
-            assertion: >-
-              .effects[0] == {"type": "EditLabels", "number": 315, "add": ["needs-car:copper"], "remove": []}
+            assertion: '.effects[0] == {"type":"EditLabels","number":315,"add":["needs-car:copper"],"remove":[]}'
           - case: refuses a commit that changes .github/
             changed-file: .github/afk-canary.md
             output:
@@ -508,7 +504,7 @@ jobs:
               pr_title: "docs: append canary"
               pr_body: Appends the line.
               needs_dut_run: false
-            assertion: .outcome == "failure" and .effects == null
+            assertion: '.outcome == "failure" and .effects == null'
 
     steps:
       - name: Checkout

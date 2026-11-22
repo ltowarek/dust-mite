@@ -11,7 +11,7 @@ __test__ = False
 
 @dataclass(frozen=True)
 class GhCall:
-    """One `gh` command line, and the token and repository it ran with."""
+    """One `gh` or `git` command line, and the token and repository it ran with."""
 
     args: list[str]
     token: str
@@ -37,7 +37,8 @@ class GhSpy:
     def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
         """Record the call, then answer or fail it."""
         args = list(args)
-        self.calls.append(GhCall(args, env["GH_TOKEN"], env["GH_REPO"]))
+        # A git read runs without a token.
+        self.calls.append(GhCall(args, env.get("GH_TOKEN", ""), env["GH_REPO"]))
         if (
             self._failing is not None
             and tuple(args[: len(self._failing)]) == self._failing

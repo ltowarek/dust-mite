@@ -78,7 +78,6 @@ runs:
         AFK_EXECUTION_FILE: ${{ inputs.execution-file }}
         AFK_APP_TOKEN: ${{ inputs.app-token }}
         AFK_DRY_RUN: ${{ inputs.dry-run }}
-        AFK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         GH_REPO: ${{ github.repository }}
       run: |
         "$AFK_PYTHON" -m afk publish
