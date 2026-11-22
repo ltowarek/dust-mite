@@ -40,9 +40,26 @@ def run_gh(
     return gh(args, {**env, "GH_TOKEN": env[token]})
 
 
-def git_env(env: Mapping[str, str]) -> dict[str, str]:
-    """Return `env` without a token variable, for git and the agent's config."""
-    return {key: value for key, value in env.items() if key not in {"GH_TOKEN", *Token}}
+def _authorization(token: str) -> dict[str, str]:
+    # Keyed to github.com, so a URL rewrite in the agent's config sends it nowhere else.
+    credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {credentials}",
+    }
+
+
+def run_git(
+    git: Runner, env: Mapping[str, str], token: Token | None, args: Sequence[str]
+) -> str:
+    """Run a git command without token variables, authenticated by `token` if set."""
+    # The agent's repository config can run code, so git sees no token variable.
+    clean = {
+        key: value for key, value in env.items() if key not in {"GH_TOKEN", *Token}
+    }
+    auth = _authorization(env[token]) if token is not None else {}
+    return git(args, {**clean, **auth})
 
 
 @dataclass(frozen=True)
@@ -55,10 +72,10 @@ class GhCommand:
 
 @dataclass(frozen=True)
 class GitCommand:
-    """A `git` call's arguments, and whether it runs with the App's token."""
+    """A `git` call's arguments, and the variable that holds its token, if any."""
 
     args: list[str]
-    authenticated: bool
+    token: Token | None
 
 
 def command(effect: Effect) -> GhCommand | GitCommand:
@@ -82,7 +99,7 @@ def command(effect: Effect) -> GhCommand | GitCommand:
             args = ["api", "--method", "POST", endpoint]
             args += ["-f", f"content={content}"]
         case PushBranch(repository=repository, branch=branch):
-            return GitCommand(_push(repository, branch), authenticated=True)
+            return GitCommand(_push(repository, branch), Token.APP)
         case CreatePullRequest(branch=branch, title=title, body=body):
             pr = ["--base", "main", "--head", branch, "--title", title, "--body", body]
             args = ["pr", "create", "--draft", *pr]
@@ -113,16 +130,6 @@ def _push(repository: str, branch: str) -> list[str]:
         f"https://github.com/{repository}.git",
         f"HEAD:refs/heads/{branch}",
     ]
-
-
-def _authorization(token: str) -> dict[str, str]:
-    # Keyed to github.com, so a URL rewrite in the agent's config sends it nowhere else.
-    credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-    return {
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
-        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {credentials}",
-    }
 
 
 def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:
@@ -156,9 +163,8 @@ class Writer:
         match command(effect):
             case GhCommand(args=args, token=token):
                 run_gh(self._gh, self._env, token, args)
-            case GitCommand(args=args, authenticated=authenticated):
-                auth = _authorization(self._env[Token.APP]) if authenticated else {}
-                self._git(args, {**git_env(self._env), **auth})
+            case GitCommand(args=args, token=token):
+                run_git(self._git, self._env, token, args)
 
     def set_output(self, name: str, value: str) -> None:
         """Set a step output now, so that it outlives a later write that fails."""
