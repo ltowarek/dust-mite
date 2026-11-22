@@ -16,6 +16,7 @@ from afk.effects import (
     CreateIssue,
     DispatchWorkflow,
     EditLabels,
+    Effect,
     React,
 )
 from afk.finish import Needs, Run, Workflow, failed_step, plan, plan_failure
@@ -69,12 +70,26 @@ def failure_report(text: str, reason: str) -> Comment:
 
 
 class TestPlan:
-    def test_refuses_the_ticket_with_the_check_jobs_reason(self) -> None:
+    @pytest.mark.parametrize(
+        ("run", "reaction"),
+        [
+            pytest.param(RUN, [], id="on a ticket"),
+            pytest.param(
+                PR_RUN,
+                [React(comment_id=555, content="confused")],
+                id="on a PR, reacting confused",
+            ),
+        ],
+    )
+    def test_refuses_with_the_check_jobs_reason_then_releases(
+        self, run: Run, reaction: list[Effect]
+    ) -> None:
         refused = needs(check={"refusal": "Refused."}, implement_result="skipped")
 
-        assert plan(RUN, refused, None) == [
+        assert plan(run, refused, None) == [
             Comment(number=12, body="Refused."),
             RELEASE,
+            *reaction,
         ]
 
     def test_labels_a_blocked_refusal_afk_blocked_before_commenting(self) -> None:
@@ -87,8 +102,25 @@ class TestPlan:
             Comment(number=12, body="Refused."),
         ]
 
-    def test_clears_afk_blocked_then_releases_the_ticket_after_its_work(self) -> None:
-        assert plan(RUN, needs(implement=DONE), None) == [UNBLOCK, RELEASE]
+    @pytest.mark.parametrize(
+        ("run", "reaction"),
+        [
+            pytest.param(RUN, [], id="on a ticket"),
+            pytest.param(
+                PR_RUN,
+                [React(comment_id=555, content="rocket")],
+                id="on a PR, reacting rocket",
+            ),
+        ],
+    )
+    def test_clears_afk_blocked_then_releases_after_its_work(
+        self, run: Run, reaction: list[Effect]
+    ) -> None:
+        assert plan(run, needs(implement=DONE), None) == [
+            UNBLOCK,
+            RELEASE,
+            *reaction,
+        ]
 
     @pytest.mark.parametrize(
         ("finished", "content"),
@@ -358,24 +390,6 @@ class TestPlan:
             CloseIssue(number=14, comment="Implemented in abc123"),
             UNBLOCK,
             DispatchWorkflow(workflow="afk-run.yml", inputs=inputs),
-        ]
-
-    def test_on_a_pr_refuses_the_pr_then_releases_it_and_reacts_confused(self) -> None:
-        refused = needs(check={"refusal": "Refused."}, implement_result="skipped")
-
-        assert plan(PR_RUN, refused, None) == [
-            Comment(number=12, body="Refused."),
-            RELEASE,
-            React(comment_id=555, content="confused"),
-        ]
-
-    def test_on_a_pr_clears_afk_blocked_releases_and_reacts_rocket_after_its_work(
-        self,
-    ) -> None:
-        assert plan(PR_RUN, needs(), None) == [
-            UNBLOCK,
-            RELEASE,
-            React(comment_id=555, content="rocket"),
         ]
 
     def test_comments_the_follow_ups_already_covered_on_the_pr(self) -> None:
