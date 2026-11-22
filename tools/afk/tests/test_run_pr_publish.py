@@ -12,6 +12,7 @@ from afk.effects import (
     Comment,
     CreateReviewComment,
     EditLabels,
+    Effect,
     PushBranch,
     ReplyToReviewComment,
 )
@@ -35,56 +36,67 @@ def make_output(**fields: object) -> dict[str, Any]:
 
 
 class TestPlan:
-    def test_pushes_the_agent_s_commits_with_a_lease_on_the_pr_s_head(self) -> None:
-        assert plan(
-            make_output(), PR, repository="owner/repo", commits=2, head="abc123"
-        ) == [PUSH]
-
-    def test_pushes_nothing_without_commits(self) -> None:
-        output = make_output(top_level_comments=["Nothing to change."])
-
-        assert plan(output, PR, repository="owner/repo", commits=0, head="head123") == [
-            Comment(number=9, body="Nothing to change.")
-        ]
-
-    def test_posts_the_replies_then_the_inline_then_the_top_level_comments(
-        self,
-    ) -> None:
-        output = make_output(
-            thread_replies=[{"comment_id": 501, "body": "Done."}],
-            inline_comments=[{"path": "docs/a.md", "line": 4, "body": "Note."}],
-            top_level_comments=["Summary."],
-        )
-
-        assert plan(output, PR, repository="owner/repo", commits=1, head="abc123") == [
-            PUSH,
-            ReplyToReviewComment(number=9, comment_id=501, body="Done."),
-            CreateReviewComment(
-                number=9, commit="abc123", path="docs/a.md", line=4, body="Note."
+    @pytest.mark.parametrize(
+        ("output", "commits", "effects"),
+        [
+            pytest.param(
+                make_output(),
+                2,
+                [PUSH],
+                id="pushes the agent's commits with a lease on the PR's head",
             ),
-            Comment(number=9, body="Summary."),
-        ]
-
-    def test_labels_the_pr_for_the_car_when_its_commits_need_a_dut_run(
-        self,
+            pytest.param(
+                make_output(top_level_comments=["Nothing to change."]),
+                0,
+                [Comment(number=9, body="Nothing to change.")],
+                id="pushes nothing without commits",
+            ),
+            pytest.param(
+                make_output(
+                    thread_replies=[{"comment_id": 501, "body": "Done."}],
+                    inline_comments=[{"path": "docs/a.md", "line": 4, "body": "Note."}],
+                    top_level_comments=["Summary."],
+                ),
+                1,
+                [
+                    PUSH,
+                    ReplyToReviewComment(number=9, comment_id=501, body="Done."),
+                    CreateReviewComment(
+                        number=9,
+                        commit="abc123",
+                        path="docs/a.md",
+                        line=4,
+                        body="Note.",
+                    ),
+                    Comment(number=9, body="Summary."),
+                ],
+                id="posts the replies then the inline then the top-level comments",
+            ),
+            pytest.param(
+                make_output(needs_dut_run=True, car_variant="copper"),
+                1,
+                [PUSH, EditLabels(number=9, add=("needs-car:copper",))],
+                id="labels the PR for the car when its commits need a DUT run",
+            ),
+            pytest.param(
+                make_output(
+                    needs_dut_run=True,
+                    car_variant="copper",
+                    top_level_comments=["Needs the car."],
+                ),
+                0,
+                [Comment(number=9, body="Needs the car.")],
+                id="leaves the car label when there are no commits to run",
+            ),
+        ],
+    )
+    def test_plans_the_pushes_comments_and_label(
+        self, output: dict[str, Any], commits: int, effects: list[Effect]
     ) -> None:
-        output = make_output(needs_dut_run=True, car_variant="copper")
-
-        assert plan(output, PR, repository="owner/repo", commits=1, head="abc123") == [
-            PUSH,
-            EditLabels(number=9, add=("needs-car:copper",)),
-        ]
-
-    def test_leaves_the_car_label_when_there_are_no_commits_to_run(self) -> None:
-        output = make_output(
-            needs_dut_run=True,
-            car_variant="copper",
-            top_level_comments=["Needs the car."],
+        assert (
+            plan(output, PR, repository="owner/repo", commits=commits, head="abc123")
+            == effects
         )
-
-        assert plan(output, PR, repository="owner/repo", commits=0, head="head123") == [
-            Comment(number=9, body="Needs the car.")
-        ]
 
 
 class TestActed:
