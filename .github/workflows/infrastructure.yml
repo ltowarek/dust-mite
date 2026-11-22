@@ -947,7 +947,8 @@ jobs:
     needs: afk-run-pr-workflow
     # Also after a failed run, whose finish effects then hold its failure comment.
     if: '!cancelled()'
-    permissions: {}
+    permissions:
+      pull-requests: read
 
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -958,13 +959,21 @@ jobs:
 
     env:
       CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+      GH_REPO: ${{ github.repository }}
       PUBLISH_EFFECTS: ${{ needs.afk-run-pr-workflow.outputs.publish-effects }}
       FINISH_EFFECTS: ${{ needs.afk-run-pr-workflow.outputs.finish-effects }}
 
     steps:
       - name: Assert that publish pushes the agent's commits with a lease on the canary PR's head
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          jq -e 'any(.[]; .type == "PushBranch" and (.lease | length) == 40)' <<<"$PUBLISH_EFFECTS"
+          head=$(gh pr view "$CANARY_PR" --json headRefOid --jq .headRefOid)
+          jq -e --arg head "$head" 'any(.[]; .type == "PushBranch" and .lease == $head)' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that publish replies on the canary PR's review thread
+        run: |
+          jq -e 'any(.[]; .type == "ReplyToReviewComment" and .number == (env.CANARY_PR | tonumber))' <<<"$PUBLISH_EFFECTS"
 
       - name: Assert that finish clears afk:in-progress
         run: |
