@@ -1113,6 +1113,33 @@ jobs:
                   agent-output: '{"thread_replies": [], "inline_comments": [], "top_level_comments": [], "needs_dut_run": false, "already_covered": [{"problem": "The camera breaks.", "covered_by": 363}]}'
             assertion: >-
               .[0] == {"type": "Comment", "number": 391, "body": "## Follow-ups already covered\n\n- The camera breaks. Covered by #363.\n"}
+          - case: reports a failed branch update on the PR
+            workflow: afk-update-branch
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              update-branch:
+                result: failure
+                outputs: {}
+            assertion: >-
+              any(.[]; .type == "Comment" and .number == 391
+                and (.body | startswith("The AFK run that updates this PR's branch failed.\n\n**Reason:** "))
+                and (.body | endswith("Comment `/afk update-branch` to retry.\n")))
+          - case: leaves the follow-ups already covered to the merge comment
+            workflow: afk-update-branch
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              update-branch:
+                result: success
+                outputs:
+                  agent-output: '{"conflict_summary": "Kept both lines.", "needs_dut_run": false, "already_covered": [{"problem": "The camera breaks.", "covered_by": 363}]}'
+            assertion: >-
+              . == [{"type": "EditLabels", "number": 391, "add": [], "remove": ["afk:blocked"]}, {"type": "EditLabels", "number": 391, "add": [], "remove": ["afk:in-progress"]}]
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments

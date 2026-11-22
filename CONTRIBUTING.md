@@ -1292,6 +1292,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Grants its own `GITHUB_TOKEN` no write permission
   - Removes `afk:in-progress` when the run ends; after a failure, labels the pull request `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
   - Reacts 🚀 to the AFK command when the run succeeds, and 😕 when it fails or is refused
+  - Makes these last writes in its `finish` job, which passes the `needs` context to the [afk-finish](.github/actions/afk-finish/action.yml) action with the `workflow` input `afk-update-branch`, as [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) does; the action reads the `update-branch` job's outputs, and leaves the follow-ups already covered to the merge comment; after a failed write, the action labels the pull request `afk:blocked`, comments the failed write, removes `afk:in-progress`, reacts 😕 and fails
   - Times out after 180 minutes
 - [claude.yml](.github/workflows/claude.yml)
   - Runs `claude-code-action` when a comment, review or issue mentions `@claude`, only if the repository owner wrote it
