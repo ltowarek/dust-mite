@@ -181,8 +181,10 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
+      # Also after a failed agent, so that publish sets the agent's error for finish.
       - name: Mint the App's write token for the push, the comment and the label
         id: write-token
+        if: "!cancelled() && steps.merge.outcome == 'success'"
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -191,10 +193,9 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      # Also after a failed agent, so that the action sets the agent's error for finish.
       - name: Check the agent's merge, push it and comment it
         id: publish
-        if: "!cancelled() && steps.merge.outcome == 'success'"
+        if: "!cancelled() && steps.write-token.outcome == 'success'"
         uses: $/.github/actions/afk-update-branch-publish
         with:
           number: ${{ inputs.number }}
