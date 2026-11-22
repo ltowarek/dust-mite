@@ -159,7 +159,7 @@ jobs:
           bot_name: ${{ vars.AFK_APP_SLUG }}[bot]
           bot_id: ${{ vars.AFK_APP_BOT_ID }}
           # A dry run in a Dependabot pull request's CI starts as Dependabot.
-          allowed_bots: ${{ inputs.dry-run && format('{0},dependabot', vars.AFK_APP_SLUG) || vars.AFK_APP_SLUG }}
+          allowed_bots: ${{ inputs.dry-run && 'dependabot' || '' }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: mattpocock-skills@claude-plugins-official
           prompt: |
