@@ -1273,11 +1273,13 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Makes these last writes in its `finish` job, which passes the `needs` context to the [afk-finish](.github/actions/afk-finish/action.yml) action with the `workflow` input `afk-run-pr`, as [afk-run.yml](.github/workflows/afk-run.yml) does; after a failed write, the action labels the pull request `afk:blocked`, comments the failed write, removes `afk:in-progress`, reacts 😕 and fails
 - [afk-update-branch.yml](.github/workflows/afk-update-branch.yml)
   - Runs an AFK run that merges `main` into an open pull request's branch
-  - Triggers on `workflow_dispatch` only, with the same inputs as [afk-run-pr.yml](.github/workflows/afk-run-pr.yml); the run is named `afk update-branch #<number>`
+  - Triggers on `workflow_dispatch`, with the inputs `number`, `comment-id` and `head-sha`, as [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) does; the run is named `afk update-branch #<number>`
+  - Also triggers on `workflow_call`, for the [AFK workflow tests](#afk-workflow-tests), with the same inputs plus `dry-run`, `model` and `effort`, as [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) does
   - Expects the `afk:in-progress`, `afk:blocked` and `source:follow-up` labels to exist in the repository
-  - Queues in the same concurrency group as [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in the order that they were requested
+  - Queues in the same concurrency group as [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in the order that they were requested; a dry run uses its own group, `afk-update-branch-dry-run-<run id>`
   - Adds `afk:in-progress` when it starts
   - Refuses, with a comment, an issue, a closed pull request and a pull request whose branch is in a fork
+  - Makes that label and refusal, and reads the pull request, in its `check` job, which mints the App's write token and passes the pull request's number and `head-sha` to the [afk-update-branch-check](.github/actions/afk-update-branch-check/action.yml) action, which runs `python -m afk update-branch-check` from the workflow's commit
   - Merges `origin/main` into `head-sha` as the [AFK GitHub App](#afk-github-app)'s bot; it pushes nothing when the branch already contains `main`, and pushes a merge without conflicts without running the agent
   - On conflicts, runs `claude-code-action` with a read-only token of the App; the agent resolves each conflict keeping both intents, or the intent that best matches the pull request's goal when they are incompatible, and commits the merge
   - Validates the agent's structured output against [afk-update-branch-output.schema.json](.github/afk-update-branch-output.schema.json), and fails when the agent leaves changes uncommitted, does not commit the merge, or rewrites the branch's existing commits

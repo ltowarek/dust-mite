@@ -16,12 +16,46 @@ on:
         description: The PR's head when the AFK command was accepted; empty for the current head
         required: false
         type: string
+  workflow_call:
+    inputs:
+      number:
+        description: The PR
+        required: true
+        type: number
+      comment-id:
+        description: The AFK command's comment; empty when started from the Actions tab
+        required: false
+        type: string
+      head-sha:
+        description: The PR's head when the AFK command was accepted; empty for the current head
+        required: false
+        type: string
+      dry-run:
+        description: Report the writes in the effects outputs instead of making them
+        required: false
+        type: boolean
+        default: false
+      model:
+        description: The agent's model
+        required: false
+        type: string
+        default: claude-opus-5-5
+      effort:
+        description: The agent's effort
+        required: false
+        type: string
+        default: medium
+    secrets:
+      AFK_APP_PRIVATE_KEY:
+        required: true
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
 
 permissions: {}
 
-# Shares afk-run.yml's queue.
+# Shares the AFK queue with afk-run.yml; a dry run stays out of it.
 concurrency:
-  group: afk-run
+  group: ${{ inputs.dry-run && format('afk-update-branch-dry-run-{0}', github.run_id) || 'afk-run' }}
   queue: max
 
 env:
@@ -40,10 +74,10 @@ jobs:
       pull-requests: read
 
     outputs:
-      refusal: ${{ steps.state.outputs.refusal }}
-      url: ${{ steps.state.outputs.url }}
-      branch: ${{ steps.state.outputs.branch }}
-      head-sha: ${{ steps.state.outputs.head-sha }}
+      refusal: ${{ steps.check.outputs.refusal }}
+      url: ${{ steps.check.outputs.url }}
+      branch: ${{ steps.check.outputs.branch }}
+      head-sha: ${{ steps.check.outputs.head-sha }}
 
     steps:
       - name: Mint the App's write token for the label
@@ -55,37 +89,15 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      # A run started from the Actions tab has no dispatcher to add it; gh issue also labels a PR.
-      - name: Mark the target in progress
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$PR" --add-label afk:in-progress
-
-      - name: Read the PR's state
-        id: state
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ inputs.head-sha }}
-        run: |
-          if [ "$(gh api "repos/${GH_REPO}/issues/${PR}" --jq '.pull_request != null')" != true ]; then
-            echo "refusal=Refused to run: this is not a PR, and \`/afk update-branch\` works only on a PR." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          gh pr view "$PR" --json state,url,isCrossRepository,headRefName,headRefOid > "$RUNNER_TEMP/pr.json"
-          state=$(jq -r .state "$RUNNER_TEMP/pr.json")
-          if [ "$state" != OPEN ]; then
-            echo "refusal=Refused to run: this PR is ${state,,}." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$(jq -r .isCrossRepository "$RUNNER_TEMP/pr.json")" = true ]; then
-            echo "refusal=Refused to run: this PR's branch is in a fork, and an AFK run never runs a fork's code with the repository's secrets." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          {
-            echo "url=$(jq -r .url "$RUNNER_TEMP/pr.json")"
-            echo "branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")"
-            echo "head-sha=${HEAD_SHA:-$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")}"
-          } >> "$GITHUB_OUTPUT"
+      - name: Mark the target in progress, and read its PR
+        id: check
+        uses: $/.github/actions/afk-update-branch-check
+        with:
+          number: ${{ inputs.number }}
+          head-sha: ${{ inputs.head-sha }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: ${{ inputs.dry-run }}
 
   update-branch:
     needs: check
@@ -179,8 +191,9 @@ jobs:
             Write the PR comment in conflict_summary: each conflict, how you resolved it and why, each trade-off, and each check that still fails.
             Follow docs/agents/follow-up-tickets.md: list follow-up tickets in follow_ups and follow-ups already covered in already_covered.
             Set needs_dut_run to whether your resolutions can only be confirmed by a DUT run on the car; if they can, set car_variant.
+          # A dispatch has no model or effort input.
           claude_args: >-
-            --model claude-opus-5-5 --effort medium
+            --model ${{ inputs.model || 'claude-opus-5-5' }} --effort ${{ inputs.effort || 'medium' }}
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
