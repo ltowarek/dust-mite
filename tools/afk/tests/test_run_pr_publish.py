@@ -16,7 +16,7 @@ from afk.effects import (
     ReplyToReviewComment,
 )
 from afk.github import PullRequest
-from afk.run_pr_publish import Write, acted, plan
+from afk.run_pr_publish import acted, plan
 from afk.writer import Writer
 from tests.test_doubles import GhSpy, GitCall, GitSpy, read_outputs
 
@@ -34,22 +34,18 @@ def make_output(**fields: object) -> dict[str, Any]:
     }
 
 
-def effects_of(writes: list[Write]) -> list[object]:
-    return [w.effect for w in writes]
-
-
 class TestPlan:
     def test_pushes_the_agent_s_commits_with_a_lease_on_the_pr_s_head(self) -> None:
-        assert effects_of(
-            plan(make_output(), PR, repository="owner/repo", commits=2, head="abc123")
+        assert plan(
+            make_output(), PR, repository="owner/repo", commits=2, head="abc123"
         ) == [PUSH]
 
     def test_pushes_nothing_without_commits(self) -> None:
         output = make_output(top_level_comments=["Nothing to change."])
 
-        assert effects_of(
-            plan(output, PR, repository="owner/repo", commits=0, head="head123")
-        ) == [Comment(number=9, body="Nothing to change.")]
+        assert plan(output, PR, repository="owner/repo", commits=0, head="head123") == [
+            Comment(number=9, body="Nothing to change.")
+        ]
 
     def test_posts_the_replies_then_the_inline_then_the_top_level_comments(
         self,
@@ -60,9 +56,7 @@ class TestPlan:
             top_level_comments=["Summary."],
         )
 
-        assert effects_of(
-            plan(output, PR, repository="owner/repo", commits=1, head="abc123")
-        ) == [
+        assert plan(output, PR, repository="owner/repo", commits=1, head="abc123") == [
             PUSH,
             ReplyToReviewComment(number=9, comment_id=501, body="Done."),
             CreateReviewComment(
@@ -71,30 +65,12 @@ class TestPlan:
             Comment(number=9, body="Summary."),
         ]
 
-    def test_lets_github_reject_only_an_inline_comment_with_a_warning(self) -> None:
-        output = make_output(
-            thread_replies=[{"comment_id": 501, "body": "Done."}],
-            inline_comments=[{"path": "docs/a.md", "line": 4, "body": "Note."}],
-            top_level_comments=["Summary."],
-        )
-
-        writes = plan(output, PR, repository="owner/repo", commits=1, head="abc123")
-
-        assert [w.drop_warning for w in writes] == [
-            None,
-            None,
-            "Dropped the inline comment on docs/a.md:4",
-            None,
-        ]
-
     def test_labels_the_pr_for_the_car_when_its_commits_need_a_dut_run(
         self,
     ) -> None:
         output = make_output(needs_dut_run=True, car_variant="copper")
 
-        assert effects_of(
-            plan(output, PR, repository="owner/repo", commits=1, head="abc123")
-        ) == [
+        assert plan(output, PR, repository="owner/repo", commits=1, head="abc123") == [
             PUSH,
             EditLabels(number=9, add=("needs-car:copper",)),
         ]
@@ -106,9 +82,9 @@ class TestPlan:
             top_level_comments=["Needs the car."],
         )
 
-        assert effects_of(
-            plan(output, PR, repository="owner/repo", commits=0, head="head123")
-        ) == [Comment(number=9, body="Needs the car.")]
+        assert plan(output, PR, repository="owner/repo", commits=0, head="head123") == [
+            Comment(number=9, body="Needs the car.")
+        ]
 
 
 class TestActed:
@@ -238,34 +214,14 @@ class TestRun:
             {"type": "Comment", "number": 9, "body": "Summary."},
         ]
 
-    def test_drops_an_inline_comment_that_github_rejects_with_a_warning(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        gh, git = (
-            GhSpy(
-                failing=(
-                    "api",
-                    "--method",
-                    "POST",
-                    "repos/{owner}/{repo}/pulls/9/comments",
-                )
-            ),
-            GitSpy(GIT_READS),
-        )
-
-        run_pr_publish.run(git, ENV, Writer(gh, git, ENV, tmp_path / "out"))
-
-        assert (capsys.readouterr().out, gh.calls[-1].args[:3]) == (
-            "::warning::Dropped the inline comment on docs/a.md:4\n"
-            "::warning::Dropped the inline comment on docs/b.md:2\n",
-            ["issue", "comment", "9"],
-        )
-
-    def test_fails_on_any_other_write_that_fails(self, tmp_path: Path) -> None:
-        gh, git = GhSpy(failing=("issue", "comment")), GitSpy(GIT_READS)
+    def test_stops_at_the_first_write_that_fails(self, tmp_path: Path) -> None:
+        inline = ("api", "--method", "POST", "repos/{owner}/{repo}/pulls/9/comments")
+        gh, git = GhSpy(failing=inline), GitSpy(GIT_READS)
 
         with pytest.raises(subprocess.CalledProcessError):
             run_pr_publish.run(git, ENV, Writer(gh, git, ENV, tmp_path / "out"))
+
+        assert gh.calls[-1].args[:4] == list(inline)
 
     def test_after_a_failed_agent_sets_only_its_error(self, tmp_path: Path) -> None:
         execution = tmp_path / "execution.json"
