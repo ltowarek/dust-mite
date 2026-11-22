@@ -9,7 +9,7 @@ from typing import Any
 
 from afk.effects import EditLabels
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer
+from afk.writer import Runner, Token, Writer, run_gh
 
 _ASCII_LOWERCASE = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 _SLUG_SEPARATOR = re.compile(r"[^a-z0-9]+")
@@ -197,7 +197,7 @@ def check(run_id: str, state: State) -> CheckResult:
 
 
 def _read(gh: Runner, env: Mapping[str, str], *args: str) -> str:
-    return gh(["gh", *args], {**env, "GH_TOKEN": env[Token.WORKFLOW]})
+    return run_gh(gh, env, Token.WORKFLOW, ["gh", *args])
 
 
 def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:

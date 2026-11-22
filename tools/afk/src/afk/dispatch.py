@@ -16,7 +16,7 @@ from afk.effects import (
     Reaction,
 )
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer
+from afk.writer import Runner, Token, Writer, run_gh
 
 _BLOCKERS_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -205,19 +205,19 @@ def _target(env: Mapping[str, str]) -> Target:
 def _read_issue(gh: Runner, env: Mapping[str, str]) -> Issue:
     # Read now, not from the event: an earlier command may have changed the labels.
     endpoint = f"repos/{env['GH_REPO']}/issues/{env['AFK_NUMBER']}"
-    return issue(
-        json.loads(gh(["gh", "api", endpoint], {**env, "GH_TOKEN": env[Token.APP]}))
-    )
+    return issue(json.loads(run_gh(gh, env, Token.APP, ["gh", "api", endpoint])))
 
 
 def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> State:
     repository = env["GH_REPO"]
     number = env["AFK_NUMBER"]
-    read_env = {**env, "GH_TOKEN": env[Token.APP]}
     blockers: tuple[int, ...] = ()
     if verb is Verb.IMPLEMENT and kind is Kind.ISSUE:
         owner, name = repository.split("/")
-        response = gh(
+        response = run_gh(
+            gh,
+            env,
+            Token.APP,
             [
                 "gh",
                 "api",
@@ -231,12 +231,13 @@ def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> S
                 "-F",
                 f"number={number}",
             ],
-            read_env,
         )
         blockers = open_blockers(json.loads(response))
     head_sha = None
     if kind is Kind.PR:
-        pr = gh(["gh", "pr", "view", number, "--json", "headRefOid"], read_env)
+        pr = run_gh(
+            gh, env, Token.APP, ["gh", "pr", "view", number, "--json", "headRefOid"]
+        )
         head_sha = json.loads(pr)["headRefOid"]
     return State(open_blockers=blockers, head_sha=head_sha)
 

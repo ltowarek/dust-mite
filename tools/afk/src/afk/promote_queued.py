@@ -9,7 +9,7 @@ from typing import Any
 
 from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer
+from afk.writer import Runner, Token, Writer, run_gh
 
 logger = logging.getLogger(__name__)
 _COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")
@@ -151,8 +151,10 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     repository = env["GH_REPO"]
     blocking_ticket = int(env["AFK_BLOCKING_TICKET"])
     owner, name = repository.split("/")
-    read_env = {**env, "GH_TOKEN": env[Token.WORKFLOW]}
-    blocking = gh(
+    blocking = run_gh(
+        gh,
+        env,
+        Token.WORKFLOW,
         [
             "gh",
             "api",
@@ -166,7 +168,6 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
             "-F",
             f"number={blocking_ticket}",
         ],
-        read_env,
     )
     selection = select(json.loads(blocking), repository)
     logger.info("Selected: %s", selection)
@@ -176,7 +177,12 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
             case Promotion(number=number):
                 endpoint = f"repos/{repository}/issues/{number}/comments?per_page=100"
                 pages = json.loads(
-                    gh(["gh", "api", "--paginate", "--slurp", endpoint], read_env)
+                    run_gh(
+                        gh,
+                        env,
+                        Token.WORKFLOW,
+                        ["gh", "api", "--paginate", "--slurp", endpoint],
+                    )
                 )
                 command_ids[number] = command_id(pages, int(env["AFK_BOT_ID"]))
     for effect in plan(selection, command_ids, blocking_ticket):
