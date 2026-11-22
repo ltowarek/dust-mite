@@ -35,54 +35,65 @@ def acted(output: Mapping[str, Any], commits: int) -> bool:
     return bool(commits) or any(output[key] for key in comments)
 
 
+@dataclass(frozen=True)
+class Write:
+    """A planned write; one with a drop warning may fail without failing the run."""
+
+    effect: Effect
+    drop_warning: str | None = None
+
+
+def _inline_comment(pr: PullRequest, head: str, comment: Mapping[str, Any]) -> Write:
+    # GitHub rejects a line outside the PR's diff.
+    return Write(
+        CreateReviewComment(
+            number=pr.number,
+            commit=head,
+            path=comment["path"],
+            line=comment["line"],
+            body=comment["body"],
+        ),
+        drop_warning=f"Dropped the inline comment on {comment['path']}:"
+        f"{comment['line']}",
+    )
+
+
 def plan(
     output: Mapping[str, Any], pr: PullRequest, commits: int, head: str
-) -> list[Effect]:
+) -> list[Write]:
     """Return the writes that push the agent's commits and post its comments."""
-    push: list[Effect] = [
-        PushBranch(repository=pr.repository, branch=pr.branch, lease=pr.lease)
-    ]
-    car: list[Effect] = [
+    push = Write(PushBranch(repository=pr.repository, branch=pr.branch, lease=pr.lease))
+    car = Write(
         EditLabels(
             number=pr.number, add=(f"needs-car:{output.get('car_variant', '')}",)
         )
-    ]
+    )
     return [
-        *(push if commits else []),
+        *([push] if commits else []),
         *(
-            ReplyToReviewComment(
-                number=pr.number, comment_id=reply["comment_id"], body=reply["body"]
+            Write(
+                ReplyToReviewComment(
+                    number=pr.number, comment_id=reply["comment_id"], body=reply["body"]
+                )
             )
             for reply in output["thread_replies"]
         ),
+        *(_inline_comment(pr, head, c) for c in output["inline_comments"]),
         *(
-            CreateReviewComment(
-                number=pr.number,
-                commit=head,
-                path=comment["path"],
-                line=comment["line"],
-                body=comment["body"],
-            )
-            for comment in output["inline_comments"]
-        ),
-        *(
-            Comment(number=pr.number, body=body)
+            Write(Comment(number=pr.number, body=body))
             for body in output["top_level_comments"]
         ),
-        *(car if commits and output["needs_dut_run"] else []),
+        *([car] if commits and output["needs_dut_run"] else []),
     ]
 
 
-def _write(writer: Writer, effect: Effect) -> None:
+def _write(writer: Writer, write: Write) -> None:
     try:
-        writer.write(effect)
+        writer.write(write.effect)
     except subprocess.CalledProcessError:
-        if not isinstance(effect, CreateReviewComment):
+        if write.drop_warning is None:
             raise
-        # GitHub rejects a line outside the PR's diff.
-        sys.stdout.write(
-            f"::warning::Dropped the inline comment on {effect.path}:{effect.line}\n"
-        )
+        sys.stdout.write(f"::warning::{write.drop_warning}\n")
 
 
 def run(git: Runner, env: Mapping[str, str], writer: Writer) -> None:
@@ -103,5 +114,5 @@ def run(git: Runner, env: Mapping[str, str], writer: Writer) -> None:
         msg = "Refused to publish: the agent neither committed nor commented."
         raise SystemExit(msg)
     head = run_git(git, env, None, ["rev-parse", "HEAD"]).strip()
-    for effect in plan(output, pr, commits, head):
-        _write(writer, effect)
+    for write in plan(output, pr, commits, head):
+        _write(writer, write)
