@@ -126,17 +126,6 @@ def plan(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effec
             raise ValueError(msg)
 
 
-_CHANGED_FILES = [
-    "--no-replace-objects",
-    "log",
-    "-z",
-    "--format=",
-    "--name-only",
-    "--no-renames",
-    "--diff-merges=first-parent",
-]
-
-
 def changed_files(log: str) -> list[str]:
     """Return the files in the NUL-separated `git log` of the agent's commits."""
     return [path for path in log.split("\0") if path]
@@ -145,6 +134,22 @@ def changed_files(log: str) -> list[str]:
 def open_pull_request(response: list[dict[str, Any]]) -> str | None:
     """Return the URL of the branch's open PR from `gh pr list`."""
     return str(response[0]["url"]) if response else None
+
+
+def _read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[str]:
+    # Per commit and unquoted; replace refs could hide a commit that the push sends.
+    # Without a token: git needs none to read, and the agent's config could run code.
+    args = [
+        "--no-replace-objects",
+        "log",
+        "-z",
+        "--format=",
+        "--name-only",
+        "--no-renames",
+        "--diff-merges=first-parent",
+        f"{base}..HEAD",
+    ]
+    return changed_files(git(args, git_env(env)))
 
 
 def _read_open_pull_request(
@@ -163,10 +168,7 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
         )
         writer.set_output("agent-error", agent_error(execution))
         return
-    # Per commit and unquoted; replace refs could hide a commit that the push sends.
-    # Without a token: git needs none to read, and the agent's config could run code.
-    log = git([*_CHANGED_FILES, f"{env['AFK_BASE']}..HEAD"], git_env(env))
-    refused = protected(changed_files(log))
+    refused = protected(_read_changed_files(git, env, env["AFK_BASE"]))
     if refused:
         msg = (
             f"Refused to publish: the agent's commits change {', '.join(refused)}. "
