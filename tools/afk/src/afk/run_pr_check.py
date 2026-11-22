@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from afk.effects import EditLabels
+from afk.github import read_graphql
 from afk.labels import Label
 from afk.writer import Runner, Token, Writer, run_gh
 
@@ -145,34 +146,18 @@ def check(pr: PullRequest, conversation: Conversation, head_sha: str) -> CheckRe
     )
 
 
-def _read(gh: Runner, env: Mapping[str, str], *args: str) -> str:
-    return run_gh(gh, env, Token.WORKFLOW, args)
-
-
 def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Mark the PR in progress, then decide whether its AFK run goes ahead."""
     number = env["AFK_PR"]
     writer.write(EditLabels(number=int(number), add=(Label.IN_PROGRESS,)))
     fields_ = "state,url,isCrossRepository,headRefName,headRefOid,comments,reviews"
-    view = json.loads(_read(gh, env, "pr", "view", number, "--json", fields_))
-    owner, repo = env["GH_REPO"].split("/")
-    threads = _read(
-        gh,
-        env,
-        "api",
-        "graphql",
-        "-f",
-        f"query={_REVIEW_THREADS_QUERY}",
-        "-f",
-        f"owner={owner}",
-        "-f",
-        f"repo={repo}",
-        "-F",
-        f"number={number}",
+    view = json.loads(
+        run_gh(gh, env, Token.WORKFLOW, ["pr", "view", number, "--json", fields_])
     )
+    threads = read_graphql(gh, env, _REVIEW_THREADS_QUERY, number)
     result = check(
         pull_request(view),
-        conversation(view, json.loads(threads)),
+        conversation(view, threads),
         env.get("AFK_HEAD_SHA", ""),
     )
     for name, value in outputs(result).items():
