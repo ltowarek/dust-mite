@@ -62,6 +62,14 @@ class Kind(StrEnum):
 
 
 @dataclass(frozen=True)
+class Issue:
+    """The command's target as the issues API returns it, a pull request included."""
+
+    kind: Kind
+    labels: frozenset[str]
+
+
+@dataclass(frozen=True)
 class Target:
     """The issue or pull request that a command runs on, and the command's comment."""
 
@@ -97,6 +105,12 @@ class Accept:
 
     workflow: str
     head_sha: str | None
+
+
+def issue(response: dict[str, Any]) -> Issue:
+    """Return the target's kind and labels from the issues API."""
+    kind = Kind.PR if "pull_request" in response else Kind.ISSUE
+    return Issue(kind=kind, labels=frozenset(lb["name"] for lb in response["labels"]))
 
 
 def open_blockers(response: dict[str, Any]) -> tuple[int, ...]:
@@ -187,11 +201,12 @@ def _target(env: Mapping[str, str]) -> Target:
     return Target(number=int(env["AFK_NUMBER"]), comment_id=int(env["AFK_COMMENT_ID"]))
 
 
-def _read_labels(gh: Runner, env: Mapping[str, str]) -> frozenset[str]:
+def _read_issue(gh: Runner, env: Mapping[str, str]) -> Issue:
     # Read now, not from the event: an earlier command may have changed the labels.
     endpoint = f"repos/{env['GH_REPO']}/issues/{env['AFK_NUMBER']}"
-    issue = json.loads(gh(["gh", "api", endpoint], {**env, "GH_TOKEN": env[Token.APP]}))
-    return frozenset(label["name"] for label in issue["labels"])
+    return issue(
+        json.loads(gh(["gh", "api", endpoint], {**env, "GH_TOKEN": env[Token.APP]}))
+    )
 
 
 def _read_state(gh: Runner, env: Mapping[str, str], verb: Verb, kind: Kind) -> State:
@@ -235,8 +250,9 @@ def run(gh: Runner, env: Mapping[str, str], output: StepOutput) -> None:
         case Verb.UNKNOWN:
             effects = plan(target, Refusal(_UNKNOWN))
         case verb:
-            kind = Kind(env["AFK_KIND"])
-            decision = refusal(_read_labels(gh, env)) or decide(
+            target_issue = _read_issue(gh, env)
+            kind = target_issue.kind
+            decision = refusal(target_issue.labels) or decide(
                 verb, kind, _read_state(gh, env, verb, kind)
             )
             if isinstance(decision, Accept):

@@ -36,7 +36,6 @@ jobs:
         uses: $/.github/actions/afk-dispatch
         with:
           number: ${{ github.event.issue.number }}
-          kind: ${{ github.event.issue.pull_request && 'pr' || 'issue' }}
           comment-id: ${{ github.event.comment.id }}
           body: ${{ github.event.comment.body }}
           app-token: ${{ steps.write-token.outputs.token }}

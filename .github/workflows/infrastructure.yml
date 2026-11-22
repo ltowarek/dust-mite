@@ -291,46 +291,38 @@ jobs:
           # #317 is closed, has no AFK label, and only closed tickets block it.
           - case: ignores a comment that is not a command
             number: 317
-            kind: issue
             body: '/afkimplement'
             assertion: . == []
           - case: refuses an unknown verb
             number: 317
-            kind: issue
             body: '/afk deploy'
             assertion: '.[0].body | startswith("Unknown AFK command.")'
           # #383, an AFK fixture, is closed and labelled afk:in-progress.
           - case: refuses a target in progress
             number: 383
-            kind: issue
             body: '/afk implement'
             assertion: '.[0].body | startswith("Refused: an AFK run is already queued or running here")'
           # #384, an AFK fixture, is closed and labelled afk:queued.
           - case: refuses a queued target
             number: 384
-            kind: issue
             body: '/afk implement'
             assertion: '.[0].body | startswith("Refused: this ticket is waiting")'
           # #385, an AFK fixture, is closed, has no AFK label, and is blocked by #382, which stays open.
           - case: queues a ticket with open blockers
             number: 385
-            kind: issue
             body: '/afk implement'
             assertion: '.[1] == {"type":"ReplaceLabel","number":385,"remove":"afk:blocked","add":"afk:queued"}'
           - case: dispatches an issue's AFK run
             number: 317
-            kind: issue
             body: '/afk implement'
             assertion: '.[-1] == {"type":"DispatchWorkflow","workflow":"afk-run.yml","inputs":{"number":"317","comment-id":"1"}}'
           # #372 is merged, has no AFK label, and its head is a409d69.
           - case: dispatches a PR's AFK run at its head
             number: 372
-            kind: pr
             body: '/afk implement'
             assertion: '.[-1] == {"type":"DispatchWorkflow","workflow":"afk-run-pr.yml","inputs":{"number":"372","comment-id":"1","head-sha":"a409d695e7b5cf239464dc91706ee9585251231f"}}'
           - case: dispatches a PR's branch update at its head
             number: 372
-            kind: pr
             body: '/afk update-branch'
             assertion: '.[-1] == {"type":"DispatchWorkflow","workflow":"afk-update-branch.yml","inputs":{"number":"372","comment-id":"1","head-sha":"a409d695e7b5cf239464dc91706ee9585251231f"}}'
 
@@ -350,7 +342,6 @@ jobs:
         uses: $/.github/actions/afk-dispatch
         with:
           number: ${{ matrix.number }}
-          kind: ${{ matrix.kind }}
           comment-id: 1
           body: ${{ matrix.body }}
           app-token: ${{ steps.write-token.outputs.token }}

@@ -9,6 +9,7 @@ import pytest
 from afk import dispatch
 from afk.dispatch import (
     Accept,
+    Issue,
     Kind,
     Queue,
     Refusal,
@@ -16,6 +17,7 @@ from afk.dispatch import (
     Target,
     Verb,
     decide,
+    issue,
     open_blockers,
     parse,
     plan,
@@ -197,6 +199,31 @@ class TestRelease:
         ]
 
 
+class TestIssue:
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        [
+            pytest.param(
+                {"labels": [{"name": "afk:blocked"}, {"name": "bug"}]},
+                Issue(kind=Kind.ISSUE, labels=frozenset({"afk:blocked", "bug"})),
+                id="reads an issue and its labels",
+            ),
+            pytest.param(
+                {
+                    "labels": [],
+                    "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/7"},
+                },
+                Issue(kind=Kind.PR, labels=frozenset()),
+                id="reads a pull request from its pull_request key",
+            ),
+        ],
+    )
+    def test_reads_the_kind_and_labels(
+        self, response: dict[str, object], expected: Issue
+    ) -> None:
+        assert issue(response) == expected
+
+
 class TestOpenBlockers:
     def test_keeps_the_open_blocking_tickets_in_order(self) -> None:
         nodes = [
@@ -213,7 +240,6 @@ ENV = {
     "AFK_APP_TOKEN": "app-token",
     "AFK_WORKFLOW_TOKEN": "workflow-token",
     "AFK_NUMBER": "7",
-    "AFK_KIND": "issue",
     "AFK_COMMENT_ID": "555",
     "GH_REPO": "owner/repo",
 }

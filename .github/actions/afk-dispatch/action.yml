@@ -5,9 +5,6 @@ inputs:
   number:
     description: The number of the issue or pull request that the command was posted on
     required: true
-  kind:
-    description: issue or pr
-    required: true
   comment-id:
     description: The id of the command's comment
     required: true
@@ -46,7 +43,6 @@ runs:
       env:
         AFK_PYTHON: ${{ steps.afk.outputs.python }}
         AFK_NUMBER: ${{ inputs.number }}
-        AFK_KIND: ${{ inputs.kind }}
         AFK_COMMENT_ID: ${{ inputs.comment-id }}
         AFK_BODY: ${{ inputs.body }}
         AFK_APP_TOKEN: ${{ inputs.app-token }}
