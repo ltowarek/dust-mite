@@ -36,14 +36,6 @@ class ChildTicket:
 
 
 @dataclass(frozen=True)
-class BlockingTicket:
-    """A ticket that blocks another."""
-
-    url: str
-    open: bool
-
-
-@dataclass(frozen=True)
 class PullRequest:
     """An open pull request whose body mentions a ticket."""
 
@@ -57,7 +49,7 @@ class State:
 
     ticket: Ticket
     child_tickets: Sequence[ChildTicket] = ()
-    blockers: Mapping[int, Sequence[BlockingTicket]] = field(default_factory=dict)
+    open_blocker_urls: Mapping[int, Sequence[str]] = field(default_factory=dict)
     pull_requests: Sequence[PullRequest] = ()
 
 
@@ -85,12 +77,9 @@ def child_tickets(response: list[dict[str, Any]]) -> list[ChildTicket]:
     ]
 
 
-def blocking_tickets(response: list[dict[str, Any]]) -> list[BlockingTicket]:
-    """Return a ticket's blocking tickets from the API."""
-    return [
-        BlockingTicket(url=issue["html_url"], open=issue["state"] == "open")
-        for issue in response
-    ]
+def open_blocker_urls(response: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Return the URLs of a ticket's open blocking tickets from the API."""
+    return tuple(i["html_url"] for i in response if i["state"] == "open")
 
 
 def pull_requests(response: list[dict[str, Any]]) -> list[PullRequest]:
@@ -121,11 +110,12 @@ def _slug(title: str) -> str:
 
 def _block_only_each_other(
     open_children: Sequence[ChildTicket],
-    blockers: Mapping[int, Sequence[BlockingTicket]],
+    open_blocker_urls: Mapping[int, Sequence[str]],
 ) -> bool:
+    # URLs, not numbers: a blocking ticket can live in another repository.
     urls = {c.url for c in open_children}
     return all(
-        b.url in urls for c in open_children for b in blockers[c.number] if b.open
+        url in urls for c in open_children for url in open_blocker_urls[c.number]
     )
 
 
@@ -172,7 +162,7 @@ def _check_spec(number: int, state: State) -> CheckResult:
         )
     frontier = _frontier(open_children)
     if not frontier:
-        if not _block_only_each_other(open_children, state.blockers):
+        if not _block_only_each_other(open_children, state.open_blocker_urls):
             return CheckResult(url=url, queue=True)
         return CheckResult(
             url=url,
@@ -248,10 +238,10 @@ def _read_state(gh: Runner, env: Mapping[str, str], number: int) -> State:
     children = child_tickets(
         json.loads(_read(gh, env, "api", f"{issues}/{number}/sub_issues?per_page=100"))
     )
-    blockers: dict[int, list[BlockingTicket]] = {}
+    blockers: dict[int, tuple[str, ...]] = {}
     for child in blocked_child_tickets(children):
         endpoint = f"{issues}/{child}/dependencies/blocked_by?per_page=100"
-        blockers[child] = blocking_tickets(json.loads(_read(gh, env, "api", endpoint)))
+        blockers[child] = open_blocker_urls(json.loads(_read(gh, env, "api", endpoint)))
     search = f'in:body "#{number}"'
     prs = _read(
         gh,

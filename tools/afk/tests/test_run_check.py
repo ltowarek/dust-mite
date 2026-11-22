@@ -7,16 +7,15 @@ import pytest
 
 from afk import run_check
 from afk.run_check import (
-    BlockingTicket,
     CheckResult,
     ChildTicket,
     PullRequest,
     State,
     Ticket,
     blocked_child_tickets,
-    blocking_tickets,
     check,
     child_tickets,
+    open_blocker_urls,
     pull_requests,
     ticket,
 )
@@ -49,10 +48,6 @@ def make_child(
         open=is_open,
         open_blocking_tickets=blocked_by,
     )
-
-
-def make_blocking(number: int, *, is_open: bool = True) -> BlockingTicket:
-    return BlockingTicket(url=f"{URL}/{number}", open=is_open)
 
 
 def make_pull_request(number: int, body: str) -> PullRequest:
@@ -153,10 +148,7 @@ class TestCheck:
                 State(
                     make_ticket(),
                     [make_child(8, blocked_by=1), make_child(9, blocked_by=1)],
-                    blockers={
-                        8: [make_blocking(9), make_blocking(50, is_open=False)],
-                        9: [make_blocking(8)],
-                    },
+                    open_blocker_urls={8: [f"{URL}/9"], 9: [f"{URL}/8"]},
                 ),
                 CheckResult(
                     url=f"{URL}/7",
@@ -172,7 +164,7 @@ class TestCheck:
                 State(
                     make_ticket(),
                     [make_child(8, blocked_by=1), make_child(9, blocked_by=1)],
-                    blockers={8: [make_blocking(9)], 9: [make_blocking(50)]},
+                    open_blocker_urls={8: [f"{URL}/9"], 9: [f"{URL}/50"]},
                 ),
                 CheckResult(url=f"{URL}/7", queue=True),
                 id="queues a spec whose open child tickets wait on another ticket",
@@ -197,7 +189,7 @@ class TestCheck:
                 State(
                     make_ticket(),
                     [make_child(8, blocked_by=1)],
-                    blockers={8: [make_blocking(50)]},
+                    open_blocker_urls={8: [f"{URL}/50"]},
                     pull_requests=[make_pull_request(20, "Closes #7")],
                 ),
                 CheckResult(url=f"{URL}/7", refusal=make_pr_refusal(20), queue=True),
@@ -402,17 +394,14 @@ class TestChildTickets:
         ]
 
 
-class TestBlockingTickets:
-    def test_reads_each_blocking_ticket_s_url_and_state(self) -> None:
+class TestOpenBlockerUrls:
+    def test_reads_the_urls_of_the_open_blocking_tickets(self) -> None:
         response = [
             {"html_url": f"{URL}/9", "state": "open"},
             {"html_url": f"{URL}/4", "state": "closed"},
         ]
 
-        assert blocking_tickets(response) == [
-            BlockingTicket(url=f"{URL}/9", open=True),
-            BlockingTicket(url=f"{URL}/4", open=False),
-        ]
+        assert open_blocker_urls(response) == (f"{URL}/9",)
 
 
 class TestPullRequests:
