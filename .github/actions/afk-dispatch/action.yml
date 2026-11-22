@@ -1,0 +1,53 @@
+name: AFK dispatch
+description: Refuse, queue or accept an AFK command, and dispatch the AFK run it asks for
+
+inputs:
+  number:
+    description: The number of the issue or pull request that the command was posted on
+    required: true
+  comment-id:
+    description: The id of the command's comment
+    required: true
+  body:
+    description: The command's comment body
+    required: true
+  app-token:
+    description: The AFK App's token with Issues and Pull requests write, for the reads, reactions, labels and replies
+    required: true
+  workflow-token:
+    description: A token with Actions write for the dispatch
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  accepted:
+    description: true once the command is accepted, set before its writes
+    value: ${{ steps.dispatch.outputs.accepted }}
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.dispatch.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Refuse, queue or dispatch the AFK command
+      id: dispatch
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_NUMBER: ${{ inputs.number }}
+        AFK_COMMENT_ID: ${{ inputs.comment-id }}
+        AFK_BODY: ${{ inputs.body }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_WORKFLOW_TOKEN: ${{ inputs.workflow-token }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        "$AFK_PYTHON" -m afk dispatch

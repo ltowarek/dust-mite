@@ -6,12 +6,6 @@ on:
 
 permissions: {}
 
-env:
-  NUMBER: ${{ github.event.issue.number }}
-  KIND: ${{ github.event.issue.pull_request && 'pr' || 'issue' }}
-  COMMENT_ID: ${{ github.event.comment.id }}
-  GH_REPO: ${{ github.repository }}
-
 jobs:
   dispatch:
     # Only the owner, by account id, since a login can change hands.
@@ -28,38 +22,8 @@ jobs:
       actions: write
 
     steps:
-      - name: Parse the AFK command
-        id: command
-        env:
-          BODY: ${{ github.event.comment.body }}
-        run: |
-          line=${BODY%%$'\n'*}
-          line=${line%$'\r'}
-          line=${line%"${line##*[![:space:]]}"}
-          case "$line" in
-            '/afk implement')
-              verb=implement
-              if [ "$KIND" = pr ]; then workflow=afk-run-pr.yml; else workflow=afk-run.yml; fi
-              ;;
-            '/afk update-branch')
-              verb=update-branch
-              workflow=afk-update-branch.yml
-              ;;
-            '/afk' | '/afk '*)
-              verb=unknown
-              ;;
-            *)
-              exit 0
-              ;;
-          esac
-          {
-            echo "verb=$verb"
-            echo "workflow=${workflow:-}"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Mint the App's write token for reactions, labels and replies
+      - name: Mint the App's write token for reads, reactions, labels and replies
         id: write-token
-        if: steps.command.outputs.verb != ''
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -67,95 +31,21 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Refuse an unknown verb
-        if: steps.command.outputs.verb == 'unknown'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: |
-          gh issue comment "$NUMBER" --body "Unknown AFK command. The first line of the comment must be \`/afk implement\` or \`/afk update-branch\`."
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content=confused
-
-      - name: Read the target's state
-        id: target
-        if: steps.command.outputs.workflow != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          VERB: ${{ steps.command.outputs.verb }}
-          QUERY: >-
-            query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){
-            blockedBy(first:100){nodes{number state}}}}}
-        run: |
-          # Read now, not from the event: an earlier command may have changed the labels.
-          labels=$(gh api "repos/${GH_REPO}/issues/${NUMBER}" --jq '[.labels[].name]')
-          if jq -e 'index("afk:in-progress")' <<<"$labels" >/dev/null; then
-            echo "refusal=Refused: an AFK run is already queued or running here (\`afk:in-progress\`)." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if jq -e 'index("afk:queued")' <<<"$labels" >/dev/null; then
-            echo "refusal=Refused: this ticket is waiting (\`afk:queued\`) and starts when it is unblocked." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$KIND" = issue ] && [ "$VERB" = implement ]; then
-            blockers=$(gh api graphql -F owner="${GH_REPO%/*}" -F repo="${GH_REPO#*/}" -F number="$NUMBER" -f query="$QUERY" \
-              --jq '[.data.repository.issue.blockedBy.nodes[] | select(.state == "OPEN") | "#\(.number)"] | join(", ")')
-            if [ -n "$blockers" ]; then
-              echo "blockers=$blockers" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          if [ "$KIND" = pr ]; then
-            echo "head-sha=$(gh pr view "$NUMBER" --json headRefOid --jq .headRefOid)" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Refuse a target that is in progress or queued
-        if: steps.target.outputs.refusal != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          REFUSAL: ${{ steps.target.outputs.refusal }}
-        run: |
-          gh issue comment "$NUMBER" --body "$REFUSAL"
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content=confused
-
-      - name: Queue a ticket with open blockers
-        if: steps.target.outputs.blockers != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          BLOCKERS: ${{ steps.target.outputs.blockers }}
-        run: |
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content=eyes
-          gh issue edit "$NUMBER" --add-label afk:queued --remove-label afk:blocked
-          # The marker carries the AFK command to the run that afk-promote-queued.yml dispatches.
-          gh issue comment "$NUMBER" --body "Queued (\`afk:queued\`) until its blocking tickets close: ${BLOCKERS}. The AFK run starts when the last one closes. <!-- afk-command: ${COMMENT_ID} -->"
-
-      - name: Accept the command
-        id: accept
-        if: steps.target.outcome == 'success' && steps.target.outputs.refusal == '' && steps.target.outputs.blockers == ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: |
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content=eyes
-          gh issue edit "$NUMBER" --add-label afk:in-progress --remove-label afk:blocked
-
-      - name: Dispatch the AFK run
-        if: steps.accept.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WORKFLOW: ${{ steps.command.outputs.workflow }}
-          HEAD_SHA: ${{ steps.target.outputs.head-sha }}
-        run: |
-          inputs=(-f number="$NUMBER" -f comment-id="$COMMENT_ID")
-          if [ -n "$HEAD_SHA" ]; then
-            inputs+=(-f head-sha="$HEAD_SHA")
-          fi
-          gh workflow run "$WORKFLOW" "${inputs[@]}"
+      - name: Refuse, queue or dispatch the AFK command
+        id: dispatch
+        uses: $/.github/actions/afk-dispatch
+        with:
+          number: ${{ github.event.issue.number }}
+          comment-id: ${{ github.event.comment.id }}
+          body: ${{ github.event.comment.body }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
 
       - name: Release the target after a failure
         if: failure() && steps.write-token.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          ACCEPTED: ${{ steps.accept.outcome == 'success' }}
-        run: |
-          if [ "$ACCEPTED" = true ]; then
-            gh issue edit "$NUMBER" --remove-label afk:in-progress
-          fi
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content=confused
+        uses: $/.github/actions/afk-dispatch-release
+        with:
+          number: ${{ github.event.issue.number }}
+          comment-id: ${{ github.event.comment.id }}
+          accepted: ${{ steps.dispatch.outputs.accepted }}
+          app-token: ${{ steps.write-token.outputs.token }}

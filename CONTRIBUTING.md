@@ -1198,13 +1198,15 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Enables auto-merge and approves the pull request as described in [Dependency updates](#dependency-updates)
   - Is the only workflow whose `GITHUB_TOKEN` has `pull-requests: write`
 - [afk-dispatch.yml](.github/workflows/afk-dispatch.yml)
+  - Is an entry workflow: one job mints the App's write token and passes the comment and its target to the [afk-dispatch](.github/actions/afk-dispatch/action.yml) action, which runs `python -m afk dispatch` from the same commit
   - Triggers on each new issue or pull request conversation comment, and acts only on an [AFK command](#afk-commands) whose author's account id is the repository owner's; it ignores every other comment without a reply or a reaction
   - Triggers on `issue_comment`, which runs on a pull request that conflicts with `main`, with a `zizmor: ignore[dangerous-triggers]` comment whose reason [ADR 0007](docs/adr/0007-start-afk-runs-by-comment-command.md) gives
   - Handles one command at a time in the `afk-dispatch` concurrency group with `queue: max`, so that two commands posted together cannot both pass the `afk:in-progress` check
   - Replies and reacts 😕 to an unknown verb, and to a command on a target labelled `afk:in-progress` or `afk:queued`
   - Labels a ticket or spec with open blocking tickets `afk:queued` for `/afk implement`, replies with the blocking tickets and the command's id in a hidden marker, and reacts 👀
   - Otherwise reacts 👀, replaces `afk:blocked` with `afk:in-progress`, and dispatches [afk-run.yml](.github/workflows/afk-run.yml) for `/afk implement` on an issue, [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) for `/afk implement` on a pull request, or [afk-update-branch.yml](.github/workflows/afk-update-branch.yml) for `/afk update-branch`, with the comment's id and, on a pull request, its head commit
-  - Labels, reacts and replies as the [AFK GitHub App](#afk-github-app); only the dispatch step uses its own `GITHUB_TOKEN`, which has `actions: write`
+  - When the job fails, reacts 😕 through the [afk-dispatch-release](.github/actions/afk-dispatch-release/action.yml) action, which also removes `afk:in-progress` if the command was accepted; the afk-dispatch action sets its `accepted` output before its first write, so that a failed write still releases the target
+  - Labels, reacts and replies as the [AFK GitHub App](#afk-github-app); only the dispatch uses its own `GITHUB_TOKEN`, which has `actions: write`
   - Times out after 5 minutes
 - [afk-run.yml](.github/workflows/afk-run.yml)
   - Runs an AFK run on a ticket or on a spec, which is an issue with child tickets
@@ -1234,7 +1236,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Reacts 🚀 to the AFK command when the run, or a spec's whole implementation, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car; a run that dispatches the spec's next run or queues the spec does not react
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
-  - Is an entry workflow: one job mints the App's write token and passes the closed ticket's number to the [afk-promote-queued](.github/actions/afk-promote-queued/action.yml) action, which runs `python3 -m afk promote-queued` from the same commit
+  - Is an entry workflow: one job mints the App's write token and passes the closed ticket's number to the [afk-promote-queued](.github/actions/afk-promote-queued/action.yml) action, which runs `python -m afk promote-queued` from the same commit
   - Starts an AFK run on a ticket labelled `afk:queued`, when its last open blocking ticket closes, and on a spec that [afk-run.yml](.github/workflows/afk-run.yml) labelled `afk:queued`, when the last open blocking ticket of one of its child tickets closes
   - Expects the `afk:queued`, `afk:in-progress` and `afk:blocked` labels to exist in the repository
   - Counts a blocking ticket closed for any reason, including as not planned, as no longer blocking
@@ -1283,13 +1285,13 @@ Before opening a pull request, run the relevant local checks in the matching dev
 
 ### AFK actions and dry runs
 
-The AFK loop's decisions live in the `afk` package in [tools/afk/](tools/afk/), not in workflow bash ([ADR 0008](docs/adr/0008-complex-automation-logic-in-tested-python.md)). Its pure core returns a phase's step outputs and its writes, called effects; its shell reads GitHub with `gh` and carries out each effect with a `gh` subcommand. Each phase runs in a composite action in [.github/actions/](.github/actions/), which a workflow calls with the `$/` self-repository syntax, so the action installs the package from the workflow's own commit without a checkout. The action sets up Python 3.11, the version the package's checks and tests run on, with `actions/setup-python`, without changing the calling job's `PATH` or environment, installs the package with the runtime requirements pinned in `base.txt` into a venv in `$RUNNER_TEMP`, and runs `python -m afk <phase>` from it. Only an entry workflow reads the triggering event; an action takes plain inputs, and passes untrusted values to the package only through environment variables.
+The AFK loop's decisions live in the `afk` package in [tools/afk/](tools/afk/), not in workflow bash ([ADR 0008](docs/adr/0008-complex-automation-logic-in-tested-python.md)). Its pure core decides a phase's writes, called effects; its shell reads GitHub with `gh`, and passes each effect to a writer, which carries it out with a `gh` subcommand and sets the phase's step outputs. Each phase runs in a composite action in [.github/actions/](.github/actions/), which a workflow calls with the `$/` self-repository syntax, so the action installs the package from the workflow's own commit without a checkout. Each action first calls the [setup-afk](.github/actions/setup-afk/action.yml) action with `$/`, which loads it from the same commit. setup-afk sets up Python 3.11, the version the package's checks and tests run on, with `actions/setup-python`, without changing the calling job's `PATH` or environment, installs the package with the runtime requirements pinned in `base.txt` into a venv in `$RUNNER_TEMP`, and returns the venv's Python in its `python` output. The action then runs `python -m afk <phase>` with that Python. Only an entry workflow reads the triggering event; an action takes plain inputs, and passes untrusted values to the package only through environment variables.
 
 Every action that writes takes a `dry-run` input. In a dry run, the action reports each write as JSON in its `effects` output, for example `[{"type": "Comment", "number": 7, "body": "…"}]`, and calls neither `gh` nor `git` for it. Every read, token mint and output stays real.
 
 #### AFK action tests
 
-The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that reads a real closed ticket and checks the action's `effects` with one `jq -e` assertion. A failing case names the behaviour that broke, and its log shows the planned effects. A case relies on its tickets staying in the state that its comment in [infrastructure.yml](.github/workflows/infrastructure.yml) describes; when one changes, pick another ticket.
+The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that runs the action against a real closed ticket and checks the action's `effects` with one `jq -e` assertion. A failing case names the behaviour that broke, and its log shows the planned effects. A case relies on its tickets staying in the state that its comment in [infrastructure.yml](.github/workflows/infrastructure.yml) describes; when one changes, pick another ticket.
 
 ### AFK commands
 

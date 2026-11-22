@@ -5,10 +5,10 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
-from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
+from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect
+from afk.labels import Label
 from afk.writer import Runner, Token, Writer
 
 logger = logging.getLogger(__name__)
@@ -31,14 +31,6 @@ query($owner: String!, $repo: String!, $number: Int!) {
   }
 }
 """
-
-
-class Label(StrEnum):
-    """The AFK loop's state labels."""
-
-    QUEUED = "afk:queued"
-    IN_PROGRESS = "afk:in-progress"
-    BLOCKED = "afk:blocked"
 
 
 @dataclass(frozen=True)
@@ -102,7 +94,7 @@ def command_id(pages: list[list[dict[str, Any]]], bot_id: int) -> str | None:
 def _refuse(refusal: Refusal) -> list[Effect]:
     parent = refusal.parent
     return [
-        ReplaceLabel(number=refusal.number, remove=Label.QUEUED, add=Label.BLOCKED),
+        EditLabels(number=refusal.number, add=(Label.BLOCKED,), remove=(Label.QUEUED,)),
         Comment(
             number=refusal.number,
             body=f"Refused to promote: this ticket is a child ticket of #{parent}. "
@@ -121,8 +113,8 @@ def _promote(
     # Dispatch first: a failed dispatch leaves the ticket queued, not stale in progress.
     return [
         DispatchWorkflow(workflow="afk-run.yml", inputs=inputs),
-        ReplaceLabel(
-            number=promotion.number, remove=Label.QUEUED, add=Label.IN_PROGRESS
+        EditLabels(
+            number=promotion.number, add=(Label.IN_PROGRESS,), remove=(Label.QUEUED,)
         ),
         Comment(
             number=promotion.number,
@@ -154,7 +146,7 @@ def plan(
     return effects
 
 
-def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
+def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Read the blocking ticket's blocked tickets, then promote or refuse them."""
     repository = env["GH_REPO"]
     blocking_ticket = int(env["AFK_BLOCKING_TICKET"])
@@ -187,7 +179,5 @@ def run(gh: Runner, env: Mapping[str, str]) -> dict[str, str]:
                     gh(["gh", "api", "--paginate", "--slurp", endpoint], read_env)
                 )
                 command_ids[number] = command_id(pages, int(env["AFK_BOT_ID"]))
-    writer = Writer(gh, env)
     for effect in plan(selection, command_ids, blocking_ticket):
         writer.write(effect)
-    return writer.outputs()
