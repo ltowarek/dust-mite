@@ -5,12 +5,16 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Generic, TypeVar
 
 __test__ = False
 
 
-class _Spy:
-    """Answer one program's reads from canned output, and fail on request."""
+Call = TypeVar("Call")
+
+
+class _Spy(Generic[Call]):
+    """Record one program's calls, answer its reads from canned output, and fail."""
 
     program: str
 
@@ -25,6 +29,7 @@ class _Spy:
         """
         self._answers = answers or {}
         self._failing = failing
+        self.calls: list[Call] = []
 
     def _answer(self, args: list[str]) -> str:
         if args[0] != self.program:
@@ -48,19 +53,10 @@ class GhCall:
     repo: str
 
 
-class GhSpy(_Spy):
+class GhSpy(_Spy[GhCall]):
     """Record every `gh` call, and refuse any other program's."""
 
     program = "gh"
-
-    def __init__(
-        self,
-        answers: Mapping[tuple[str, ...], str] | None = None,
-        failing: tuple[str, ...] | None = None,
-    ) -> None:
-        """Answer and fail calls as `_Spy` does."""
-        super().__init__(answers, failing)
-        self.calls: list[GhCall] = []
 
     def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
         """Record the call, then answer or fail it."""
@@ -77,23 +73,18 @@ class GitCall:
     config: dict[str, str]
 
 
-class GitSpy(_Spy):
-    """Record every `git` call, and refuse any other program's."""
+class GitSpy(_Spy[GitCall]):
+    """Record every `git` call; refuse any other program's, or a token variable."""
 
     program = "git"
-
-    def __init__(
-        self,
-        answers: Mapping[tuple[str, ...], str] | None = None,
-        failing: tuple[str, ...] | None = None,
-    ) -> None:
-        """Answer and fail calls as `_Spy` does."""
-        super().__init__(answers, failing)
-        self.calls: list[GitCall] = []
 
     def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
         """Record the call, then answer or fail it."""
         args = list(args)
+        tokens = {"GH_TOKEN", "AFK_APP_TOKEN", "AFK_WORKFLOW_TOKEN"} & env.keys()
+        if tokens:
+            msg = f"git ran with {sorted(tokens)}"
+            raise ValueError(msg)
         count = int(env.get("GIT_CONFIG_COUNT", "0"))
         config = {
             env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"]

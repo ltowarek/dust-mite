@@ -39,6 +39,11 @@ def run_gh(
     return gh(args, {**env, "GH_TOKEN": env[token]})
 
 
+def git_env(env: Mapping[str, str]) -> dict[str, str]:
+    """Return `env` without a token variable, for git and the agent's config."""
+    return {key: value for key, value in env.items() if key not in {"GH_TOKEN", *Token}}
+
+
 @dataclass(frozen=True)
 class GhCommand:
     """A `gh` command line and the variable that holds the token it runs with."""
@@ -155,7 +160,7 @@ class Writer:
                 run_gh(self._gh, self._env, token, args)
             case GitCommand(args=args, authenticated=authenticated):
                 auth = _authorization(self._env[Token.APP]) if authenticated else {}
-                self._git(args, {**self._env, **auth})
+                self._git(args, {**git_env(self._env), **auth})
 
     def set_output(self, name: str, value: str) -> None:
         """Set a step output now, so that it outlives a later write that fails."""

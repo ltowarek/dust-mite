@@ -17,7 +17,7 @@ from afk.effects import (
     MarkPullRequestReady,
     PushBranch,
 )
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.writer import Runner, Token, Writer, git_env, run_gh
 
 _LINE_BREAK = re.compile(r"\s*\n\s*")
 # Code here runs with the AFK App's write token in later runs (ADR 0008).
@@ -166,7 +166,7 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
         return
     # Per commit and unquoted; replace refs could hide a commit that the push sends.
     # Without a token: git needs none to read, and the agent's config could run code.
-    log = git([*_CHANGED_FILES, f"{env['AFK_BASE']}..HEAD"], env)
+    log = git([*_CHANGED_FILES, f"{env['AFK_BASE']}..HEAD"], git_env(env))
     refused = protected(changed_files(log))
     if refused:
         msg = (
@@ -195,4 +195,6 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
     if done:
         pr_url = _read_open_pull_request(gh, env, published.branch)
         writer.set_output("pr-url", pr_url or "")
-        writer.set_output("sha", git(["git", "rev-parse", "HEAD"], env).strip())
+        writer.set_output(
+            "sha", git(["git", "rev-parse", "HEAD"], git_env(env)).strip()
+        )
