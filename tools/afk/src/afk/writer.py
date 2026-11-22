@@ -78,40 +78,45 @@ class GitCommand:
     token: Token | None
 
 
-def command(effect: Effect) -> GhCommand | GitCommand:
+def command_for(effect: Effect) -> GhCommand | GitCommand:
     """Return the command that carries out a write."""
+    command: GhCommand | GitCommand
     match effect:
         case DispatchWorkflow(workflow=workflow, inputs=inputs):
             fields = [
                 arg for key, value in inputs.items() for arg in ("-f", f"{key}={value}")
             ]
             # The App has no Actions write permission, so it cannot dispatch.
-            return GhCommand(["workflow", "run", workflow, *fields], Token.WORKFLOW)
+            command = GhCommand(["workflow", "run", workflow, *fields], Token.WORKFLOW)
         case EditLabels(number=number, add=add, remove=remove):
             args = ["issue", "edit", str(number), *_label_flags(add, remove)]
+            command = GhCommand(args, Token.APP)
         case Comment(number=number, body=body):
             args = ["issue", "comment", str(number), "--body", body]
+            command = GhCommand(args, Token.APP)
         case React(comment_id=comment_id, content=content):
             # gh has no reaction subcommand; gh api takes {owner}/{repo} from GH_REPO.
             endpoint = (
                 f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}/reactions"
             )
-            args = ["api", "--method", "POST", endpoint]
-            args += ["-f", f"content={content}"]
+            args = ["api", "--method", "POST", endpoint, "-f", f"content={content}"]
+            command = GhCommand(args, Token.APP)
         case PushBranch(repository=repository, branch=branch):
-            return GitCommand(_push(repository, branch), Token.APP)
+            command = GitCommand(_push(repository, branch), Token.APP)
         case CreatePullRequest(branch=branch, title=title, body=body):
             pr = ["--base", "main", "--head", branch, "--title", title, "--body", body]
-            args = ["pr", "create", "--draft", *pr]
+            command = GhCommand(["pr", "create", "--draft", *pr], Token.APP)
         case EditPullRequest(branch=branch, title=title, body=body):
             args = ["pr", "edit", branch, "--title", title, "--body", body]
+            command = GhCommand(args, Token.APP)
         case EditPullRequestLabels(branch=branch, add=add, remove=remove):
             args = ["pr", "edit", branch, *_label_flags(add, remove)]
+            command = GhCommand(args, Token.APP)
         case MarkPullRequestReady(branch=branch):
-            args = ["pr", "ready", branch]
+            command = GhCommand(["pr", "ready", branch], Token.APP)
         case _:
             assert_never(effect)
-    return GhCommand(args, Token.APP)
+    return command
 
 
 def _label_flags(add: Sequence[str], remove: Sequence[str]) -> list[str]:
@@ -162,7 +167,7 @@ class Writer:
         self._planned.append(effect)
         if self._dry_run:
             return
-        match command(effect):
+        match command_for(effect):
             case GhCommand(args=args, token=token):
                 run_gh(self._gh, self._env, token, args)
             case GitCommand(args=args, token=token):
