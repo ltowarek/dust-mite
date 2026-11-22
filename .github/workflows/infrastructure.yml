@@ -925,6 +925,55 @@ jobs:
         run: |
           jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run failed") | not))' <<<"$FINISH_EFFECTS"
 
+  # The canary PR is an open draft whose branch creates docs/afk-canary.md holding the line `canary`, with one unresolved review comment that asks for a second line.
+  afk-run-pr-workflow:
+    # The production jobs' permissions.
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+
+    uses: $/.github/workflows/afk-run-pr.yml
+    with:
+      number: ${{ fromJSON(vars.AFK_CANARY_PR) }}
+      dry-run: true
+      model: claude-haiku-5-5
+      effort: low
+    secrets:
+      AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  afk-run-pr-workflow-assertions:
+    needs: afk-run-pr-workflow
+    # Also after a failed run, whose finish effects then hold its failure comment.
+    if: '!cancelled()'
+    permissions: {}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+      PUBLISH_EFFECTS: ${{ needs.afk-run-pr-workflow.outputs.publish-effects }}
+      FINISH_EFFECTS: ${{ needs.afk-run-pr-workflow.outputs.finish-effects }}
+
+    steps:
+      - name: Assert that publish pushes the agent's commits with a lease on the canary PR's head
+        run: |
+          jq -e 'any(.[]; .type == "PushBranch" and (.lease | length) == 40)' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that finish clears afk:in-progress
+        run: |
+          jq -e 'any(.[]; . == {"type": "EditLabels", "number": (env.CANARY_PR | tonumber), "add": [], "remove": ["afk:in-progress"]})' <<<"$FINISH_EFFECTS"
+
+      - name: Assert that finish plans no failure comment
+        run: |
+          jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run on this PR failed") | not))' <<<"$FINISH_EFFECTS"
+
   actions-lock:
     permissions:
       contents: read

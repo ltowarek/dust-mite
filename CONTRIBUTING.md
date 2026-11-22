@@ -1178,7 +1178,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - [infrastructure.yml](.github/workflows/infrastructure.yml)
     - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
     - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure), and the `afk` package's checks and unit tests in the `afk` job
-    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) in the [AFK workflow test](#afk-workflow-test); `ci.yml` grants this area `actions: write`, `issues: read` and `pull-requests: read` and passes it the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN`
+    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) in the [AFK workflow tests](#afk-workflow-tests); `ci.yml` grants this area `actions: write`, `issues: read` and `pull-requests: read` and passes it the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN`
     - Verifies the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
   - [observability.yml](.github/workflows/observability.yml)
     - Runs the observability checks and the synthetic pipeline tests against the observability stack on the runner
@@ -1212,7 +1212,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
 - [afk-run.yml](.github/workflows/afk-run.yml)
   - Runs an AFK run on a ticket or on a spec, which is an issue with child tickets
   - Triggers on `workflow_dispatch`, with the inputs `number`, the ticket or spec, and `comment-id`, the AFK command, which is empty when the run starts from the Actions tab; the run is named `afk implement #<number>`
-  - Also triggers on `workflow_call`, for the [AFK workflow test](#afk-workflow-test), with the same inputs plus `dry-run`, `model` and `effort`, which default to `claude-opus-5-5` at `medium`; it then takes the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN` as secrets and returns its publish and finish phases' `effects` as the `publish-effects` and `finish-effects` outputs
+  - Also triggers on `workflow_call`, for the [AFK workflow tests](#afk-workflow-tests), with the same inputs plus `dry-run`, `model` and `effort`, which default to `claude-opus-5-5` at `medium`; it then takes the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN` as secrets and returns its publish and finish phases' `effects` as the `publish-effects` and `finish-effects` outputs
   - Expects the `afk:in-progress`, `afk:queued`, `afk:blocked` and `source:follow-up` labels to exist in the repository
   - Queues every AFK run in one concurrency group, `afk-run`, with `queue: max`, so that runs go one at a time in the order that they were requested and no run is cancelled; a dry run uses its own group, `afk-run-dry-run-<run id>`, so that CI never waits behind, or holds up, a real AFK run
   - Adds `afk:in-progress` when it starts, so that a run started from the Actions tab is labelled as well
@@ -1254,8 +1254,9 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Times out after 5 minutes
 - [afk-run-pr.yml](.github/workflows/afk-run-pr.yml)
   - Runs an AFK run on an open pull request whose branch is in this repository
-  - Triggers on `workflow_dispatch` only, with the inputs `number`, `comment-id` and `head-sha`, the pull request's head when the AFK command was accepted; without `head-sha`, the run reads the current head; the run is named `afk implement #<number>`
-  - Shares the `afk-run` concurrency group with [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in the order that they were requested
+  - Triggers on `workflow_dispatch`, with the inputs `number`, `comment-id` and `head-sha`, the pull request's head when the AFK command was accepted; without `head-sha`, the run reads the current head; the run is named `afk implement #<number>`
+  - Also triggers on `workflow_call`, for the [AFK workflow tests](#afk-workflow-tests), with the same inputs plus `dry-run`, `model` and `effort`, as [afk-run.yml](.github/workflows/afk-run.yml) does, and returns its publish and finish phases' `effects` as the `publish-effects` and `finish-effects` outputs
+  - Shares the `afk-run` concurrency group with [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in the order that they were requested; a dry run uses its own group, `afk-run-pr-dry-run-<run id>`
   - Adds `afk:in-progress` when it starts
   - Refuses, with a comment, a closed pull request, a pull request whose branch is in a fork, and one with no unresolved review threads, review summaries or top-level comments other than AFK commands
   - Makes that label and refusal, and reads the unresolved conversation, in its `check` job, which mints the App's write token and passes the pull request's number and `head-sha` to the [afk-run-pr-check](.github/actions/afk-run-pr-check/action.yml) action, which runs `python -m afk run-pr-check` from the same commit
@@ -1302,9 +1303,11 @@ Every action that writes takes a `dry-run` input. In a dry run, the action repor
 
 The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that runs the action against a real closed ticket and checks the action's outputs, such as its `effects`, with one `jq -e` assertion; a case for a refusal, which fails the action, checks the step's outcome instead. A failing case names the behaviour that broke, and its log shows the outputs. A case relies on its tickets staying in the state that its comment in [infrastructure.yml](.github/workflows/infrastructure.yml) describes; when one changes, pick another ticket.
 
-#### AFK workflow test
+#### AFK workflow tests
 
 The `infrastructure` area's `afk-run-workflow` job calls the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) through `workflow_call`, as a dry run, on the canary ticket, a closed ticket that asks the agent to create `docs/afk-canary.md` holding the line `canary`. Its number is in the `AFK_CANARY_TICKET` repository variable, and the maintainer is unsubscribed from it, so CI never notifies anyone. The run's agent is real but runs on `claude-haiku-5-5` at `low` effort, so each CI run spends little of the Claude subscription's limits; nothing it commits is pushed, so the file never reaches `main`. The test thereby covers the job wiring, the outputs passed between jobs and the agent's structured output before the workflow merges. The `afk-run-workflow-assertions` job then checks the planned effects with one `jq -e` step per behaviour: publish pushes and opens a draft pull request whose body starts with `Closes #<canary>`, finish clears `afk:in-progress`, and finish plans no failure comment. A spec gap or needs-car stop from the agent on the canary ticket also fails the test.
+
+The `afk-run-pr-workflow` job likewise calls the pull request's own [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) as a dry run, with the same model and effort, on the canary PR: an open draft pull request that never merges, whose branch creates `docs/afk-canary.md` holding the line `canary`, and which has one unresolved review comment that asks for a second line. Its number is in the `AFK_CANARY_PR` repository variable, and the maintainer is unsubscribed from it. Nothing starts a real AFK run on it, and nothing resolves its review thread, which the run's check needs to go ahead. The `afk-run-pr-workflow-assertions` job checks that publish pushes the agent's commits with a lease on the pull request's head, that finish clears `afk:in-progress`, and that finish plans no failure comment. The `afk-run-pr-check` action test also reads the canary PR.
 
 `ci.yml` grants the area `actions: write` only because the called workflow's `finish` job requests it to dispatch a spec's next run, and GitHub refuses to start a nested job that requests more than its caller grants; a dry run dispatches nothing.
 
