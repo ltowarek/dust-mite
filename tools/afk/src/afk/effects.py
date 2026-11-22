@@ -34,6 +34,7 @@ class Reaction(StrEnum):
 
     EYES = "eyes"
     CONFUSED = "confused"
+    ROCKET = "rocket"
 
 
 @dataclass(frozen=True)
@@ -86,14 +87,41 @@ class MarkPullRequestReady:
     branch: str
 
 
-Effect = (
-    DispatchWorkflow
-    | EditLabels
-    | Comment
-    | React
-    | PushBranch
-    | CreatePullRequest
+@dataclass(frozen=True)
+class CommentPullRequest:
+    """Post a conversation comment on a branch's open pull request."""
+
+    branch: str
+    body: str
+
+
+@dataclass(frozen=True)
+class CreateIssue:
+    """Open an issue with labels."""
+
+    title: str
+    body: str
+    labels: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CloseIssue:
+    """Close an issue with a comment."""
+
+    number: int
+    comment: str
+
+
+IssueWrite = EditLabels | Comment | React | CreateIssue | CloseIssue
+"""A write on an issue or its conversation, which `gh issue` or `gh api` makes."""
+
+PullRequestWrite = (
+    CreatePullRequest
     | EditPullRequest
     | EditPullRequestLabels
     | MarkPullRequestReady
+    | CommentPullRequest
 )
+"""A write on a branch's pull request, which `gh pr` makes."""
+
+Effect = DispatchWorkflow | PushBranch | IssueWrite | PullRequestWrite

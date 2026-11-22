@@ -19,13 +19,6 @@ concurrency:
   group: afk-run
   queue: max
 
-env:
-  TICKET: ${{ inputs.number }}
-  COMMENT_ID: ${{ inputs.comment-id }}
-  GH_REPO: ${{ github.repository }}
-  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-  ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
-
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -180,9 +173,6 @@ jobs:
     permissions:
       actions: write
 
-    env:
-      WORKED_TICKET: ${{ needs.check.outputs.child-ticket || inputs.number }}
-
     steps:
       - name: Mint the App's write token for tickets, labels and comments
         id: write-token
@@ -193,160 +183,12 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Refuse the ticket
-        if: always() && needs.check.outputs.refusal != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          REFUSAL: ${{ needs.check.outputs.refusal }}
-          BLOCK: ${{ needs.check.outputs.block }}
-        run: |
-          if [ "$BLOCK" = true ]; then
-            gh issue edit "$TICKET" --add-label afk:blocked
-          fi
-          gh issue comment "$TICKET" --body "$REFUSAL"
-
-      - name: File the follow-up tickets
-        if: always() && needs.implement.outputs.agent-output != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTPUT: ${{ needs.implement.outputs.agent-output }}
-        run: |
-          jq -c '.follow_ups // [] | .[]' <<<"$OUTPUT" | while IFS= read -r follow_up; do
-            title=$(jq -r .title <<<"$follow_up")
-            labels=$(jq -r '[.type] + .components | join(",")' <<<"$follow_up")
-            {
-              printf '> *Follow-up ticket filed by an AFK agent session while working #%s.* ([run](%s))\n\n' "$WORKED_TICKET" "$RUN_URL"
-              jq -r .body <<<"$follow_up"
-            } > "$RUNNER_TEMP/follow-up.md"
-            gh issue create \
-              --title "$title" \
-              --body-file "$RUNNER_TEMP/follow-up.md" \
-              --label needs-triage,source:follow-up \
-              --label "$labels"
-          done
-
-      - name: Comment the follow-ups already covered
-        if: always() && needs.implement.outputs.pr-url != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTPUT: ${{ needs.implement.outputs.agent-output }}
-          PR_URL: ${{ needs.implement.outputs.pr-url }}
-        run: |
-          already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
-          if [ -n "$already_covered" ]; then
-            printf '## Follow-ups already covered\n\n%s\n' "$already_covered" | gh pr comment "$PR_URL" --body-file -
-          fi
-
-      - name: Close the spec's child ticket
-        if: always() && needs.check.outputs.spec == 'true' && needs.implement.outputs.sha != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          SHA: ${{ needs.implement.outputs.sha }}
-        run: gh issue close "$WORKED_TICKET" --comment "Implemented in ${SHA}"
-
-      - name: Clear afk:blocked after a successful run
-        if: always() && needs.implement.result == 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$TICKET" --remove-label afk:blocked
-
-      - name: Stop the spec's implementation at a spec gap or a needs-car stop
-        if: always() && needs.check.outputs.spec == 'true' && needs.implement.result == 'success' && needs.implement.outputs.sha == ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTCOME: ${{ needs.implement.outputs.outcome }}
-          NEEDS_CAR_REASON: ${{ needs.implement.outputs.needs-car-reason }}
-        run: |
-          if [ "$OUTCOME" = needs_car ]; then
-            reason="Finding the fix needs the car: ${NEEDS_CAR_REASON}"
-          else
-            reason="It has a spec gap, whose questions are on it."
-          fi
-          cat > "$RUNNER_TEMP/implementation-stop.md" <<EOF
-          AFK spec implementation stopped at child ticket #${WORKED_TICKET}.
-
-          **Reason:** ${reason}
-
-          **Run:** ${RUN_URL}
-
-          Comment \`/afk implement\` to resume it.
-          EOF
-          gh issue edit "$TICKET" --add-label afk:blocked
-          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/implementation-stop.md"
-
-      - name: Report the failure
-        if: always() && (failure() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          ACTIONS_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          AGENT_ERROR: ${{ needs.implement.outputs.agent-error }}
-          SPEC: ${{ needs.check.outputs.spec }}
-        run: |
-          failed_step=$(GH_TOKEN="$ACTIONS_TOKEN" gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
-            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or any(.steps[]?; .conclusion == "failure"))
-              | [.name, first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name)] | join(" › ")]
-              | first // "unknown step"')
-          reason="\`${failed_step}\` failed."
-          if [ -n "$AGENT_ERROR" ]; then
-            reason="${reason} The agent reported: ${AGENT_ERROR}"
-          fi
-          failed="The AFK run failed"
-          if [ "$SPEC" = true ]; then
-            failed="The AFK run failed on child ticket #${WORKED_TICKET}"
-          fi
-          cat > "$RUNNER_TEMP/failure.md" <<EOF
-          ${failed}.
-
-          **Reason:** ${reason}
-
-          **Run:** ${RUN_URL}
-
-          Comment \`/afk implement\` to retry.
-          EOF
-          gh issue edit "$TICKET" --add-label afk:blocked
-          gh issue comment "$TICKET" --body-file "$RUNNER_TEMP/failure.md"
-
-      # The marker carries the AFK command to the run that afk-promote-queued.yml dispatches.
-      - name: Queue the spec until a child ticket is unblocked
-        id: queue
-        if: needs.check.outputs.queue == 'true'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: |
-          gh issue edit "$TICKET" --add-label afk:queued
-          gh issue comment "$TICKET" --body "Queued (\`afk:queued\`) until one of its child tickets is unblocked. <!-- afk-command: ${COMMENT_ID} -->"
-
-      # The spec keeps afk:in-progress, and the command its reaction, until its implementation ends.
-      - name: Dispatch the spec's next run
-        id: next
-        if: needs.check.outputs.spec == 'true' && needs.implement.outputs.sha != '' && needs.check.outputs.last-run != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          inputs=(-f number="$TICKET")
-          if [ -n "$COMMENT_ID" ]; then
-            inputs+=(-f comment-id="$COMMENT_ID")
-          fi
-          gh workflow run afk-run.yml --ref "$GITHUB_REF_NAME" "${inputs[@]}"
-
-      - name: Clear afk:in-progress
-        if: always() && steps.next.outcome != 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$TICKET" --remove-label afk:in-progress
-
-      - name: React to the AFK command
-        if: always() && inputs.comment-id != '' && steps.next.outcome != 'success' && steps.queue.outcome != 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          SUCCEEDED: ${{ needs.check.outputs.refusal == '' && needs.implement.result == 'success' && needs.implement.outputs.outcome == 'done' && job.status == 'success' }}
-        run: |
-          content=confused
-          if [ "$SUCCEEDED" = true ]; then
-            content=rocket
-          fi
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="$content"
+      - name: Report how the run ended, and release or continue its ticket
+        uses: $/.github/actions/afk-finish
+        with:
+          workflow: afk-run
+          ticket: ${{ inputs.number }}
+          comment-id: ${{ inputs.comment-id }}
+          needs: ${{ toJSON(needs) }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}

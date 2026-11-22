@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 
 from afk.effects import (
+    CloseIssue,
     Comment,
+    CommentPullRequest,
+    CreateIssue,
     CreatePullRequest,
     DispatchWorkflow,
     EditLabels,
@@ -157,6 +160,37 @@ class TestWriter:
                     "app-token",
                     id="marks a branch's PR ready with the App's token",
                 ),
+                pytest.param(
+                    CommentPullRequest(branch="afk/issue-7-100", body="Covered."),
+                    ["pr", "comment", "afk/issue-7-100", "--body", "Covered."],
+                    "app-token",
+                    id="comments on a branch's PR with the App's token",
+                ),
+                pytest.param(
+                    CreateIssue(
+                        title="Fix x", body="It breaks.", labels=("bug", "web")
+                    ),
+                    [
+                        "issue",
+                        "create",
+                        "--title",
+                        "Fix x",
+                        "--body",
+                        "It breaks.",
+                        "--label",
+                        "bug",
+                        "--label",
+                        "web",
+                    ],
+                    "app-token",
+                    id="opens an issue with its labels with the App's token",
+                ),
+                pytest.param(
+                    CloseIssue(number=7, comment="Implemented in abc123"),
+                    ["issue", "close", "7", "--comment", "Implemented in abc123"],
+                    "app-token",
+                    id="closes an issue with a comment with the App's token",
+                ),
             ],
         )
         def test_runs_each_gh_write_as_its_command_with_its_token(
@@ -221,6 +255,9 @@ class TestWriter:
                     branch="afk/issue-7-100", add=("needs-car:copper",)
                 ),
                 MarkPullRequestReady(branch="afk/issue-7-100"),
+                CommentPullRequest(branch="afk/issue-7-100", body="Covered."),
+                CreateIssue(title="Fix x", body="It breaks.", labels=("bug",)),
+                CloseIssue(number=7, comment="Implemented in abc123"),
             ]
 
             for effect in effects:
