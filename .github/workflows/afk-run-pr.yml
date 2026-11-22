@@ -39,11 +39,11 @@ jobs:
       pull-requests: read
 
     outputs:
-      refusal: ${{ steps.conversation.outputs.refusal }}
-      url: ${{ steps.conversation.outputs.url }}
-      branch: ${{ steps.conversation.outputs.branch }}
-      head-sha: ${{ steps.conversation.outputs.head-sha }}
-      conversation: ${{ steps.conversation.outputs.conversation }}
+      refusal: ${{ steps.check.outputs.refusal }}
+      url: ${{ steps.check.outputs.url }}
+      branch: ${{ steps.check.outputs.branch }}
+      head-sha: ${{ steps.check.outputs.head-sha }}
+      conversation: ${{ steps.check.outputs.conversation }}
 
     steps:
       - name: Mint the App's write token for the label
@@ -55,51 +55,15 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      # A run started from the Actions tab has no dispatcher to add it.
-      - name: Mark the PR in progress
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh pr edit "$PR" --add-label afk:in-progress
-
-      - name: Read the PR and its unresolved conversation
-        id: conversation
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ inputs.head-sha }}
-          QUERY: >-
-            query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){
-            reviewThreads(first:100){nodes{isResolved comments(first:100){nodes{databaseId path line originalLine body author{login}}}}}}}}
-        run: |
-          gh pr view "$PR" --json state,url,isCrossRepository,headRefName,headRefOid,comments,reviews > "$RUNNER_TEMP/pr.json"
-          if [ "$(jq -r .state "$RUNNER_TEMP/pr.json")" != OPEN ]; then
-            echo "refusal=Refused to run: this PR is not open." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$(jq -r .isCrossRepository "$RUNNER_TEMP/pr.json")" = true ]; then
-            echo "refusal=Refused to run: this PR's branch is in a fork, and an AFK run never runs a fork's code with the repository's secrets." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # A reply goes to a thread's first comment; the REST API rejects replies to replies.
-          threads=$(gh api graphql -F owner="${GH_REPO%/*}" -F repo="${GH_REPO#*/}" -F number="$PR" \
-            -f query="$QUERY" \
-            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | .comments.nodes
-              | {comment_id: .[0].databaseId, path: .[0].path, line: (.[0].line // .[0].originalLine),
-                 comments: [.[] | {author: .author.login, body}]}]')
-          # AFK commands are requests for this run, not feedback to act on.
-          conversation=$(jq -c --argjson threads "$threads" '{
-            issue_comments: [.comments[] | select(.body | startswith("/afk") | not) | {author: .author.login, body}],
-            review_summaries: [.reviews[] | select(.body != "") | {author: .author.login, state, body}],
-            review_threads: $threads}' "$RUNNER_TEMP/pr.json")
-          if [ "$(jq '[.[] | length] | add' <<<"$conversation")" = 0 ]; then
-            echo "refusal=Refused to run: this PR has no unresolved review threads, review summaries or top-level comments to act on." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          {
-            echo "url=$(jq -r .url "$RUNNER_TEMP/pr.json")"
-            echo "branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")"
-            echo "head-sha=${HEAD_SHA:-$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")}"
-            echo "conversation=$conversation"
-          } >> "$GITHUB_OUTPUT"
+      # A run started from the Actions tab has no dispatcher to add the label.
+      - name: Mark the PR in progress, and read its unresolved conversation
+        id: check
+        uses: $/.github/actions/afk-run-pr-check
+        with:
+          number: ${{ inputs.number }}
+          head-sha: ${{ inputs.head-sha }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
 
   implement:
     needs: check

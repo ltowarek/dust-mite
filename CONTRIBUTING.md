@@ -1258,6 +1258,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Shares the `afk-run` concurrency group with [afk-run.yml](.github/workflows/afk-run.yml), so that ticket and pull request runs go one at a time in the order that they were requested
   - Adds `afk:in-progress` when it starts
   - Refuses, with a comment, a closed pull request, a pull request whose branch is in a fork, and one with no unresolved review threads, review summaries or top-level comments other than AFK commands
+  - Makes that label and refusal, and reads the unresolved conversation, in its `check` job, which mints the App's write token and passes the pull request's number and `head-sha` to the [afk-run-pr-check](.github/actions/afk-run-pr-check/action.yml) action, which runs `python -m afk run-pr-check` from the same commit
   - Runs Matt Pocock's `implement-pr` prompt on the unresolved conversation through `claude-code-action`, with a read-only token of the [AFK GitHub App](#afk-github-app); the agent changes code, replies, or neither, per comment, and never resolves a thread
   - Validates the agent's structured output against [afk-run-pr-output.schema.json](.github/afk-run-pr-output.schema.json)
   - Fails when the agent neither commits nor comments

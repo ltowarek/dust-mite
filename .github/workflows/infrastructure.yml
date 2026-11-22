@@ -463,6 +463,64 @@ jobs:
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$OUTPUTS"
 
+  afk-run-pr-check:
+    name: afk-run-pr-check (${{ matrix.case }})
+
+    # The production job's permissions.
+    permissions:
+      pull-requests: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # #391 is merged.
+          - case: refuses a PR that is not open
+            number: 391
+            assertion: '.refusal == "Refused to run: this PR is not open."'
+          # The canary PR is an open draft from this repository with one unresolved review thread.
+          - case: reads the canary PR's unresolved conversation
+            number: ${{ vars.AFK_CANARY_PR }}
+            assertion: '(.refusal // "") == "" and .branch != "" and (.conversation | fromjson | .review_threads | length) >= 1'
+          - case: works on the head that the AFK command was accepted at
+            number: ${{ vars.AFK_CANARY_PR }}
+            head-sha: 0123456789abcdef0123456789abcdef01234567
+            assertion: '.["head-sha"] == "0123456789abcdef0123456789abcdef01234567"'
+          - case: reports the in-progress mark as a dry run
+            number: ${{ vars.AFK_CANARY_PR }}
+            assertion: '.effects | fromjson == [{"type": "EditLabels", "number": (env.AFK_CANARY_PR | tonumber), "add": ["afk:in-progress"], "remove": []}]'
+
+    steps:
+      - name: Mint the App's write token for the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Check the PR as a dry run
+        id: check
+        uses: $/.github/actions/afk-run-pr-check
+        with:
+          number: ${{ matrix.number }}
+          head-sha: ${{ matrix.head-sha }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: true
+
+      - name: Assert on the outputs
+        shell: bash
+        env:
+          AFK_CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+          OUTPUTS: ${{ toJSON(steps.check.outputs) }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: jq -e "$ASSERTION" <<<"$OUTPUTS"
+
   afk-run-publish:
     name: afk-run-publish (${{ matrix.case }})
 
