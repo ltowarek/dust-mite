@@ -71,10 +71,10 @@ class GhSpy(_Spy):
 
 @dataclass(frozen=True)
 class GitCall:
-    """One `git` command line, and the token it ran with, if any."""
+    """One `git` command line, and the configuration its environment added."""
 
     args: list[str]
-    token: str
+    config: dict[str, str]
 
 
 class GitSpy(_Spy):
@@ -94,7 +94,12 @@ class GitSpy(_Spy):
     def __call__(self, args: Sequence[str], env: Mapping[str, str]) -> str:
         """Record the call, then answer or fail it."""
         args = list(args)
-        self.calls.append(GitCall(args, env.get("GH_TOKEN", "")))
+        count = int(env.get("GIT_CONFIG_COUNT", "0"))
+        config = {
+            env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"]
+            for i in range(count)
+        }
+        self.calls.append(GitCall(args, config))
         return self._answer(args)
 
 

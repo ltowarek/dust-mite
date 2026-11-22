@@ -1,5 +1,6 @@
 """Carry out a phase's writes with `gh` or `git`, or report them in a dry run."""
 
+import base64
 import json
 import secrets
 from collections.abc import Callable, Mapping, Sequence
@@ -98,19 +99,27 @@ def _label_flags(add: Sequence[str], remove: Sequence[str]) -> list[str]:
 
 
 def _push(repository: str, branch: str) -> list[str]:
-    # Keeps the token from the arguments and the agent's hooks and credential helpers.
+    # Runs none of the agent's hooks or credential helpers.
     return [
         "git",
         "-c",
         "core.hooksPath=/dev/null",
         "-c",
         "credential.helper=",
-        "-c",
-        "credential.helper=!gh auth git-credential",
         "push",
         f"https://github.com/{repository}.git",
         f"HEAD:refs/heads/{branch}",
     ]
+
+
+def _authorization(token: str) -> dict[str, str]:
+    # Keyed to github.com, so a URL rewrite in the agent's config sends it nowhere else.
+    credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {credentials}",
+    }
 
 
 def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:
@@ -145,7 +154,7 @@ class Writer:
             case GhCommand(args=args, token=token):
                 run_gh(self._gh, self._env, token, args)
             case GitCommand(args=args, authenticated=authenticated):
-                auth = {"GH_TOKEN": self._env[Token.APP]} if authenticated else {}
+                auth = _authorization(self._env[Token.APP]) if authenticated else {}
                 self._git(args, {**self._env, **auth})
 
     def set_output(self, name: str, value: str) -> None:

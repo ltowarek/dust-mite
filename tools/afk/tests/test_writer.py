@@ -188,7 +188,9 @@ class TestWriter:
 
             assert gh.calls == [GhCall(args, token, "owner/repo")]
 
-        def test_pushes_head_with_git_and_the_app_s_token(self, tmp_path: Path) -> None:
+        def test_pushes_head_with_the_app_s_token_for_github_only(
+            self, tmp_path: Path
+        ) -> None:
             gh, git = GhSpy(), GitSpy()
 
             Writer(gh, git, ENV, tmp_path / "output").write(
@@ -205,13 +207,15 @@ class TestWriter:
                             "core.hooksPath=/dev/null",
                             "-c",
                             "credential.helper=",
-                            "-c",
-                            "credential.helper=!gh auth git-credential",
                             "push",
                             "https://github.com/owner/repo.git",
                             "HEAD:refs/heads/afk/issue-7-100",
                         ],
-                        "app-token",
+                        {
+                            "http.https://github.com/.extraheader": (
+                                "AUTHORIZATION: basic eC1hY2Nlc3MtdG9rZW46YXBwLXRva2Vu"
+                            )
+                        },
                     )
                 ],
             )

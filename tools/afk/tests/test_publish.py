@@ -370,14 +370,14 @@ class TestRun:
         with pytest.raises(SystemExit, match=r"\.github/workflows/é\.yml"):
             publish.run(gh, git, ENV, Writer(gh, git, ENV, tmp_path / "output"))
 
-        assert (gh.calls, git.calls) == ([], [GitCall(list(CHANGED_FILES_READ), "")])
+        assert (gh.calls, git.calls) == ([], [GitCall(list(CHANGED_FILES_READ), {})])
 
     def test_reads_the_agent_s_commits_without_a_token(self, tmp_path: Path) -> None:
         gh, git = GhSpy(GH_READS), GitSpy(GIT_READS)
 
         publish.run(gh, git, ENV, Writer(gh, git, ENV, tmp_path / "output"))
 
-        assert git.calls[0] == GitCall(list(CHANGED_FILES_READ), "")
+        assert git.calls[0] == GitCall(list(CHANGED_FILES_READ), {})
 
     def test_reads_the_open_pr_with_the_app_token(self, tmp_path: Path) -> None:
         gh, git = GhSpy(GH_READS), GitSpy(GIT_READS)
