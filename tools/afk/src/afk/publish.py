@@ -159,16 +159,12 @@ def _read_open_pull_request(
     return open_pull_request(json.loads(run_gh(gh, env, Token.APP, args)))
 
 
-def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None:
-    """Refuse protected changes, then publish the work or hand the ticket on."""
-    if env["AFK_AGENT_OUTCOME"] != "success":
-        execution_file = env.get("AFK_EXECUTION_FILE", "")
-        execution = (
-            json.loads(Path(execution_file).read_text()) if execution_file else []
-        )
-        writer.set_output("agent-error", agent_error(execution))
-        return
-    refused = protected(_read_changed_files(git, env, env["AFK_BASE"]))
+def _read_execution(env: Mapping[str, str]) -> list[dict[str, Any]]:
+    execution_file = env.get("AFK_EXECUTION_FILE", "")
+    return json.loads(Path(execution_file).read_text()) if execution_file else []
+
+
+def _refuse(refused: list[str]) -> None:
     if refused:
         msg = (
             f"Refused to publish: the agent's commits change {', '.join(refused)}. "
@@ -176,9 +172,11 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
             "so only a human changes it."
         )
         raise SystemExit(msg)
-    output = json.loads(env["AFK_AGENT_OUTPUT"])
+
+
+def _published(env: Mapping[str, str]) -> Run:
     repository = env["GH_REPO"]
-    published = Run(
+    return Run(
         repository=repository,
         ticket=int(env["AFK_TICKET"]),
         worked_ticket=int(env["AFK_WORKED_TICKET"]),
@@ -187,6 +185,20 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
         url=f"{env['GITHUB_SERVER_URL']}/{repository}/actions/runs/"
         f"{env['GITHUB_RUN_ID']}",
     )
+
+
+def _read_head(git: Runner, env: Mapping[str, str]) -> str:
+    return git(["rev-parse", "HEAD"], git_env(env)).strip()
+
+
+def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None:
+    """Refuse protected changes, then publish the work or hand the ticket on."""
+    if env["AFK_AGENT_OUTCOME"] != "success":
+        writer.set_output("agent-error", agent_error(_read_execution(env)))
+        return
+    _refuse(protected(_read_changed_files(git, env, env["AFK_BASE"])))
+    output = json.loads(env["AFK_AGENT_OUTPUT"])
+    published = _published(env)
     done = output["outcome"] == "done"
     open_pr = _read_open_pull_request(gh, env, published.branch) if done else None
     writer.set_output("outcome", output["outcome"])
@@ -196,4 +208,4 @@ def run(gh: Runner, git: Runner, env: Mapping[str, str], writer: Writer) -> None
     if done:
         pr_url = _read_open_pull_request(gh, env, published.branch)
         writer.set_output("pr-url", pr_url or "")
-        writer.set_output("sha", git(["rev-parse", "HEAD"], git_env(env)).strip())
+        writer.set_output("sha", _read_head(git, env))
