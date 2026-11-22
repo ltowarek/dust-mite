@@ -8,24 +8,24 @@ from typing import Any
 import pytest
 
 from afk import run_pr_check
+from afk.pull_request import PullRequest
 from afk.run_pr_check import (
     CheckResult,
     Conversation,
-    PullRequest,
+    State,
     check,
     conversation,
     outputs,
-    pull_request,
+    pull_request_state,
 )
 from afk.writer import Writer
 from tests.test_doubles import GhSpy, GitSpy, read_outputs
 
-PR = PullRequest(
+STATE = State(
+    pull_request=PullRequest(number=9, branch="feature", head_sha="head123"),
     url="https://github.com/owner/repo/pull/9",
     open=True,
     fork=False,
-    branch="feature",
-    head_sha="head123",
 )
 CONVERSATION = Conversation(
     issue_comments=({"author": "alice", "body": "Rename it."},),
@@ -34,23 +34,23 @@ CONVERSATION = Conversation(
 
 class TestCheck:
     @pytest.mark.parametrize(
-        ("pr", "conversation", "refusal"),
+        ("state", "conversation", "refusal"),
         [
             pytest.param(
-                replace(PR, open=False),
+                replace(STATE, open=False),
                 CONVERSATION,
                 "Refused to run: this PR is not open.",
                 id="refuses a PR that is not open",
             ),
             pytest.param(
-                replace(PR, fork=True),
+                replace(STATE, fork=True),
                 CONVERSATION,
                 "Refused to run: this PR's branch is in a fork, and an AFK run never "
                 "runs a fork's code with the repository's secrets.",
                 id="refuses a PR whose branch is in a fork",
             ),
             pytest.param(
-                PR,
+                STATE,
                 Conversation(),
                 "Refused to run: this PR has no unresolved review threads, review "
                 "summaries or top-level comments to act on.",
@@ -59,9 +59,9 @@ class TestCheck:
         ],
     )
     def test_refuses_the_run(
-        self, pr: PullRequest, conversation: Conversation, refusal: str
+        self, state: State, conversation: Conversation, refusal: str
     ) -> None:
-        assert check(pr, conversation, head_sha="") == CheckResult(refusal=refusal)
+        assert check(state, conversation, head_sha="") == CheckResult(refusal=refusal)
 
     @pytest.mark.parametrize(
         ("head_sha", "expected"),
@@ -75,7 +75,7 @@ class TestCheck:
         ],
     )
     def test_goes_ahead_on_the_pr_s_branch(self, head_sha: str, expected: str) -> None:
-        assert check(PR, CONVERSATION, head_sha) == CheckResult(
+        assert check(STATE, CONVERSATION, head_sha) == CheckResult(
             url="https://github.com/owner/repo/pull/9",
             branch="feature",
             head_sha=expected,
@@ -85,6 +85,7 @@ class TestCheck:
 
 def make_view(**fields: object) -> dict[str, Any]:
     return {
+        "number": 9,
         "state": "OPEN",
         "url": "https://github.com/owner/repo/pull/9",
         "isCrossRepository": False,
@@ -130,22 +131,24 @@ def make_thread(*, resolved: bool, line: int | None = 4) -> dict[str, Any]:
     }
 
 
-class TestPullRequest:
+class TestPullRequestState:
     @pytest.mark.parametrize(
         ("view", "expected"),
         [
-            pytest.param(make_view(), PR, id="reads an open PR from this repository"),
+            pytest.param(
+                make_view(), STATE, id="reads an open PR from this repository"
+            ),
             pytest.param(
                 make_view(state="MERGED", isCrossRepository=True),
-                replace(PR, open=False, fork=True),
+                replace(STATE, open=False, fork=True),
                 id="reads a merged PR from a fork",
             ),
         ],
     )
     def test_reads_the_pr_from_gh_pr_view(
-        self, view: dict[str, Any], expected: PullRequest
+        self, view: dict[str, Any], expected: State
     ) -> None:
-        assert pull_request(view) == expected
+        assert pull_request_state(view) == expected
 
 
 class TestConversation:
@@ -251,7 +254,7 @@ GH_READS = {
         "view",
         "9",
         "--json",
-        "state,url,isCrossRepository,headRefName,headRefOid,comments,reviews",
+        "number,state,url,isCrossRepository,headRefName,headRefOid,comments,reviews",
     ): json.dumps(
         make_view(comments=[{"author": {"login": "alice"}, "body": "Rename it."}])
     ),

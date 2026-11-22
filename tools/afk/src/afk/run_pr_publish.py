@@ -16,17 +16,8 @@ from afk.effects import (
     PushBranch,
     ReplyToReviewComment,
 )
+from afk.pull_request import PullRequest
 from afk.writer import Runner, Writer, run_git
-
-
-@dataclass(frozen=True)
-class PullRequest:
-    """The PR that the run works on; the agent started from its head `lease`."""
-
-    repository: str
-    number: int
-    branch: str
-    lease: str
 
 
 def acted(output: Mapping[str, Any], commits: int) -> bool:
@@ -59,10 +50,15 @@ def _inline_comment(pr: PullRequest, head: str, comment: Mapping[str, Any]) -> W
 
 
 def plan(
-    output: Mapping[str, Any], pr: PullRequest, commits: int, head: str
+    output: Mapping[str, Any],
+    pr: PullRequest,
+    *,
+    repository: str,
+    commits: int,
+    head: str,
 ) -> list[Write]:
     """Return the writes that push the agent's commits and post its comments."""
-    push = Write(PushBranch(repository=pr.repository, branch=pr.branch, lease=pr.lease))
+    push = Write(PushBranch(repository=repository, branch=pr.branch, lease=pr.head_sha))
     car = Write(
         EditLabels(
             number=pr.number, add=(f"needs-car:{output.get('car_variant', '')}",)
@@ -102,17 +98,19 @@ def run(git: Runner, env: Mapping[str, str], writer: Writer) -> None:
         writer.set_output("agent-error", read_agent_error(env))
         return
     pr = PullRequest(
-        repository=env["GH_REPO"],
         number=int(env["AFK_PR"]),
         branch=env["AFK_BRANCH"],
-        lease=env["AFK_HEAD_SHA"],
+        head_sha=env["AFK_HEAD_SHA"],
     )
-    refuse_protected_changes(git, env, pr.lease)
+    refuse_protected_changes(git, env, pr.head_sha)
     output = json.loads(env["AFK_AGENT_OUTPUT"])
-    commits = int(run_git(git, env, None, ["rev-list", "--count", f"{pr.lease}..HEAD"]))
+    commits = int(
+        run_git(git, env, None, ["rev-list", "--count", f"{pr.head_sha}..HEAD"])
+    )
     if not acted(output, commits):
         msg = "Refused to publish: the agent neither committed nor commented."
         raise SystemExit(msg)
     head = read_head(git, env)
-    for write in plan(output, pr, commits, head):
+    writes = plan(output, pr, repository=env["GH_REPO"], commits=commits, head=head)
+    for write in writes:
         _write(writer, write)

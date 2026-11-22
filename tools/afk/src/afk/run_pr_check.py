@@ -8,6 +8,7 @@ from typing import Any
 from afk.effects import EditLabels
 from afk.github import read_graphql
 from afk.labels import Label
+from afk.pull_request import PullRequest
 from afk.writer import Runner, Token, Writer, run_gh
 
 _REVIEW_THREADS_QUERY = """
@@ -29,14 +30,13 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 
 @dataclass(frozen=True)
-class PullRequest:
-    """A pull request on the tracker."""
+class State:
+    """What the shell read about the pull request."""
 
+    pull_request: PullRequest
     url: str
     open: bool
     fork: bool
-    branch: str
-    head_sha: str
 
 
 @dataclass(frozen=True)
@@ -57,14 +57,17 @@ def _message(comment: Mapping[str, Any]) -> dict[str, Any]:
     return {"author": _login(comment["author"]), "body": comment["body"]}
 
 
-def pull_request(view: Mapping[str, Any]) -> PullRequest:
-    """Return a pull request from `gh pr view`."""
-    return PullRequest(
+def pull_request_state(view: Mapping[str, Any]) -> State:
+    """Return the pull request's state from `gh pr view`."""
+    return State(
+        pull_request=PullRequest(
+            number=view["number"],
+            branch=view["headRefName"],
+            head_sha=view["headRefOid"],
+        ),
         url=view["url"],
         open=view["state"] == "OPEN",
         fork=view["isCrossRepository"],
-        branch=view["headRefName"],
-        head_sha=view["headRefOid"],
     )
 
 
@@ -124,11 +127,11 @@ def outputs(result: CheckResult) -> dict[str, str]:
     return {name: value for name, value in values.items() if value is not None}
 
 
-def check(pr: PullRequest, conversation: Conversation, head_sha: str) -> CheckResult:
+def check(state: State, conversation: Conversation, head_sha: str) -> CheckResult:
     """Decide whether the run goes ahead; it works on `head_sha`, or the PR's head."""
-    if not pr.open:
+    if not state.open:
         return CheckResult(refusal="Refused to run: this PR is not open.")
-    if pr.fork:
+    if state.fork:
         return CheckResult(
             refusal="Refused to run: this PR's branch is in a fork, and an AFK run "
             "never runs a fork's code with the repository's secrets."
@@ -139,9 +142,9 @@ def check(pr: PullRequest, conversation: Conversation, head_sha: str) -> CheckRe
             "review summaries or top-level comments to act on."
         )
     return CheckResult(
-        url=pr.url,
-        branch=pr.branch,
-        head_sha=head_sha or pr.head_sha,
+        url=state.url,
+        branch=state.pull_request.branch,
+        head_sha=head_sha or state.pull_request.head_sha,
         conversation=conversation,
     )
 
@@ -150,13 +153,15 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Mark the PR in progress, then decide whether its AFK run goes ahead."""
     number = env["AFK_PR"]
     writer.write(EditLabels(number=int(number), add=(Label.IN_PROGRESS,)))
-    fields_ = "state,url,isCrossRepository,headRefName,headRefOid,comments,reviews"
+    fields_ = (
+        "number,state,url,isCrossRepository,headRefName,headRefOid,comments,reviews"
+    )
     view = json.loads(
         run_gh(gh, env, Token.WORKFLOW, ["pr", "view", number, "--json", fields_])
     )
     threads = read_graphql(gh, env, _REVIEW_THREADS_QUERY, number)
     result = check(
-        pull_request(view),
+        pull_request_state(view),
         conversation(view, threads),
         env.get("AFK_HEAD_SHA", ""),
     )

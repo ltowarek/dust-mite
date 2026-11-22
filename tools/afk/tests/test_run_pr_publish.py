@@ -15,11 +15,12 @@ from afk.effects import (
     PushBranch,
     ReplyToReviewComment,
 )
-from afk.run_pr_publish import PullRequest, Write, acted, plan
+from afk.pull_request import PullRequest
+from afk.run_pr_publish import Write, acted, plan
 from afk.writer import Writer
 from tests.test_doubles import GhSpy, GitCall, GitSpy, read_outputs
 
-PR = PullRequest(repository="owner/repo", number=9, branch="feature", lease="head123")
+PR = PullRequest(number=9, branch="feature", head_sha="head123")
 PUSH = PushBranch(repository="owner/repo", branch="feature", lease="head123")
 
 
@@ -39,14 +40,16 @@ def effects_of(writes: list[Write]) -> list[object]:
 
 class TestPlan:
     def test_pushes_the_agent_s_commits_with_a_lease_on_the_pr_s_head(self) -> None:
-        assert effects_of(plan(make_output(), PR, commits=2, head="abc123")) == [PUSH]
+        assert effects_of(
+            plan(make_output(), PR, repository="owner/repo", commits=2, head="abc123")
+        ) == [PUSH]
 
     def test_pushes_nothing_without_commits(self) -> None:
         output = make_output(top_level_comments=["Nothing to change."])
 
-        assert effects_of(plan(output, PR, commits=0, head="head123")) == [
-            Comment(number=9, body="Nothing to change.")
-        ]
+        assert effects_of(
+            plan(output, PR, repository="owner/repo", commits=0, head="head123")
+        ) == [Comment(number=9, body="Nothing to change.")]
 
     def test_posts_the_replies_then_the_inline_then_the_top_level_comments(
         self,
@@ -57,7 +60,9 @@ class TestPlan:
             top_level_comments=["Summary."],
         )
 
-        assert effects_of(plan(output, PR, commits=1, head="abc123")) == [
+        assert effects_of(
+            plan(output, PR, repository="owner/repo", commits=1, head="abc123")
+        ) == [
             PUSH,
             ReplyToReviewComment(number=9, comment_id=501, body="Done."),
             CreateReviewComment(
@@ -73,7 +78,7 @@ class TestPlan:
             top_level_comments=["Summary."],
         )
 
-        writes = plan(output, PR, commits=1, head="abc123")
+        writes = plan(output, PR, repository="owner/repo", commits=1, head="abc123")
 
         assert [w.drop_warning for w in writes] == [
             None,
@@ -87,7 +92,9 @@ class TestPlan:
     ) -> None:
         output = make_output(needs_dut_run=True, car_variant="copper")
 
-        assert effects_of(plan(output, PR, commits=1, head="abc123")) == [
+        assert effects_of(
+            plan(output, PR, repository="owner/repo", commits=1, head="abc123")
+        ) == [
             PUSH,
             EditLabels(number=9, add=("needs-car:copper",)),
         ]
@@ -99,9 +106,9 @@ class TestPlan:
             top_level_comments=["Needs the car."],
         )
 
-        assert effects_of(plan(output, PR, commits=0, head="head123")) == [
-            Comment(number=9, body="Needs the car.")
-        ]
+        assert effects_of(
+            plan(output, PR, repository="owner/repo", commits=0, head="head123")
+        ) == [Comment(number=9, body="Needs the car.")]
 
 
 class TestActed:
