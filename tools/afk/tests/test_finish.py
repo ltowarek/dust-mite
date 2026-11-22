@@ -40,6 +40,7 @@ BLOCK = EditLabels(number=12, add=("afk:blocked",))
 UNBLOCK = EditLabels(number=12, remove=("afk:blocked",))
 RELEASE = EditLabels(number=12, remove=("afk:in-progress",))
 PR_RUN = Run(workflow=Workflow.AFK_RUN_PR, number=12, comment_id=555, url=RUN_URL)
+UPDATE_RUN = replace(PR_RUN, workflow=Workflow.AFK_UPDATE_BRANCH)
 
 
 def needs_context(
@@ -60,14 +61,17 @@ def needs(
     check_result: str = "success",
     implement_result: str = "success",
 ) -> Needs:
-    return Needs.parse(needs_context(check, implement, check_result, implement_result))
+    return Needs.parse(
+        needs_context(check, implement, check_result, implement_result),
+        Workflow.AFK_RUN,
+    )
 
 
-def failure_report(text: str, reason: str) -> Comment:
+def failure_report(text: str, reason: str, command: str = "/afk implement") -> Comment:
     return Comment(
         number=12,
         body=f"{text}.\n\n**Reason:** {reason}\n\n**Run:** {RUN_URL}\n\n"
-        "Comment `/afk implement` to retry.\n",
+        f"Comment `{command}` to retry.\n",
     )
 
 
@@ -80,6 +84,11 @@ class TestPlan:
                 PR_RUN,
                 [React(comment_id=555, content="confused")],
                 id="on a PR, reacting confused",
+            ),
+            pytest.param(
+                UPDATE_RUN,
+                [React(comment_id=555, content="confused")],
+                id="on a branch update, reacting confused",
             ),
         ],
     )
@@ -112,6 +121,11 @@ class TestPlan:
                 PR_RUN,
                 [React(comment_id=555, content="rocket")],
                 id="on a PR, reacting rocket",
+            ),
+            pytest.param(
+                UPDATE_RUN,
+                [React(comment_id=555, content="rocket")],
+                id="on a branch update, reacting rocket",
             ),
         ],
     )
@@ -241,6 +255,18 @@ class TestPlan:
             "- The camera breaks. Covered by #30.\n"
             "- The drive stalls. Covered by #31.\n",
         )
+
+    def test_leaves_a_branch_update_s_follow_ups_already_covered_to_its_merge(
+        self,
+    ) -> None:
+        output = {"already_covered": [{"problem": "X.", "covered_by": 30}]}
+        finished = needs(implement={"agent-output": json.dumps(output)})
+
+        assert plan(UPDATE_RUN, finished, None) == [
+            UNBLOCK,
+            RELEASE,
+            React(comment_id=555, content="rocket"),
+        ]
 
     @pytest.mark.parametrize(
         "implement",
@@ -385,6 +411,22 @@ class TestPlan:
                 ],
                 id="on a PR, reacting confused",
             ),
+            pytest.param(
+                UPDATE_RUN,
+                needs(implement_result="failure"),
+                f"update-branch{SEP}Merge main",
+                [
+                    BLOCK,
+                    failure_report(
+                        "The AFK run that updates this PR's branch failed",
+                        f"`update-branch{SEP}Merge main` failed.",
+                        "/afk update-branch",
+                    ),
+                    RELEASE,
+                    React(comment_id=555, content="confused"),
+                ],
+                id="on a branch update, retried by its own command",
+            ),
         ],
     )
     def test_reports_a_failed_job_then_releases(
@@ -435,6 +477,25 @@ class TestPlan:
             UNBLOCK,
             DispatchWorkflow(workflow="afk-run.yml", inputs=inputs),
         ]
+
+
+class TestNeeds:
+    class TestParse:
+        def test_reads_a_branch_update_s_update_branch_job(self) -> None:
+            context = {
+                "check": {"result": "success", "outputs": {}},
+                "update-branch": {
+                    "result": "failure",
+                    "outputs": {"agent-error": "Out of turns."},
+                },
+            }
+
+            parsed = Needs.parse(context, Workflow.AFK_UPDATE_BRANCH)
+
+            assert (parsed.work_result, parsed.agent_error) == (
+                "failure",
+                "Out of turns.",
+            )
 
 
 class TestPlanFailure:

@@ -1,13 +1,13 @@
 """End an AFK run: report how it ended, then release or continue its ticket."""
 
 import json
-import re
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from afk.agent import already_covered
 from afk.effects import (
     CloseIssue,
     Comment,
@@ -25,7 +25,6 @@ from afk.runner import Runner
 from afk.writer import Writer
 
 _STOPPED = {"failure", "cancelled"}
-_LINE_BREAK = re.compile(r"\s*\n\s*")
 _STEP_SEPARATOR = " \N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK} "
 
 
@@ -34,6 +33,19 @@ class Workflow(StrEnum):
 
     AFK_RUN = "afk-run"
     AFK_RUN_PR = "afk-run-pr"
+    AFK_UPDATE_BRANCH = "afk-update-branch"
+
+    @property
+    def work_job(self) -> str:
+        """The id of the job that does the run's work."""
+        return "update-branch" if self == Workflow.AFK_UPDATE_BRANCH else "implement"
+
+    @property
+    def command(self) -> str:
+        """The AFK command that retries the run."""
+        if self == Workflow.AFK_UPDATE_BRANCH:
+            return "/afk update-branch"
+        return "/afk implement"
 
 
 @dataclass(frozen=True)
@@ -48,7 +60,7 @@ class Run:
     @property
     def on_pr(self) -> bool:
         """Whether the run worked on a PR rather than a ticket."""
-        return self.workflow == Workflow.AFK_RUN_PR
+        return self.workflow != Workflow.AFK_RUN
 
 
 @dataclass(frozen=True)
@@ -63,7 +75,7 @@ class Needs:
     child_ticket: int | None
     branch: str
     last_run: bool
-    implement_result: str
+    work_result: str
     agent_output: Mapping[str, Any]
     agent_error: str
     outcome: str
@@ -72,10 +84,10 @@ class Needs:
     sha: str
 
     @classmethod
-    def parse(cls, needs: Mapping[str, Any]) -> "Needs":
-        """Read the finish job's `needs` context."""
+    def parse(cls, needs: Mapping[str, Any], workflow: Workflow) -> "Needs":
+        """Read the finish job's `needs` context, with `workflow`'s work job."""
         check = needs["check"]["outputs"]
-        implement = needs["implement"]["outputs"]
+        implement = needs[workflow.work_job]["outputs"]
         child_ticket = check.get("child-ticket")
         agent_output = implement.get("agent-output")
         return cls(
@@ -87,7 +99,7 @@ class Needs:
             child_ticket=int(child_ticket) if child_ticket else None,
             branch=check.get("branch", ""),
             last_run=check.get("last-run") == "true",
-            implement_result=needs["implement"]["result"],
+            work_result=needs[workflow.work_job]["result"],
             agent_output=json.loads(agent_output) if agent_output else {},
             agent_error=implement.get("agent-error", ""),
             outcome=implement.get("outcome", ""),
@@ -99,12 +111,12 @@ class Needs:
     @property
     def failed(self) -> bool:
         """Whether the check or implement job failed or was cancelled."""
-        return self.check_result in _STOPPED or self.implement_result in _STOPPED
+        return self.check_result in _STOPPED or self.work_result in _STOPPED
 
     @property
     def implemented(self) -> bool:
         """Whether the implement job succeeded."""
-        return self.implement_result == "success"
+        return self.work_result == "success"
 
 
 def failed_step(response: Mapping[str, Any]) -> str | None:
@@ -162,13 +174,12 @@ def _follow_ups(run: Run, needs: Needs) -> list[Effect]:
 
 
 def _already_covered(run: Run, needs: Needs) -> list[Effect]:
-    lines = [
-        f"- {_LINE_BREAK.sub(' ', item['problem'])} Covered by #{item['covered_by']}."
-        for item in needs.agent_output.get("already_covered", [])
-    ]
-    if not lines:
+    # A branch update lists them in its merge comment.
+    if run.workflow == Workflow.AFK_UPDATE_BRANCH:
         return []
-    body = "## Follow-ups already covered\n\n{}\n".format("\n".join(lines))
+    body = already_covered(needs.agent_output).lstrip()
+    if not body:
+        return []
     if run.on_pr:
         return [Comment(number=run.number, body=body)]
     if not needs.pr_url:
@@ -210,11 +221,13 @@ def _report_failure(run: Run, needs: Needs, step: str) -> list[Effect]:
     if needs.agent_error:
         reason = f"{reason} The agent reported: {needs.agent_error}"
     text = "The AFK run failed"
-    if run.on_pr:
+    if run.workflow == Workflow.AFK_UPDATE_BRANCH:
+        text = "The AFK run that updates this PR's branch failed"
+    elif run.on_pr:
         text = "The AFK run on this PR failed"
     elif needs.spec:
         text = f"The AFK run failed on child ticket #{_worked(run, needs)}"
-    return _stopped(run, text, reason, "Comment `/afk implement` to retry.")
+    return _stopped(run, text, reason, f"Comment `{run.workflow.command}` to retry.")
 
 
 def _queue(run: Run) -> list[Effect]:
@@ -303,7 +316,7 @@ def _read_failed_step(gh: Runner, env: Mapping[str, str]) -> str | None:
 def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Make the run's last writes; after a failed one, report and release the ticket."""
     finished = _finished(env)
-    needs = Needs.parse(json.loads(env["AFK_NEEDS"]))
+    needs = Needs.parse(json.loads(env["AFK_NEEDS"]), finished.workflow)
     doing = "Read the failed step"
     try:
         step = _read_failed_step(gh, env) if needs.failed else None

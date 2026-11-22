@@ -1,12 +1,11 @@
 """Publish an AFK run's work from the agent's structured output."""
 
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from afk.agent import read_agent_error, refuse_protected_changes
+from afk.agent import already_covered, read_agent_error, refuse_protected_changes
 from afk.effects import (
     Comment,
     CreatePullRequest,
@@ -23,8 +22,6 @@ from afk.labels import needs_car
 from afk.runner import Runner
 from afk.writer import Writer
 
-_LINE_BREAK = re.compile(r"\s*\n\s*")
-
 
 @dataclass(frozen=True)
 class Run:
@@ -36,16 +33,6 @@ class Run:
     branch: str
     last_run: bool
     url: str
-
-
-def _already_covered(output: Mapping[str, Any]) -> str:
-    lines = [
-        f"- {_LINE_BREAK.sub(' ', item['problem'])} Covered by #{item['covered_by']}."
-        for item in output.get("already_covered") or []
-    ]
-    if not lines:
-        return ""
-    return "\n## Follow-ups already covered\n\n" + "\n".join(lines) + "\n"
 
 
 def _done(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effect]:
@@ -72,7 +59,7 @@ def _needs_car(output: Mapping[str, Any], run: Run) -> list[Effect]:
     body = (
         "Finding the fix needs the car, so this AFK run pushed nothing.\n\n"
         f"**Reason:** {output.get('needs_car_reason', '')}\n\n**Run:** {run.url}\n"
-        f"{_already_covered(output)}"
+        f"{already_covered(output)}"
     )
     return [
         EditLabels(
@@ -87,7 +74,7 @@ def _spec_gap(output: Mapping[str, Any], run: Run) -> list[Effect]:
     body = (
         "> *Spec gap found by an AFK agent session while working this ticket.* "
         f"([run]({run.url}))\n\n{output.get('spec_gaps', '')}\n"
-        f"{_already_covered(output)}"
+        f"{already_covered(output)}"
     )
     return [
         EditLabels(

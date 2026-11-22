@@ -1,0 +1,59 @@
+name: AFK update-branch check
+description: Mark the target of an AFK update-branch run in progress, then refuse the run or read its PR
+
+inputs:
+  number:
+    description: The PR
+    required: true
+  head-sha:
+    description: The PR's head when the AFK command was accepted; empty for the current head
+    required: false
+    default: ""
+  app-token:
+    description: The AFK App's token with Issues and Pull requests write, for the in-progress label
+    required: true
+  workflow-token:
+    description: A token with Issues and Pull requests read for the reads
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  refusal:
+    description: The comment that refuses the run; empty when it goes ahead
+    value: ${{ steps.check.outputs.refusal }}
+  url:
+    description: The PR's URL
+    value: ${{ steps.check.outputs.url }}
+  branch:
+    description: The PR's branch, which the run pushes to
+    value: ${{ steps.check.outputs.branch }}
+  head-sha:
+    description: The commit that the run merges main into and leases its push on
+    value: ${{ steps.check.outputs.head-sha }}
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.check.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Mark the target in progress, and decide whether its run goes ahead
+      id: check
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_PR: ${{ inputs.number }}
+        AFK_HEAD_SHA: ${{ inputs.head-sha }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_WORKFLOW_TOKEN: ${{ inputs.workflow-token }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        "$AFK_PYTHON" -m afk update-branch-check

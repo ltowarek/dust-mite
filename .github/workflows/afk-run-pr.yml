@@ -189,7 +189,7 @@ jobs:
             2. Make the code changes you decided on. Follow CLAUDE.md, including running every check inside the devcontainer it names before committing; Docker is available. Use Conventional Commits messages, with a body that says why.
             3. If you made no changes that's fine: only commit when there's a real diff.
 
-            You do not have to reply to every thread. Reply only where a reply adds value: confirming what you changed, explaining why you chose not to make a requested change, answering a question, or pointing out something the reviewer should look at. Silence is fine for context-only comments.
+            Reply in every thread whose request you changed code for, confirming what you changed and in which commit. Reply in other threads only where a reply adds value: explaining why you chose not to make a requested change, answering a question, or pointing out something the reviewer should look at. Silence is fine for context-only comments.
 
             You cannot resolve threads. Resolution is the reviewer's job.
 

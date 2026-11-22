@@ -16,20 +16,54 @@ on:
         description: The PR's head when the AFK command was accepted; empty for the current head
         required: false
         type: string
+  workflow_call:
+    inputs:
+      number:
+        description: The PR
+        required: true
+        type: number
+      comment-id:
+        description: The AFK command's comment; empty when started from the Actions tab
+        required: false
+        type: string
+      head-sha:
+        description: The PR's head when the AFK command was accepted; empty for the current head
+        required: false
+        type: string
+      dry-run:
+        description: Report the writes in the effects outputs instead of making them
+        required: false
+        type: boolean
+        default: false
+      model:
+        description: The agent's model
+        required: false
+        type: string
+        default: claude-opus-5-5
+      effort:
+        description: The agent's effort
+        required: false
+        type: string
+        default: medium
+    secrets:
+      AFK_APP_PRIVATE_KEY:
+        required: true
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+    outputs:
+      publish-effects:
+        description: The publish phase's planned writes as a JSON array, set only in a dry run
+        value: ${{ jobs.update-branch.outputs.effects }}
+      finish-effects:
+        description: The finish phase's planned writes as a JSON array, set only in a dry run
+        value: ${{ jobs.finish.outputs.effects }}
 
 permissions: {}
 
-# Shares afk-run.yml's queue.
+# Shares the AFK queue with afk-run.yml; a dry run stays out of it.
 concurrency:
-  group: afk-run
+  group: ${{ inputs.dry-run && format('afk-update-branch-dry-run-{0}', github.run_id) || 'afk-run' }}
   queue: max
-
-env:
-  PR: ${{ inputs.number }}
-  COMMENT_ID: ${{ inputs.comment-id }}
-  GH_REPO: ${{ github.repository }}
-  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-  ALREADY_COVERED_LINES: '.already_covered // [] | .[] | "- \(.problem | gsub("\\s*\\n\\s*"; " ")) Covered by #\(.covered_by)."'
 
 jobs:
   check:
@@ -40,10 +74,10 @@ jobs:
       pull-requests: read
 
     outputs:
-      refusal: ${{ steps.state.outputs.refusal }}
-      url: ${{ steps.state.outputs.url }}
-      branch: ${{ steps.state.outputs.branch }}
-      head-sha: ${{ steps.state.outputs.head-sha }}
+      refusal: ${{ steps.check.outputs.refusal }}
+      url: ${{ steps.check.outputs.url }}
+      branch: ${{ steps.check.outputs.branch }}
+      head-sha: ${{ steps.check.outputs.head-sha }}
 
     steps:
       - name: Mint the App's write token for the label
@@ -55,37 +89,15 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      # A run started from the Actions tab has no dispatcher to add it; gh issue also labels a PR.
-      - name: Mark the target in progress
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$PR" --add-label afk:in-progress
-
-      - name: Read the PR's state
-        id: state
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ inputs.head-sha }}
-        run: |
-          if [ "$(gh api "repos/${GH_REPO}/issues/${PR}" --jq '.pull_request != null')" != true ]; then
-            echo "refusal=Refused to run: this is not a PR, and \`/afk update-branch\` works only on a PR." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          gh pr view "$PR" --json state,url,isCrossRepository,headRefName,headRefOid > "$RUNNER_TEMP/pr.json"
-          state=$(jq -r .state "$RUNNER_TEMP/pr.json")
-          if [ "$state" != OPEN ]; then
-            echo "refusal=Refused to run: this PR is ${state,,}." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$(jq -r .isCrossRepository "$RUNNER_TEMP/pr.json")" = true ]; then
-            echo "refusal=Refused to run: this PR's branch is in a fork, and an AFK run never runs a fork's code with the repository's secrets." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          {
-            echo "url=$(jq -r .url "$RUNNER_TEMP/pr.json")"
-            echo "branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")"
-            echo "head-sha=${HEAD_SHA:-$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")}"
-          } >> "$GITHUB_OUTPUT"
+      - name: Mark the target in progress, and read its PR
+        id: check
+        uses: $/.github/actions/afk-update-branch-check
+        with:
+          number: ${{ inputs.number }}
+          head-sha: ${{ inputs.head-sha }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: ${{ inputs.dry-run }}
 
   update-branch:
     needs: check
@@ -97,16 +109,13 @@ jobs:
       contents: read
 
     outputs:
-      merge: ${{ steps.merge.outputs.result }}
-      main-sha: ${{ steps.merge.outputs.main-sha }}
-      agent-error: ${{ steps.agent-error.outputs.result }}
+      agent-error: ${{ steps.publish.outputs.agent-error }}
       agent-output: ${{ steps.agent.outputs.structured_output }}
-      conflict-summary: ${{ steps.agent-result.outputs.conflict_summary }}
-      needs-dut-run: ${{ steps.agent-result.outputs.needs_dut_run }}
-      car-variant: ${{ steps.agent-result.outputs.car_variant }}
+      effects: ${{ steps.publish.outputs.effects }}
 
     env:
       BRANCH: ${{ needs.check.outputs.branch }}
+      HEAD_SHA: ${{ needs.check.outputs.head-sha }}
 
     steps:
       - name: Checkout
@@ -118,39 +127,26 @@ jobs:
 
       - name: Merge main
         id: merge
-        env:
-          BOT_NAME: ${{ vars.AFK_APP_SLUG }}[bot]
-          BOT_ID: ${{ vars.AFK_APP_BOT_ID }}
-        run: |
-          git config user.name "$BOT_NAME"
-          git config user.email "${BOT_ID}+${BOT_NAME}@users.noreply.github.com"
-          echo "head-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "main-sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
-          if git merge-base --is-ancestor origin/main HEAD; then
-            echo "result=up-to-date" >> "$GITHUB_OUTPUT"
-          elif git merge --no-edit origin/main; then
-            echo "result=clean" >> "$GITHUB_OUTPUT"
-          elif [ -n "$(git diff --name-only --diff-filter=U)" ]; then
-            echo "result=conflict" >> "$GITHUB_OUTPUT"
-          else
-            exit 1
-          fi
+        uses: $/.github/actions/afk-update-branch-merge
+        with:
+          bot-name: ${{ vars.AFK_APP_SLUG }}[bot]
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}
 
       - name: Write .env
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         run: ./scripts/dump_env.sh
 
       # From the workflow's own commit, not the checkout.
       - name: Read the agent's output schema
         id: schema
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         uses: $/.github/actions/afk-agent-schema
         with:
           schema: afk-update-branch-output.schema.json
 
       - name: Mint the App's read-only token for the agent
         id: read-token
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -161,7 +157,7 @@ jobs:
 
       - name: Run the AFK agent session
         id: agent
-        if: steps.merge.outputs.result == 'conflict'
+        if: steps.merge.outputs.merge == 'conflict'
         uses: anthropics/claude-code-action@v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -179,72 +175,39 @@ jobs:
             Write the PR comment in conflict_summary: each conflict, how you resolved it and why, each trade-off, and each check that still fails.
             Follow docs/agents/follow-up-tickets.md: list follow-up tickets in follow_ups and follow-ups already covered in already_covered.
             Set needs_dut_run to whether your resolutions can only be confirmed by a DUT run on the car; if they can, set car_variant.
+          # A dispatch has no model or effort input.
           claude_args: >-
-            --model claude-opus-5-5 --effort medium
+            --model ${{ inputs.model || 'claude-opus-5-5' }} --effort ${{ inputs.effort || 'medium' }}
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
-      - name: Read the agent's output
-        id: agent-result
-        if: steps.merge.outputs.result == 'conflict'
-        env:
-          OUTPUT: ${{ steps.agent.outputs.structured_output }}
-        run: |
-          # Random, so no field's value can end its own output early.
-          eof="EOF_$(openssl rand -hex 16)"
-          for field in conflict_summary needs_dut_run car_variant; do
-            {
-              echo "${field}<<${eof}"
-              jq -r --arg field "$field" '.[$field] | values' <<<"$OUTPUT"
-              echo "$eof"
-            } >> "$GITHUB_OUTPUT"
-          done
-
-      - name: Read the agent's error
-        id: agent-error
-        if: failure() && steps.agent.outputs.execution_file != ''
-        env:
-          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
-        run: |
-          {
-            echo 'result<<AGENT_ERROR_EOF'
-            jq -r 'last | select(.type == "result" and .is_error) | .result // empty' "$EXECUTION_FILE"
-            echo 'AGENT_ERROR_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Check that the agent finished the merge
-        if: steps.merge.outputs.result == 'conflict'
-        env:
-          HEAD_SHA: ${{ steps.merge.outputs.head-sha }}
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::The working tree has uncommitted changes."
-            exit 1
-          fi
-          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
-            echo "::error::The merge is not committed."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$HEAD_SHA" HEAD || ! git merge-base --is-ancestor origin/main HEAD; then
-            echo "::error::HEAD does not contain both the branch and main."
-            exit 1
-          fi
-
-      - name: Mint the App's write token for the push
+      # Also after a failed agent, so that publish sets the agent's error for finish.
+      - name: Mint the App's write token for the push, the comment and the label
         id: write-token
-        if: steps.merge.outputs.result != 'up-to-date'
+        if: "!cancelled() && steps.merge.outcome == 'success'"
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
           private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
 
-      - name: Push the branch with lease
-        if: steps.merge.outputs.result != 'up-to-date'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          HEAD_SHA: ${{ steps.merge.outputs.head-sha }}
-        run: git push --force-with-lease="refs/heads/${BRANCH}:${HEAD_SHA}" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
+      - name: Check the agent's merge, push it and comment it
+        id: publish
+        if: "!cancelled() && steps.write-token.outcome == 'success'"
+        uses: $/.github/actions/afk-update-branch-publish
+        with:
+          number: ${{ inputs.number }}
+          branch: ${{ env.BRANCH }}
+          head-sha: ${{ env.HEAD_SHA }}
+          main-sha: ${{ steps.merge.outputs.main-sha }}
+          merge: ${{ steps.merge.outputs.merge }}
+          agent-outcome: ${{ steps.agent.outcome }}
+          agent-output: ${{ steps.agent.outputs.structured_output }}
+          execution-file: ${{ steps.agent.outputs.execution_file }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: ${{ inputs.dry-run }}
 
   finish:
     needs: [check, update-branch]
@@ -253,6 +216,9 @@ jobs:
 
     permissions:
       actions: read
+
+    outputs:
+      effects: ${{ steps.finish.outputs.effects }}
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments
@@ -264,117 +230,14 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Refuse the PR
-        if: always() && needs.check.outputs.refusal != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          REFUSAL: ${{ needs.check.outputs.refusal }}
-        run: gh issue comment "$PR" --body "$REFUSAL"
-
-      - name: Comment the merge
-        if: always() && needs.update-branch.result == 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          MERGE: ${{ needs.update-branch.outputs.merge }}
-          MAIN_SHA: ${{ needs.update-branch.outputs.main-sha }}
-          CONFLICT_SUMMARY: ${{ needs.update-branch.outputs.conflict-summary }}
-          OUTPUT: ${{ needs.update-branch.outputs.agent-output }}
-        run: |
-          case "$MERGE" in
-            up-to-date)
-              printf "The branch already contains \`main\` (%s); this AFK run pushed nothing.\n\n**Run:** %s\n" "$MAIN_SHA" "$RUN_URL"
-              ;;
-            clean)
-              printf "Merged \`main\` (%s) into the branch with no conflicts.\n\n**Run:** %s\n" "$MAIN_SHA" "$RUN_URL"
-              ;;
-            conflict)
-              printf "> *Conflicts with \`main\` (%s) resolved by an AFK agent session.* ([run](%s))\n\n" "$MAIN_SHA" "$RUN_URL"
-              printf '%s\n' "$CONFLICT_SUMMARY"
-              already_covered=$(jq -r "$ALREADY_COVERED_LINES" <<<"$OUTPUT")
-              if [ -n "$already_covered" ]; then
-                printf '\n## Follow-ups already covered\n\n%s\n' "$already_covered"
-              fi
-              ;;
-          esac > "$RUNNER_TEMP/merge.md"
-          gh pr comment "$PR" --body-file "$RUNNER_TEMP/merge.md"
-
-      - name: Hand the PR to a car agent session
-        if: always() && needs.update-branch.result == 'success' && needs.update-branch.outputs.needs-dut-run == 'true'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          CAR_VARIANT: ${{ needs.update-branch.outputs.car-variant }}
-        run: gh pr edit "$PR" --add-label "needs-car:${CAR_VARIANT}"
-
-      - name: File the follow-up tickets
-        if: always() && needs.update-branch.outputs.agent-output != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          OUTPUT: ${{ needs.update-branch.outputs.agent-output }}
-        run: |
-          jq -c '.follow_ups // [] | .[]' <<<"$OUTPUT" | while IFS= read -r follow_up; do
-            title=$(jq -r .title <<<"$follow_up")
-            labels=$(jq -r '[.type] + .components | join(",")' <<<"$follow_up")
-            {
-              printf '> *Follow-up ticket filed by an AFK agent session while working #%s.* ([run](%s))\n\n' "$PR" "$RUN_URL"
-              jq -r .body <<<"$follow_up"
-            } > "$RUNNER_TEMP/follow-up.md"
-            gh issue create \
-              --title "$title" \
-              --body-file "$RUNNER_TEMP/follow-up.md" \
-              --label needs-triage,source:follow-up \
-              --label "$labels"
-          done
-
-      - name: Clear afk:blocked after a successful run
-        if: always() && needs.update-branch.result == 'success'
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$PR" --remove-label afk:blocked
-
-      - name: Report the failure
-        if: always() && (failure() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          ACTIONS_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          AGENT_ERROR: ${{ needs.update-branch.outputs.agent-error }}
-        run: |
-          failed_step=$(GH_TOKEN="$ACTIONS_TOKEN" gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
-            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
-              | [.name, first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name)] | join(" › ")]
-              | first // "unknown step"')
-          reason="\`${failed_step}\` failed."
-          if [ -n "$AGENT_ERROR" ]; then
-            reason="${reason} The agent reported: ${AGENT_ERROR}"
-          fi
-          cat > "$RUNNER_TEMP/failure.md" <<EOF
-          The AFK run that updates this PR's branch failed.
-
-          **Reason:** ${reason}
-
-          **Run:** ${RUN_URL}
-
-          Comment \`/afk update-branch\` to retry.
-          EOF
-          gh issue edit "$PR" --add-label afk:blocked
-          gh issue comment "$PR" --body-file "$RUNNER_TEMP/failure.md"
-
-      - name: Clear afk:in-progress
-        if: always()
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-        run: gh issue edit "$PR" --remove-label afk:in-progress
-
-      - name: React to the AFK command
-        if: always() && inputs.comment-id != ''
-        env:
-          GH_TOKEN: ${{ steps.write-token.outputs.token }}
-          SUCCEEDED: ${{ needs.check.outputs.refusal == '' && needs.update-branch.result == 'success' && job.status == 'success' }}
-        run: |
-          content=confused
-          if [ "$SUCCEEDED" = true ]; then
-            content=rocket
-          fi
-          gh api --method POST "repos/${GH_REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="$content"
+      - name: Report how the run ended, and release the PR
+        id: finish
+        uses: $/.github/actions/afk-finish
+        with:
+          workflow: afk-update-branch
+          ticket: ${{ inputs.number }}
+          comment-id: ${{ inputs.comment-id }}
+          needs: ${{ toJSON(needs) }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: ${{ inputs.dry-run }}

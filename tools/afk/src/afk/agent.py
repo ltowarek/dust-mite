@@ -1,12 +1,15 @@
-"""Refuse the AFK agent's protected changes, and read its error, for every publish."""
+"""Refuse the AFK agent's protected changes; read its error and covered follow-ups."""
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from afk.git import read_changed_files
+from afk.git import read_changed_files, read_merged_files
 from afk.runner import Runner
+
+_LINE_BREAK = re.compile(r"\s*\n\s*")
 
 
 def protected(paths: Iterable[str]) -> list[str]:
@@ -25,6 +28,17 @@ def agent_error(execution: list[dict[str, Any]]) -> str:
     return str(last.get("result") or "")
 
 
+def already_covered(output: Mapping[str, Any]) -> str:
+    """Return the comment section that lists the follow-ups already covered, if any."""
+    lines = [
+        f"- {_LINE_BREAK.sub(' ', item['problem'])} Covered by #{item['covered_by']}."
+        for item in output.get("already_covered") or []
+    ]
+    if not lines:
+        return ""
+    return "\n## Follow-ups already covered\n\n" + "\n".join(lines) + "\n"
+
+
 def read_agent_error(env: Mapping[str, str]) -> str:
     """Return the error in the agent's execution file, if any."""
     execution_file = env.get("AFK_EXECUTION_FILE", "")
@@ -34,7 +48,18 @@ def read_agent_error(env: Mapping[str, str]) -> str:
 
 def refuse_protected_changes(git: Runner, env: Mapping[str, str], base: str) -> None:
     """Fail when an agent commit after `base` changes `.github/` or `tools/`."""
-    refused = protected(read_changed_files(git, env, base))
+    _refuse(read_changed_files(git, env, base))
+
+
+def refuse_protected_merge(
+    git: Runner, env: Mapping[str, str], head: str, main: str
+) -> None:
+    """Fail when an agent commit beyond `head` and `main` changes a protected path."""
+    _refuse(read_merged_files(git, env, head, main))
+
+
+def _refuse(changed: Iterable[str]) -> None:
+    refused = protected(changed)
     if refused:
         msg = (
             f"Refused to publish: the agent's commits change {', '.join(refused)}. "

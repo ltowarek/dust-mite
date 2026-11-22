@@ -1,0 +1,35 @@
+name: AFK update-branch merge
+description: Merge main into the checked-out PR head as the AFK App's bot, and leave any conflicts for the agent
+
+inputs:
+  bot-name:
+    description: The AFK App's bot account name, which the merge and the agent commit as
+    required: true
+  bot-id:
+    description: The AFK App's bot account id, for its noreply email
+    required: true
+
+outputs:
+  merge:
+    description: up-to-date when the branch already contains main, clean after a merge without conflicts, and conflict when the merge left conflicts in the working tree
+    value: ${{ steps.merge.outputs.merge }}
+  main-sha:
+    description: The main commit that the run merges
+    value: ${{ steps.merge.outputs.main-sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Merge main
+      id: merge
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_BOT_NAME: ${{ inputs.bot-name }}
+        AFK_BOT_ID: ${{ inputs.bot-id }}
+      run: |
+        "$AFK_PYTHON" -m afk update-branch-merge

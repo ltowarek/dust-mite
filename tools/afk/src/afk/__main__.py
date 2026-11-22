@@ -16,6 +16,9 @@ from afk import (
     run_check,
     run_pr_check,
     run_pr_publish,
+    update_branch_check,
+    update_branch_merge,
+    update_branch_publish,
 )
 from afk.runner import Runner, runner
 from afk.writer import Writer
@@ -34,6 +37,9 @@ def _phases(gh: Runner, git: Runner) -> dict[str, Phase]:
         "run-check": functools.partial(run_check.run, gh),
         "run-pr-check": functools.partial(run_pr_check.run, gh),
         "run-pr-publish": functools.partial(run_pr_publish.run, git),
+        "update-branch-check": functools.partial(update_branch_check.run, gh),
+        "update-branch-merge": functools.partial(update_branch_merge.run, git),
+        "update-branch-publish": functools.partial(update_branch_publish.run, git),
     }
 
 

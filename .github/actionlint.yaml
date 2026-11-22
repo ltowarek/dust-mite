@@ -8,7 +8,7 @@ paths:
       # actionlint does not support the concurrency queue key yet: https://github.com/rhysd/actionlint/issues/657
       - '^unexpected key "queue" for "concurrency" section\. '
       # actionlint does not support the $/ self-repository syntax for actions yet: https://github.com/rhysd/actionlint/issues/711
-      - '^specifying action "\$/\.github/actions/afk-agent-schema" in invalid format because ref is missing\. '
+      - '^specifying action "\$/\.github/actions/afk-(agent-schema|update-branch-check|update-branch-merge|update-branch-publish|finish)" in invalid format because ref is missing\. '
   .github/workflows/afk-run-pr.yml:
     ignore:
       # actionlint does not support the concurrency queue key yet: https://github.com/rhysd/actionlint/issues/657
@@ -26,7 +26,7 @@ paths:
       # actionlint does not support the $/ self-repository syntax yet: https://github.com/rhysd/actionlint/issues/711
       - '^reusable workflow call "\$/\.github/workflows/[^"]+\.yml" at "uses" is not following the format '
       # actionlint does not support the $/ self-repository syntax for actions yet: https://github.com/rhysd/actionlint/issues/711
-      - '^specifying action "\$/\.github/actions/afk-(promote-queued|dispatch|dispatch-release|run-check|run-publish|finish|run-pr-check|run-pr-publish)" in invalid format because ref is missing\. '
+      - '^specifying action "\$/\.github/actions/afk-(promote-queued|dispatch|dispatch-release|run-check|run-publish|finish|run-pr-check|run-pr-publish|update-branch-check|update-branch-merge|update-branch-publish)" in invalid format because ref is missing\. '
   .github/workflows/afk-promote-queued.yml:
     ignore:
       # actionlint does not support the concurrency queue key yet: https://github.com/rhysd/actionlint/issues/657

@@ -31,8 +31,9 @@ def changed_files(log: str) -> list[str]:
     return [path for path in log.split("\0") if path]
 
 
-def read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[str]:
-    """Return the files that each commit after `base` changes."""
+def _read_log_files(
+    git: Runner, env: Mapping[str, str], diff_merges: str, revisions: Sequence[str]
+) -> list[str]:
     # Per commit and unquoted; replace refs could hide a commit that the push sends.
     args = [
         "--no-replace-objects",
@@ -41,15 +42,33 @@ def read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[s
         "--format=",
         "--name-only",
         "--no-renames",
-        "--diff-merges=first-parent",
-        f"{base}..HEAD",
+        f"--diff-merges={diff_merges}",
+        *revisions,
     ]
     return changed_files(run_git(git, env, args))
+
+
+def read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[str]:
+    """Return the files that each commit after `base` changes."""
+    return _read_log_files(git, env, "first-parent", [f"{base}..HEAD"])
+
+
+def read_merged_files(
+    git: Runner, env: Mapping[str, str], head: str, main: str
+) -> list[str]:
+    """Return the files that each commit beyond `head` and `main` changes."""
+    # A merge commit lists only what differs from git's own re-merge of its parents.
+    return _read_log_files(git, env, "remerge", ["HEAD", "--not", head, main])
 
 
 def read_commit_count(git: Runner, env: Mapping[str, str], base: str) -> int:
     """Return how many commits HEAD holds after `base`."""
     return int(run_git(git, env, ["rev-list", "--count", f"{base}..HEAD"]))
+
+
+def head_contains(git: Runner, env: Mapping[str, str], commit: str) -> bool:
+    """Return whether HEAD already holds `commit`."""
+    return run_git(git, env, ["rev-list", "--count", f"HEAD..{commit}"]).strip() == "0"
 
 
 def read_head(git: Runner, env: Mapping[str, str]) -> str:

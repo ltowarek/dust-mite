@@ -521,6 +521,274 @@ jobs:
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$OUTPUTS"
 
+  afk-update-branch-check:
+    name: afk-update-branch-check (${{ matrix.case }})
+
+    # The production job's permissions.
+    permissions:
+      issues: read
+      pull-requests: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # #331 is an issue.
+          - case: refuses an issue
+            number: 331
+            assertion: '.refusal == "Refused to run: this is not a PR, and `/afk update-branch` works only on a PR."'
+          # #391 is merged.
+          - case: refuses a PR that is not open
+            number: 391
+            assertion: '.refusal == "Refused to run: this PR is merged."'
+          # The canary PR is an open draft from this repository.
+          - case: goes ahead on the canary PR's branch
+            number: ${{ vars.AFK_CANARY_PR }}
+            assertion: '(.refusal // "") == "" and .branch != "" and (.["head-sha"] | length) == 40'
+          - case: works on the head that the AFK command was accepted at
+            number: ${{ vars.AFK_CANARY_PR }}
+            head-sha: 0123456789abcdef0123456789abcdef01234567
+            assertion: '.["head-sha"] == "0123456789abcdef0123456789abcdef01234567"'
+          - case: reports the in-progress mark as a dry run
+            number: ${{ vars.AFK_CANARY_PR }}
+            assertion: '.effects | fromjson == [{"type": "EditLabels", "number": (env.AFK_CANARY_PR | tonumber), "add": ["afk:in-progress"], "remove": []}]'
+
+    steps:
+      - name: Mint the App's write token for the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Check the PR as a dry run
+        id: check
+        uses: $/.github/actions/afk-update-branch-check
+        with:
+          number: ${{ matrix.number }}
+          head-sha: ${{ matrix.head-sha }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: true
+
+      - name: Assert on the outputs
+        shell: bash
+        env:
+          AFK_CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+          OUTPUTS: ${{ toJSON(steps.check.outputs) }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: jq -e "$ASSERTION" <<<"$OUTPUTS"
+
+  afk-update-branch-merge:
+    name: afk-update-branch-merge (${{ matrix.case }})
+
+    # The production job's permissions; the merge is local.
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: merges nothing when the branch already contains main
+            branch-change: docs/afk-canary.md
+            assertion: '.merge == "up-to-date" and .unmerged == ""'
+          - case: merges main without conflicts
+            main-change: docs/afk-canary-main.md
+            branch-change: docs/afk-canary.md
+            assertion: '.merge == "clean" and .unmerged == "" and .head_parents == 2'
+          - case: leaves the conflicts for the agent
+            main-change: docs/afk-canary.md
+            branch-change: docs/afk-canary.md
+            assertion: '.merge == "conflict" and .unmerged == "docs/afk-canary.md"'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # main gains its change on top of the checkout, and the PR's head gains its own beside it.
+      - name: Build main and the PR's head
+        id: commits
+        env:
+          MAIN_CHANGE: ${{ matrix.main-change }}
+          BRANCH_CHANGE: ${{ matrix.branch-change }}
+        run: |
+          commit() {
+            echo "$2" >> "$1"
+            git add "$1"
+            git -c user.name=afk-test -c user.email=afk-test@users.noreply.github.com commit --quiet -m "docs: $2"
+          }
+          base=$(git rev-parse HEAD)
+          if [ -n "$MAIN_CHANGE" ]; then commit "$MAIN_CHANGE" main; fi
+          git update-ref refs/remotes/origin/main HEAD
+          echo "main=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git switch --quiet --detach "$base"
+          commit "$BRANCH_CHANGE" branch
+
+      - name: Merge main
+        id: merge
+        uses: $/.github/actions/afk-update-branch-merge
+        with:
+          bot-name: afk-test[bot]
+          bot-id: "1"
+
+      - name: Assert on the outputs and the working tree
+        shell: bash
+        env:
+          MAIN: ${{ steps.commits.outputs.main }}
+          OUTPUTS: ${{ toJSON(steps.merge.outputs) }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: |
+          jq -e --arg main "$MAIN" '.["main-sha"] == $main' <<<"$OUTPUTS"
+          jq -e --arg unmerged "$(git diff --name-only --diff-filter=U)" \
+            --argjson parents "$(git rev-list --parents -n 1 HEAD | wc -w)" \
+            ". + {unmerged: \$unmerged, head_parents: (\$parents - 1)} | $ASSERTION" <<<"$OUTPUTS"
+
+  afk-update-branch-publish:
+    name: afk-update-branch-publish (${{ matrix.case }})
+
+    # The production job's permissions; publish reads only the checkout, and a dry run skips the writes.
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # The action reads no PR, so each case names the merged #391.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: comments that an up-to-date branch needs no push
+            branch-change: docs/afk-canary.md
+            assertion: '(.effects | map(.type)) == ["Comment"] and (.effects[0].body | startswith("The branch already contains `main`"))'
+          - case: pushes a clean merge with a lease on the PR's head
+            main-change: docs/afk-canary-main.md
+            branch-change: docs/afk-canary.md
+            assertion: '(.effects | map(.type)) == ["PushBranch","Comment"] and .effects[0].lease == .head and (.effects[1].body | startswith("Merged `main`"))'
+          # main also changes tools/, which the refusal ignores because the agent did not write it.
+          - case: pushes the agent's resolution, comments it and labels the PR for the car
+            main-change: docs/afk-canary.md tools/afk-canary.md
+            branch-change: docs/afk-canary.md
+            resolve: true
+            output:
+              conflict_summary: Kept both lines.
+              needs_dut_run: true
+              car_variant: copper
+            assertion: '(.effects | map(.type)) == ["PushBranch","Comment","EditLabels"] and (.effects[1].body | endswith("\n\nKept both lines.\n")) and .effects[2].add == ["needs-car:copper"]'
+          - case: fails when the agent leaves the merge unfinished
+            main-change: docs/afk-canary.md
+            branch-change: docs/afk-canary.md
+            output:
+              conflict_summary: Kept both lines.
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+          - case: refuses an agent resolution that changes tools/
+            main-change: docs/afk-canary.md
+            branch-change: docs/afk-canary.md
+            resolve: true
+            agent-change: tools/afk-canary.md
+            output:
+              conflict_summary: Kept both lines.
+              needs_dut_run: false
+            assertion: '.outcome == "failure" and .effects == null'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # main gains its changes on top of the checkout, and the PR's head gains its own beside it.
+      - name: Build main and the PR's head
+        id: commits
+        env:
+          MAIN_CHANGE: ${{ matrix.main-change }}
+          BRANCH_CHANGE: ${{ matrix.branch-change }}
+        run: |
+          commit() {
+            for path in $1; do
+              echo "$2" >> "$path"
+              git add "$path"
+            done
+            git -c user.name=afk-test -c user.email=afk-test@users.noreply.github.com commit --quiet -m "docs: $2"
+          }
+          base=$(git rev-parse HEAD)
+          if [ -n "$MAIN_CHANGE" ]; then commit "$MAIN_CHANGE" main; fi
+          git update-ref refs/remotes/origin/main HEAD
+          git switch --quiet --detach "$base"
+          commit "$BRANCH_CHANGE" branch
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Merge main
+        id: merge
+        uses: $/.github/actions/afk-update-branch-merge
+        with:
+          bot-name: afk-test[bot]
+          bot-id: "1"
+
+      - name: Resolve the conflicts as the agent
+        if: matrix.resolve
+        env:
+          AGENT_CHANGE: ${{ matrix.agent-change }}
+        run: |
+          git diff --name-only --diff-filter=U | while IFS= read -r path; do
+            echo resolved > "$path"
+            git add "$path"
+          done
+          if [ -n "$AGENT_CHANGE" ]; then
+            echo agent >> "$AGENT_CHANGE"
+            git add "$AGENT_CHANGE"
+          fi
+          git commit --quiet --no-edit
+
+      - name: Mint the App's write token for the push, the comment and the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Publish the merge as a dry run
+        id: publish
+        # A refusal fails the step; the assertion checks its outcome.
+        continue-on-error: true
+        uses: $/.github/actions/afk-update-branch-publish
+        with:
+          number: 391
+          branch: afk-test/update-branch-391-${{ github.run_id }}
+          head-sha: ${{ steps.commits.outputs.head }}
+          main-sha: ${{ steps.merge.outputs.main-sha }}
+          merge: ${{ steps.merge.outputs.merge }}
+          agent-outcome: success
+          agent-output: ${{ matrix.output && toJSON(matrix.output) || '' }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          dry-run: true
+
+      - name: Assert on the outcome and the planned effects
+        shell: bash
+        env:
+          HEAD: ${{ steps.commits.outputs.head }}
+          OUTCOME: ${{ steps.publish.outcome }}
+          EFFECTS: ${{ steps.publish.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: |
+          jq -e -n --arg head "$HEAD" --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
+            "{head: \$head, outcome: \$outcome, effects: \$effects} | $ASSERTION"
+
   afk-run-publish:
     name: afk-run-publish (${{ matrix.case }})
 
@@ -845,6 +1113,33 @@ jobs:
                   agent-output: '{"thread_replies": [], "inline_comments": [], "top_level_comments": [], "needs_dut_run": false, "already_covered": [{"problem": "The camera breaks.", "covered_by": 363}]}'
             assertion: >-
               .[0] == {"type": "Comment", "number": 391, "body": "## Follow-ups already covered\n\n- The camera breaks. Covered by #363.\n"}
+          - case: reports a failed branch update on the PR
+            workflow: afk-update-branch
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              update-branch:
+                result: failure
+                outputs: {}
+            assertion: >-
+              any(.[]; .type == "Comment" and .number == 391
+                and (.body | startswith("The AFK run that updates this PR's branch failed.\n\n**Reason:** "))
+                and (.body | endswith("Comment `/afk update-branch` to retry.\n")))
+          - case: leaves the follow-ups already covered to the merge comment
+            workflow: afk-update-branch
+            ticket: 391
+            needs:
+              check:
+                result: success
+                outputs: {}
+              update-branch:
+                result: success
+                outputs:
+                  agent-output: '{"conflict_summary": "Kept both lines.", "needs_dut_run": false, "already_covered": [{"problem": "The camera breaks.", "covered_by": 363}]}'
+            assertion: >-
+              . == [{"type": "EditLabels", "number": 391, "add": [], "remove": ["afk:blocked"]}, {"type": "EditLabels", "number": 391, "add": [], "remove": ["afk:in-progress"]}]
 
     steps:
       - name: Mint the App's write token for tickets, labels and comments
@@ -982,6 +1277,60 @@ jobs:
       - name: Assert that finish plans no failure comment
         run: |
           jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run on this PR failed") | not))' <<<"$FINISH_EFFECTS"
+
+  # The canary PR's branch sits on an older commit of main without conflicting with it, so its update merges cleanly and runs no agent.
+  afk-update-branch-workflow:
+    # The production jobs' permissions.
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+
+    uses: $/.github/workflows/afk-update-branch.yml
+    with:
+      number: ${{ fromJSON(vars.AFK_CANARY_PR) }}
+      dry-run: true
+      model: claude-haiku-5-5
+      effort: low
+    secrets:
+      AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  afk-update-branch-workflow-assertions:
+    needs: afk-update-branch-workflow
+    # Also after a failed run, whose finish effects then hold its failure comment.
+    if: '!cancelled()'
+    permissions: {}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+      PUBLISH_EFFECTS: ${{ needs.afk-update-branch-workflow.outputs.publish-effects }}
+      FINISH_EFFECTS: ${{ needs.afk-update-branch-workflow.outputs.finish-effects }}
+
+    steps:
+      - name: Assert that publish pushes the merge with a lease on the canary PR's head
+        run: |
+          jq -e 'any(.[]; .type == "PushBranch" and (.lease | length) == 40)' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that publish comments the merge on the canary PR
+        run: |
+          jq -e 'any(.[]; .type == "Comment" and .number == (env.CANARY_PR | tonumber) and (.body | startswith("Merged `main`") or startswith("> *Conflicts with `main`")))' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that finish clears afk:in-progress
+        run: |
+          jq -e 'any(.[]; . == {"type": "EditLabels", "number": (env.CANARY_PR | tonumber), "add": [], "remove": ["afk:in-progress"]})' <<<"$FINISH_EFFECTS"
+
+      - name: Assert that finish plans no failure comment
+        run: |
+          jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run that updates this PR") | not))' <<<"$FINISH_EFFECTS"
 
   actions-lock:
     permissions:
