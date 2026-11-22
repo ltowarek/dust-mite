@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from afk.agent import agent_error, changed_files, protected
+from afk.agent import agent_error, protected
 
 
 class TestProtected:
@@ -76,14 +76,3 @@ class TestAgentError:
         self, execution: list[dict[str, Any]], expected: str
     ) -> None:
         assert agent_error(execution) == expected
-
-
-class TestChangedFiles:
-    def test_reads_every_file_of_the_nul_separated_log_as_it_is(self) -> None:
-        log = "docs/b c.md\0.github/workflows/é.yml\0docs/a.md\0"
-
-        assert changed_files(log) == [
-            "docs/b c.md",
-            ".github/workflows/é.yml",
-            "docs/a.md",
-        ]

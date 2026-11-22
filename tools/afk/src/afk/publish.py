@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from afk.agent import read_agent_error, read_head, refuse_protected_changes
+from afk.agent import read_agent_error, refuse_protected_changes
 from afk.effects import (
     Comment,
     CreatePullRequest,
@@ -17,7 +17,10 @@ from afk.effects import (
     MarkPullRequestReady,
     PushBranch,
 )
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.git import read_head
+from afk.github import Token, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 _LINE_BREAK = re.compile(r"\s*\n\s*")
 

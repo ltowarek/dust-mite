@@ -19,8 +19,10 @@ from afk.effects import (
     React,
     Reaction,
 )
+from afk.github import Token, run_gh
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 _STOPPED = {"failure", "cancelled"}
 _LINE_BREAK = re.compile(r"\s*\n\s*")

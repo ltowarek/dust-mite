@@ -15,8 +15,10 @@ from afk.effects import (
     React,
     Reaction,
 )
+from afk.github import Token, run_gh
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 _BLOCKERS_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {

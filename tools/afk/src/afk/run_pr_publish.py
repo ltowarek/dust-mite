@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from afk.agent import read_agent_error, read_head, refuse_protected_changes
+from afk.agent import read_agent_error, refuse_protected_changes
 from afk.effects import (
     Comment,
     CreateReviewComment,
@@ -16,8 +16,10 @@ from afk.effects import (
     PushBranch,
     ReplyToReviewComment,
 )
+from afk.git import read_commit_count, read_head
 from afk.github import PullRequest
-from afk.writer import Runner, Writer, run_git
+from afk.runner import Runner
+from afk.writer import Writer
 
 
 def acted(output: Mapping[str, Any], commits: int) -> bool:
@@ -104,9 +106,7 @@ def run(git: Runner, env: Mapping[str, str], writer: Writer) -> None:
     )
     refuse_protected_changes(git, env, pr.head_sha)
     output = json.loads(env["AFK_AGENT_OUTPUT"])
-    commits = int(
-        run_git(git, env, None, ["rev-list", "--count", f"{pr.head_sha}..HEAD"])
-    )
+    commits = read_commit_count(git, env, pr.head_sha)
     if not acted(output, commits):
         msg = "Refused to publish: the agent neither committed nor commented."
         raise SystemExit(msg)

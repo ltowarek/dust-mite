@@ -8,9 +8,10 @@ from dataclasses import dataclass, field, fields, replace
 from typing import Any
 
 from afk.effects import EditLabels
-from afk.github import read_graphql
+from afk.github import Token, read_graphql, run_gh
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 _SLUG_SEPARATOR = re.compile(r"[^a-z0-9]+")
 _CLOSING_PULL_REQUESTS_QUERY = """

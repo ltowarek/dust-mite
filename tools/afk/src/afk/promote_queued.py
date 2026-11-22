@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect
+from afk.github import Token, run_gh
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 logger = logging.getLogger(__name__)
 _COMMAND_MARKER = re.compile(r"<!-- afk-command: ([0-9]*) -->")

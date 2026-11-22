@@ -6,9 +6,10 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from afk.effects import EditLabels
-from afk.github import PullRequest, read_graphql
+from afk.github import PullRequest, Token, read_graphql, run_gh
 from afk.labels import Label
-from afk.writer import Runner, Token, Writer, run_gh
+from afk.runner import Runner
+from afk.writer import Writer
 
 _REVIEW_THREADS_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
