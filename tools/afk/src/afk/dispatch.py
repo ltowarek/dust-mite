@@ -5,7 +5,7 @@ import string
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, assert_never
 
 from afk.effects import (
     Comment,
@@ -260,8 +260,10 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
                 case Accept():
                     # Set before the writes, so the release step sees it if one fails.
                     writer.set_output("accepted", "true")
-                case _:
+                case Refusal() | Queue():
                     pass
+                case _:
+                    assert_never(decision)
             effects = plan(target, decision)
     for effect in effects:
         writer.write(effect)
