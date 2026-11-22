@@ -86,14 +86,12 @@ class MarkPullRequestReady:
     branch: str
 
 
-Effect = (
-    DispatchWorkflow
-    | EditLabels
-    | Comment
-    | React
-    | PushBranch
-    | CreatePullRequest
-    | EditPullRequest
-    | EditPullRequestLabels
-    | MarkPullRequestReady
+IssueWrite = EditLabels | Comment | React
+"""A write on an issue or its conversation, which `gh issue` or `gh api` makes."""
+
+PullRequestWrite = (
+    CreatePullRequest | EditPullRequest | EditPullRequestLabels | MarkPullRequestReady
 )
+"""A write on a branch's pull request, which `gh pr` makes."""
+
+Effect = DispatchWorkflow | PushBranch | IssueWrite | PullRequestWrite
