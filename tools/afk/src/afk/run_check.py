@@ -4,7 +4,7 @@ import json
 import re
 import string
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from afk.effects import EditLabels
@@ -89,52 +89,90 @@ def _block_only_each_other(
     )
 
 
-def _check_spec(number: int, title: str, reader: Reader) -> dict[str, str]:
+@dataclass(frozen=True)
+class CheckResult:
+    """Whether an AFK run is refused, queued or goes ahead, and on which branch."""
+
+    url: str
+    refusal: str | None = None
+    block: bool = False
+    queue: bool = False
+    spec: bool = False
+    child_ticket: int | None = None
+    child_ticket_url: str | None = None
+    branch: str | None = None
+    last_run: bool | None = None
+
+    def outputs(self) -> dict[str, str]:
+        """Return the check job's step outputs, leaving out what is not decided."""
+        child_ticket = None if self.child_ticket is None else str(self.child_ticket)
+        last_run = None if self.last_run is None else str(self.last_run).lower()
+        outputs = {
+            "url": self.url,
+            "refusal": self.refusal,
+            "block": "true" if self.block else None,
+            "queue": "true" if self.queue else None,
+            "spec": "true" if self.spec else None,
+            "child-ticket": child_ticket,
+            "child-ticket-url": self.child_ticket_url,
+            "branch": self.branch,
+            "last-run": last_run,
+        }
+        return {name: value for name, value in outputs.items() if value is not None}
+
+
+def _check_spec(ticket: Ticket, number: int, reader: Reader) -> CheckResult:
     open_child_tickets = [c for c in reader.child_tickets(number) if c.open]
     if not open_child_tickets:
-        return {
-            "refusal": "Refused to run: every child ticket of this spec is closed, so "
-            "there is nothing to implement."
-        }
+        return CheckResult(
+            url=ticket.url,
+            refusal="Refused to run: every child ticket of this spec is closed, so "
+            "there is nothing to implement.",
+        )
     frontier = [c for c in open_child_tickets if not c.open_blocking_tickets]
     if not frontier:
         if not _block_only_each_other(open_child_tickets, reader):
-            return {"queue": "true"}
-        return {
-            "block": "true",
-            "refusal": "Refused to run: the open child tickets of this spec block "
+            return CheckResult(url=ticket.url, queue=True)
+        return CheckResult(
+            url=ticket.url,
+            refusal="Refused to run: the open child tickets of this spec block "
             "only each other, so none can start. Remove a blocking link from the "
             "loop, then comment `/afk implement` again.",
-        }
-    return {
-        "spec": "true",
-        "child-ticket": str(frontier[0].number),
-        "child-ticket-url": frontier[0].url,
-        "branch": f"agent/prd-{number}-{_slug(title)}",
-        "last-run": str(len(open_child_tickets) == 1).lower(),
-    }
+            block=True,
+        )
+    return CheckResult(
+        url=ticket.url,
+        spec=True,
+        child_ticket=frontier[0].number,
+        child_ticket_url=frontier[0].url,
+        branch=f"agent/prd-{number}-{_slug(ticket.title)}",
+        last_run=len(open_child_tickets) == 1,
+    )
 
 
-def _check_ticket(number: int, run_id: str, reader: Reader) -> dict[str, str]:
+def _check_ticket(number: int, run_id: str, reader: Reader) -> CheckResult:
     ticket = reader.ticket(number)
-    outputs = {"url": ticket.url}
     if ticket.parent is None and ticket.open_blocking_tickets:
-        return {
-            **outputs,
-            "refusal": "Refused to run: this ticket has an open blocking ticket. "
+        return CheckResult(
+            url=ticket.url,
+            refusal="Refused to run: this ticket has an open blocking ticket. "
             "Comment `/afk implement` to queue it until its last blocking ticket "
             "closes.",
-        }
+        )
     if ticket.child_tickets:
-        return outputs | _check_spec(number, ticket.title, reader)
-    if ticket.parent is not None:
-        outputs |= {
-            "block": "true",
-            "refusal": f"Refused to run: this ticket is a child ticket of "
-            f"#{ticket.parent}. Child tickets run only through their spec; comment "
-            f"`/afk implement` on #{ticket.parent} instead.",
-        }
-    return outputs | {"branch": f"afk/issue-{number}-{run_id}", "last-run": "true"}
+        return _check_spec(ticket, number, reader)
+    result = CheckResult(
+        url=ticket.url, branch=f"afk/issue-{number}-{run_id}", last_run=True
+    )
+    if ticket.parent is None:
+        return result
+    return replace(
+        result,
+        refusal=f"Refused to run: this ticket is a child ticket of #{ticket.parent}. "
+        f"Child tickets run only through their spec; comment `/afk implement` on "
+        f"#{ticket.parent} instead.",
+        block=True,
+    )
 
 
 def _closing_pull_request(number: int, reader: Reader) -> str | None:
@@ -145,19 +183,20 @@ def _closing_pull_request(number: int, reader: Reader) -> str | None:
     )
 
 
-def check(number: int, run_id: str, reader: Reader) -> dict[str, str]:
-    """Return the check job's step outputs for an AFK run on `number`."""
-    outputs = _check_ticket(number, run_id, reader)
+def check(number: int, run_id: str, reader: Reader) -> CheckResult:
+    """Decide whether an AFK run on `number` is refused, queued or goes ahead."""
+    result = _check_ticket(number, run_id, reader)
     # A spec's own PR closes it while its child tickets run.
-    if outputs.get("spec") == "true" or "refusal" in outputs:
-        return outputs
+    if result.spec or result.refusal is not None:
+        return result
     pull_request = _closing_pull_request(number, reader)
-    if pull_request is not None:
-        outputs["refusal"] = (
-            f"Refused to run: PR {pull_request} already targets this ticket. Close "
-            "it first, then comment `/afk implement` again."
-        )
-    return outputs
+    if pull_request is None:
+        return result
+    return replace(
+        result,
+        refusal=f"Refused to run: PR {pull_request} already targets this ticket. "
+        "Close it first, then comment `/afk implement` again.",
+    )
 
 
 class GhReader:
@@ -240,5 +279,6 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Mark the ticket in progress, then decide whether its AFK run goes ahead."""
     number = int(env["AFK_TICKET"])
     writer.write(EditLabels(number=number, add=(Label.IN_PROGRESS,)))
-    for name, value in check(number, env["GITHUB_RUN_ID"], GhReader(gh, env)).items():
+    result = check(number, env["GITHUB_RUN_ID"], GhReader(gh, env))
+    for name, value in result.outputs().items():
         writer.set_output(name, value)
