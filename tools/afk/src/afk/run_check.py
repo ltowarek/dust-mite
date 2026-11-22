@@ -4,7 +4,7 @@ import json
 import re
 import string
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import Any
 
 from afk.effects import EditLabels
@@ -113,24 +113,16 @@ class CheckResult:
     child_ticket: int | None = None
     child_ticket_url: str | None = None
     branch: str | None = None
-    last_run: bool | None = None
+    last_run: bool = False
 
-    def outputs(self) -> dict[str, str]:
-        """Return the check job's step outputs, leaving out what is not decided."""
-        child_ticket = None if self.child_ticket is None else str(self.child_ticket)
-        last_run = None if self.last_run is None else str(self.last_run).lower()
-        outputs = {
-            "url": self.url,
-            "refusal": self.refusal,
-            "block": "true" if self.block else None,
-            "queue": "true" if self.queue else None,
-            "spec": "true" if self.spec else None,
-            "child-ticket": child_ticket,
-            "child-ticket-url": self.child_ticket_url,
-            "branch": self.branch,
-            "last-run": last_run,
-        }
-        return {name: value for name, value in outputs.items() if value is not None}
+
+def outputs(result: CheckResult) -> dict[str, str]:
+    """Return the check job's step outputs; a false or unset field sets none."""
+    return {
+        f.name.replace("_", "-"): "true" if value is True else str(value)
+        for f in fields(result)
+        if (value := getattr(result, f.name)) is not None and value is not False
+    }
 
 
 def _check_spec(state: State) -> CheckResult:
@@ -249,5 +241,5 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     number = int(env["AFK_TICKET"])
     writer.write(EditLabels(number=number, add=(Label.IN_PROGRESS,)))
     result = check(env["GITHUB_RUN_ID"], _read_state(gh, env, number))
-    for name, value in result.outputs().items():
+    for name, value in outputs(result).items():
         writer.set_output(name, value)

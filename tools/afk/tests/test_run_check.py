@@ -15,6 +15,7 @@ from afk.run_check import (
     blocked_child_tickets,
     check,
     open_blocker_urls,
+    outputs,
     pull_requests,
     ticket,
 )
@@ -278,52 +279,46 @@ class TestCheck:
         assert check(RUN_ID, state).branch == branch
 
 
-class TestCheckResult:
-    class TestOutputs:
-        @pytest.mark.parametrize(
-            ("result", "outputs"),
-            [
-                pytest.param(
-                    CheckResult(url=f"{URL}/7"),
-                    {"url": f"{URL}/7"},
-                    id="sets only the URL when nothing else is decided",
+class TestOutputs:
+    @pytest.mark.parametrize(
+        ("result", "expected"),
+        [
+            pytest.param(
+                CheckResult(url=f"{URL}/7"),
+                {"url": f"{URL}/7"},
+                id="sets only the URL when every other field is false or unset",
+            ),
+            pytest.param(
+                CheckResult(
+                    url=f"{URL}/7",
+                    refusal="Refused.",
+                    block=True,
+                    queue=True,
+                    spec=True,
+                    child_ticket=10,
+                    child_ticket_url=f"{URL}/10",
+                    branch="agent/prd-7-fix",
+                    last_run=True,
                 ),
-                pytest.param(
-                    CheckResult(
-                        url=f"{URL}/7",
-                        refusal="Refused.",
-                        block=True,
-                        queue=True,
-                        spec=True,
-                        child_ticket=10,
-                        child_ticket_url=f"{URL}/10",
-                        branch="agent/prd-7-fix",
-                        last_run=False,
-                    ),
-                    {
-                        "url": f"{URL}/7",
-                        "refusal": "Refused.",
-                        "block": "true",
-                        "queue": "true",
-                        "spec": "true",
-                        "child-ticket": "10",
-                        "child-ticket-url": f"{URL}/10",
-                        "branch": "agent/prd-7-fix",
-                        "last-run": "false",
-                    },
-                    id="writes every decided field as its step output",
-                ),
-                pytest.param(
-                    CheckResult(url=f"{URL}/7", last_run=True),
-                    {"url": f"{URL}/7", "last-run": "true"},
-                    id="writes a last run as true",
-                ),
-            ],
-        )
-        def test_returns_the_check_job_s_step_outputs(
-            self, result: CheckResult, outputs: dict[str, str]
-        ) -> None:
-            assert result.outputs() == outputs
+                {
+                    "url": f"{URL}/7",
+                    "refusal": "Refused.",
+                    "block": "true",
+                    "queue": "true",
+                    "spec": "true",
+                    "child-ticket": "10",
+                    "child-ticket-url": f"{URL}/10",
+                    "branch": "agent/prd-7-fix",
+                    "last-run": "true",
+                },
+                id="sets each field as the output named after it in kebab case",
+            ),
+        ],
+    )
+    def test_returns_the_check_job_s_step_outputs(
+        self, result: CheckResult, expected: dict[str, str]
+    ) -> None:
+        assert outputs(result) == expected
 
 
 class TestBlockedChildTickets:
