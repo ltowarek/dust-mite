@@ -9,10 +9,15 @@ from pathlib import Path
 from typing import TextIO
 
 from afk.effects import (
+    AddPullRequestLabel,
     Comment,
+    CreatePullRequest,
     DispatchWorkflow,
     EditLabels,
+    EditPullRequest,
     Effect,
+    MarkPullRequestReady,
+    PushBranch,
     React,
 )
 
@@ -42,7 +47,7 @@ class GhCommand:
 
 
 def gh_command(effect: Effect) -> GhCommand:
-    """Return the `gh` command that carries out a write."""
+    """Return the command that carries out a write."""
     match effect:
         case DispatchWorkflow(workflow=workflow, inputs=inputs):
             fields = [
@@ -57,18 +62,44 @@ def gh_command(effect: Effect) -> GhCommand:
                 *(arg for label in add for arg in ("--add-label", label)),
                 *(arg for label in remove for arg in ("--remove-label", label)),
             ]
-            return GhCommand(["gh", "issue", "edit", str(number), *flags], Token.APP)
+            args = ["gh", "issue", "edit", str(number), *flags]
         case Comment(number=number, body=body):
-            return GhCommand(
-                ["gh", "issue", "comment", str(number), "--body", body], Token.APP
-            )
+            args = ["gh", "issue", "comment", str(number), "--body", body]
         case React(comment_id=comment_id, content=content):
             # gh has no reaction subcommand; gh api takes {owner}/{repo} from GH_REPO.
             endpoint = (
                 f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}/reactions"
             )
-            args = ["api", "--method", "POST", endpoint, "-f", f"content={content}"]
-            return GhCommand(["gh", *args], Token.APP)
+            args = ["gh", "api", "--method", "POST", endpoint]
+            args += ["-f", f"content={content}"]
+        case PushBranch(repository=repository, branch=branch):
+            args = _push(repository, branch)
+        case CreatePullRequest(branch=branch, title=title, body=body):
+            pr = ["--base", "main", "--head", branch, "--title", title, "--body", body]
+            args = ["gh", "pr", "create", "--draft", *pr]
+        case EditPullRequest(branch=branch, title=title, body=body):
+            args = ["gh", "pr", "edit", branch, "--title", title, "--body", body]
+        case AddPullRequestLabel(branch=branch, label=label):
+            args = ["gh", "pr", "edit", branch, "--add-label", label]
+        case MarkPullRequestReady(branch=branch):
+            args = ["gh", "pr", "ready", branch]
+    return GhCommand(args, Token.APP)
+
+
+def _push(repository: str, branch: str) -> list[str]:
+    # Keeps the token from the arguments and the agent's hooks and credential helpers.
+    return [
+        "git",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "credential.helper=",
+        "-c",
+        "credential.helper=!gh auth git-credential",
+        "push",
+        f"https://github.com/{repository}.git",
+        f"HEAD:refs/heads/{branch}",
+    ]
 
 
 def write_outputs(output: TextIO, outputs: Mapping[str, str]) -> None:

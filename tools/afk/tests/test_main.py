@@ -39,6 +39,16 @@ class TestMain:
         delimiter = lines[1].removeprefix("effects<<")
         assert lines == ["earlier=1", f"effects<<{delimiter}", "[]", delimiter]
 
+    def test_runs_the_publish_phase(self, tmp_path: Path) -> None:
+        output = tmp_path / "output"
+        env = {"AFK_AGENT_OUTCOME": "skipped", "GITHUB_OUTPUT": str(output)}
+
+        main(["publish"], GhSpy(), env)
+
+        lines = output.read_text().splitlines()
+        delimiter = lines[0].removeprefix("agent-error<<")
+        assert lines == [f"agent-error<<{delimiter}", "", delimiter]
+
     def test_rejects_an_unknown_phase(self, tmp_path: Path) -> None:
         with pytest.raises(SystemExit):
             main(["unknown"], GhSpy(), {"GITHUB_OUTPUT": str(tmp_path / "output")})

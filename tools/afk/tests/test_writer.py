@@ -7,10 +7,15 @@ from pathlib import Path
 import pytest
 
 from afk.effects import (
+    AddPullRequestLabel,
     Comment,
+    CreatePullRequest,
     DispatchWorkflow,
     EditLabels,
+    EditPullRequest,
     Effect,
+    MarkPullRequestReady,
+    PushBranch,
     React,
 )
 from afk.writer import Writer, write_outputs
@@ -27,6 +32,13 @@ EFFECTS: list[Effect] = [
     DispatchWorkflow(workflow="afk-run.yml", inputs={"number": "7"}),
     EditLabels(number=7, add=("afk:in-progress",), remove=("afk:queued",)),
     Comment(number=7, body="Promoted."),
+]
+PUBLISH_EFFECTS: list[Effect] = [
+    PushBranch(repository="owner/repo", branch="afk/issue-7-100"),
+    CreatePullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
+    EditPullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
+    AddPullRequestLabel(branch="afk/issue-7-100", label="needs-car:copper"),
+    MarkPullRequestReady(branch="afk/issue-7-100"),
 ]
 
 
@@ -102,6 +114,82 @@ class TestWriter:
                     "app-token",
                     id="reacts to a comment with the App's token",
                 ),
+                pytest.param(
+                    PushBranch(repository="owner/repo", branch="afk/issue-7-100"),
+                    [
+                        "git",
+                        "-c",
+                        "core.hooksPath=/dev/null",
+                        "-c",
+                        "credential.helper=",
+                        "-c",
+                        "credential.helper=!gh auth git-credential",
+                        "push",
+                        "https://github.com/owner/repo.git",
+                        "HEAD:refs/heads/afk/issue-7-100",
+                    ],
+                    "app-token",
+                    id="pushes HEAD with the App's token through gh, without hooks",
+                ),
+                pytest.param(
+                    CreatePullRequest(
+                        branch="afk/issue-7-100", title="feat: x", body="Closes #7"
+                    ),
+                    [
+                        "gh",
+                        "pr",
+                        "create",
+                        "--draft",
+                        "--base",
+                        "main",
+                        "--head",
+                        "afk/issue-7-100",
+                        "--title",
+                        "feat: x",
+                        "--body",
+                        "Closes #7",
+                    ],
+                    "app-token",
+                    id="opens a draft PR into main with the App's token",
+                ),
+                pytest.param(
+                    EditPullRequest(
+                        branch="afk/issue-7-100", title="feat: x", body="Closes #7"
+                    ),
+                    [
+                        "gh",
+                        "pr",
+                        "edit",
+                        "afk/issue-7-100",
+                        "--title",
+                        "feat: x",
+                        "--body",
+                        "Closes #7",
+                    ],
+                    "app-token",
+                    id="edits a branch's PR with the App's token",
+                ),
+                pytest.param(
+                    AddPullRequestLabel(
+                        branch="afk/issue-7-100", label="needs-car:copper"
+                    ),
+                    [
+                        "gh",
+                        "pr",
+                        "edit",
+                        "afk/issue-7-100",
+                        "--add-label",
+                        "needs-car:copper",
+                    ],
+                    "app-token",
+                    id="labels a branch's PR with the App's token",
+                ),
+                pytest.param(
+                    MarkPullRequestReady(branch="afk/issue-7-100"),
+                    ["gh", "pr", "ready", "afk/issue-7-100"],
+                    "app-token",
+                    id="marks a branch's PR ready with the App's token",
+                ),
             ],
         )
         def test_runs_each_write_as_its_gh_command_with_its_token(
@@ -117,7 +205,7 @@ class TestWriter:
             gh = GhSpy()
             writer = Writer(gh, {**ENV, "AFK_DRY_RUN": "true"}, tmp_path / "output")
 
-            for effect in EFFECTS:
+            for effect in EFFECTS + PUBLISH_EFFECTS:
                 writer.write(effect)
 
             assert gh.calls == []

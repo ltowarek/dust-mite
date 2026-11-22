@@ -44,4 +44,55 @@ class React:
     content: str
 
 
-Effect = DispatchWorkflow | EditLabels | Comment | React
+@dataclass(frozen=True)
+class PushBranch:
+    """Push `HEAD` to a branch of a repository."""
+
+    repository: str
+    branch: str
+
+
+@dataclass(frozen=True)
+class CreatePullRequest:
+    """Open a draft pull request from a branch into `main`."""
+
+    branch: str
+    title: str
+    body: str
+
+
+@dataclass(frozen=True)
+class EditPullRequest:
+    """Replace the title and body of a branch's open pull request."""
+
+    branch: str
+    title: str
+    body: str
+
+
+@dataclass(frozen=True)
+class AddPullRequestLabel:
+    """Add a label to a branch's open pull request."""
+
+    branch: str
+    label: str
+
+
+@dataclass(frozen=True)
+class MarkPullRequestReady:
+    """Mark a branch's open draft pull request ready for review."""
+
+    branch: str
+
+
+Effect = (
+    DispatchWorkflow
+    | EditLabels
+    | Comment
+    | React
+    | PushBranch
+    | CreatePullRequest
+    | EditPullRequest
+    | AddPullRequestLabel
+    | MarkPullRequestReady
+)

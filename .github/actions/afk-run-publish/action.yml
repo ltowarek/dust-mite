@@ -1,0 +1,84 @@
+name: AFK run publish
+description: Push an AFK run's branch and open its draft PR, or hand its ticket to a car agent session or back to triage, and refuse agent commits that change .github/ or tools/
+
+inputs:
+  ticket:
+    description: The ticket or spec that the AFK run runs on
+    required: true
+  worked-ticket:
+    description: The ticket that the agent worked, a spec's child ticket or the ticket itself
+    required: true
+  branch:
+    description: The branch to push
+    required: true
+  last-run:
+    description: Whether this run is the last of its ticket or spec, so that it hands the PR on
+    required: true
+  base:
+    description: The commit that the agent started from; every commit after it is the agent's own
+    required: true
+  agent-outcome:
+    description: The outcome of the agent step
+    required: true
+  agent-output:
+    description: The agent's structured output
+    required: false
+    default: ""
+  execution-file:
+    description: The agent's execution file, read for its error when the agent step did not succeed
+    required: false
+    default: ""
+  app-token:
+    description: The AFK App's token with Contents, Issues and Pull requests write, for the reads, the push, the PR, labels and comments
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  agent-error:
+    description: The error that the agent reports, set only when the agent step did not succeed
+    value: ${{ steps.publish.outputs.agent-error }}
+  outcome:
+    description: The agent's outcome, done, spec_gap or needs_car
+    value: ${{ steps.publish.outputs.outcome }}
+  needs-car-reason:
+    description: Why finding the fix needs the car
+    value: ${{ steps.publish.outputs.needs-car-reason }}
+  pr-url:
+    description: The branch's open PR, set only when the outcome is done
+    value: ${{ steps.publish.outputs.pr-url }}
+  sha:
+    description: The pushed commit, set only when the outcome is done
+    value: ${{ steps.publish.outputs.sha }}
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.publish.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Publish the agent's work, or hand the ticket on
+      id: publish
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_TICKET: ${{ inputs.ticket }}
+        AFK_WORKED_TICKET: ${{ inputs.worked-ticket }}
+        AFK_BRANCH: ${{ inputs.branch }}
+        AFK_LAST_RUN: ${{ inputs.last-run }}
+        AFK_BASE: ${{ inputs.base }}
+        AFK_AGENT_OUTCOME: ${{ inputs.agent-outcome }}
+        AFK_AGENT_OUTPUT: ${{ inputs.agent-output }}
+        AFK_EXECUTION_FILE: ${{ inputs.execution-file }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        AFK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        "$AFK_PYTHON" -m afk publish
