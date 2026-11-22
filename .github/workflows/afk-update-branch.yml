@@ -50,6 +50,13 @@ on:
         required: true
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
+    outputs:
+      publish-effects:
+        description: The publish phase's planned writes as a JSON array, set only in a dry run
+        value: ${{ jobs.update-branch.outputs.effects }}
+      finish-effects:
+        description: The finish phase's planned writes as a JSON array, set only in a dry run
+        value: ${{ jobs.finish.outputs.effects }}
 
 permissions: {}
 

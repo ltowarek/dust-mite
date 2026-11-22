@@ -1278,6 +1278,60 @@ jobs:
         run: |
           jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run on this PR failed") | not))' <<<"$FINISH_EFFECTS"
 
+  # The canary PR's branch is behind main without conflicting with it, so its update merges cleanly and runs no agent.
+  afk-update-branch-workflow:
+    # The production jobs' permissions.
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+
+    uses: $/.github/workflows/afk-update-branch.yml
+    with:
+      number: ${{ fromJSON(vars.AFK_CANARY_PR) }}
+      dry-run: true
+      model: claude-haiku-5-5
+      effort: low
+    secrets:
+      AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  afk-update-branch-workflow-assertions:
+    needs: afk-update-branch-workflow
+    # Also after a failed run, whose finish effects then hold its failure comment.
+    if: '!cancelled()'
+    permissions: {}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CANARY_PR: ${{ vars.AFK_CANARY_PR }}
+      PUBLISH_EFFECTS: ${{ needs.afk-update-branch-workflow.outputs.publish-effects }}
+      FINISH_EFFECTS: ${{ needs.afk-update-branch-workflow.outputs.finish-effects }}
+
+    steps:
+      - name: Assert that publish pushes the merge with a lease on the canary PR's head
+        run: |
+          jq -e 'any(.[]; .type == "PushBranch" and (.lease | length) == 40)' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that publish comments the merge on the canary PR
+        run: |
+          jq -e 'any(.[]; .type == "Comment" and .number == (env.CANARY_PR | tonumber) and (.body | startswith("Merged `main`") or startswith("> *Conflicts with `main`")))' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that finish clears afk:in-progress
+        run: |
+          jq -e 'any(.[]; . == {"type": "EditLabels", "number": (env.CANARY_PR | tonumber), "add": [], "remove": ["afk:in-progress"]})' <<<"$FINISH_EFFECTS"
+
+      - name: Assert that finish plans no failure comment
+        run: |
+          jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run that updates this PR") | not))' <<<"$FINISH_EFFECTS"
+
   actions-lock:
     permissions:
       contents: read
