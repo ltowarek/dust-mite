@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from afk.effects import Comment, DispatchWorkflow, ReplaceLabel
+from afk.effects import Comment, DispatchWorkflow, EditLabels
 from afk.promote_queued import Promotion, Refusal, command_id, plan, select
 
 REPOSITORY = "owner/repo"
@@ -140,7 +140,7 @@ class TestPlan:
         effects = plan([Refusal(number=7, parent=3)], {}, blocking_ticket=12)
 
         assert effects == [
-            ReplaceLabel(number=7, remove="afk:queued", add="afk:blocked"),
+            EditLabels(number=7, add=("afk:blocked",), remove=("afk:queued",)),
             Comment(
                 number=7,
                 body="Refused to promote: this ticket is a child ticket of #3. Child "
@@ -156,7 +156,7 @@ class TestPlan:
             DispatchWorkflow(
                 workflow="afk-run.yml", inputs={"number": "7", "comment-id": "555"}
             ),
-            ReplaceLabel(number=7, remove="afk:queued", add="afk:in-progress"),
+            EditLabels(number=7, add=("afk:in-progress",), remove=("afk:queued",)),
             Comment(
                 number=7,
                 body="Unblocked by #12 closing; promoted from `afk:queued` to "

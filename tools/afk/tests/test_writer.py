@@ -8,10 +8,9 @@ import pytest
 from afk.effects import (
     Comment,
     DispatchWorkflow,
+    EditLabels,
     Effect,
     React,
-    RemoveLabel,
-    ReplaceLabel,
 )
 from afk.writer import Writer
 
@@ -33,7 +32,7 @@ class RunnerSpy:
 
 EFFECTS: list[Effect] = [
     DispatchWorkflow(workflow="afk-run.yml", inputs={"number": "7"}),
-    ReplaceLabel(number=7, remove="afk:queued", add="afk:in-progress"),
+    EditLabels(number=7, add=("afk:in-progress",), remove=("afk:queued",)),
     Comment(number=7, body="Promoted."),
 ]
 
@@ -62,25 +61,33 @@ class TestWriter:
                     id="dispatches a workflow with the workflow token",
                 ),
                 pytest.param(
-                    ReplaceLabel(number=7, remove="afk:queued", add="afk:blocked"),
+                    EditLabels(
+                        number=7,
+                        add=("afk:blocked", "bug"),
+                        remove=("afk:queued", "afk:in-progress"),
+                    ),
                     [
                         "gh",
                         "issue",
                         "edit",
                         "7",
-                        "--remove-label",
-                        "afk:queued",
                         "--add-label",
                         "afk:blocked",
+                        "--add-label",
+                        "bug",
+                        "--remove-label",
+                        "afk:queued",
+                        "--remove-label",
+                        "afk:in-progress",
                     ],
                     "app-token",
-                    id="replaces a label with the App's token",
+                    id="adds and removes labels with the App's token",
                 ),
                 pytest.param(
-                    RemoveLabel(number=7, label="afk:in-progress"),
+                    EditLabels(number=7, remove=("afk:in-progress",)),
                     ["gh", "issue", "edit", "7", "--remove-label", "afk:in-progress"],
                     "app-token",
-                    id="removes a label with the App's token",
+                    id="only removes labels when it adds none",
                 ),
                 pytest.param(
                     Comment(number=7, body="Hello `there`"),
@@ -136,10 +143,10 @@ class TestWriter:
                     "inputs": {"number": "7"},
                 },
                 {
-                    "type": "ReplaceLabel",
+                    "type": "EditLabels",
                     "number": 7,
-                    "remove": "afk:queued",
-                    "add": "afk:in-progress",
+                    "add": ["afk:in-progress"],
+                    "remove": ["afk:queued"],
                 },
                 {"type": "Comment", "number": 7, "body": "Promoted."},
             ]

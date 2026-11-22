@@ -13,20 +13,12 @@ class DispatchWorkflow:
 
 
 @dataclass(frozen=True)
-class ReplaceLabel:
-    """Replace one label of an issue or pull request with another."""
+class EditLabels:
+    """Add and remove labels of an issue or pull request in one edit."""
 
     number: int
-    remove: str
-    add: str
-
-
-@dataclass(frozen=True)
-class RemoveLabel:
-    """Remove a label from an issue or pull request."""
-
-    number: int
-    label: str
+    add: tuple[str, ...] = ()
+    remove: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -52,4 +44,4 @@ class React:
     content: str
 
 
-Effect = DispatchWorkflow | ReplaceLabel | RemoveLabel | Comment | React
+Effect = DispatchWorkflow | EditLabels | Comment | React

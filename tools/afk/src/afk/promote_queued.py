@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from afk.effects import Comment, DispatchWorkflow, Effect, ReplaceLabel
+from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect
 from afk.labels import Label
 from afk.writer import Runner, StepOutput, Token, Writer
 
@@ -94,7 +94,7 @@ def command_id(pages: list[list[dict[str, Any]]], bot_id: int) -> str | None:
 def _refuse(refusal: Refusal) -> list[Effect]:
     parent = refusal.parent
     return [
-        ReplaceLabel(number=refusal.number, remove=Label.QUEUED, add=Label.BLOCKED),
+        EditLabels(number=refusal.number, add=(Label.BLOCKED,), remove=(Label.QUEUED,)),
         Comment(
             number=refusal.number,
             body=f"Refused to promote: this ticket is a child ticket of #{parent}. "
@@ -113,8 +113,8 @@ def _promote(
     # Dispatch first: a failed dispatch leaves the ticket queued, not stale in progress.
     return [
         DispatchWorkflow(workflow="afk-run.yml", inputs=inputs),
-        ReplaceLabel(
-            number=promotion.number, remove=Label.QUEUED, add=Label.IN_PROGRESS
+        EditLabels(
+            number=promotion.number, add=(Label.IN_PROGRESS,), remove=(Label.QUEUED,)
         ),
         Comment(
             number=promotion.number,

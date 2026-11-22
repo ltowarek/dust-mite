@@ -8,10 +8,9 @@ from enum import StrEnum
 from afk.effects import (
     Comment,
     DispatchWorkflow,
+    EditLabels,
     Effect,
     React,
-    RemoveLabel,
-    ReplaceLabel,
 )
 
 Runner = Callable[[Sequence[str], Mapping[str, str]], str]
@@ -44,21 +43,12 @@ def gh_command(effect: Effect) -> GhCommand:
             return GhCommand(
                 ["gh", "workflow", "run", workflow, *fields], Token.WORKFLOW
             )
-        case ReplaceLabel(number=number, remove=remove, add=add):
-            args = [
-                "issue",
-                "edit",
-                str(number),
-                "--remove-label",
-                remove,
-                "--add-label",
-                add,
+        case EditLabels(number=number, add=add, remove=remove):
+            flags = [
+                *(arg for label in add for arg in ("--add-label", label)),
+                *(arg for label in remove for arg in ("--remove-label", label)),
             ]
-            return GhCommand(["gh", *args], Token.APP)
-        case RemoveLabel(number=number, label=label):
-            return GhCommand(
-                ["gh", "issue", "edit", str(number), "--remove-label", label], Token.APP
-            )
+            return GhCommand(["gh", "issue", "edit", str(number), *flags], Token.APP)
         case Comment(number=number, body=body):
             return GhCommand(
                 ["gh", "issue", "comment", str(number), "--body", body], Token.APP

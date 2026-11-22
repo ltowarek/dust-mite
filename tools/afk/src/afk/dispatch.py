@@ -10,11 +10,10 @@ from typing import Any
 from afk.effects import (
     Comment,
     DispatchWorkflow,
+    EditLabels,
     Effect,
     React,
     Reaction,
-    RemoveLabel,
-    ReplaceLabel,
 )
 from afk.labels import Label
 from afk.writer import Runner, StepOutput, Token, Writer
@@ -153,7 +152,9 @@ def _accept(target: Target, accept: Accept) -> list[Effect]:
         inputs["head-sha"] = accept.head_sha
     return [
         React(comment_id=target.comment_id, content=Reaction.EYES),
-        ReplaceLabel(number=target.number, remove=Label.BLOCKED, add=Label.IN_PROGRESS),
+        EditLabels(
+            number=target.number, add=(Label.IN_PROGRESS,), remove=(Label.BLOCKED,)
+        ),
         DispatchWorkflow(workflow=accept.workflow, inputs=inputs),
     ]
 
@@ -163,7 +164,7 @@ def _queue(target: Target, queue: Queue) -> list[Effect]:
     # The marker carries the command to the run that promote-queued dispatches.
     return [
         React(comment_id=target.comment_id, content=Reaction.EYES),
-        ReplaceLabel(number=target.number, remove=Label.BLOCKED, add=Label.QUEUED),
+        EditLabels(number=target.number, add=(Label.QUEUED,), remove=(Label.BLOCKED,)),
         Comment(
             number=target.number,
             body=f"Queued (`{Label.QUEUED}`) until its blocking tickets close: "
@@ -192,7 +193,7 @@ def release(target: Target, *, accepted: bool) -> list[Effect]:
     # Only an accepted command added afk:in-progress; otherwise another run owns it.
     effects: list[Effect] = []
     if accepted:
-        effects.append(RemoveLabel(number=target.number, label=Label.IN_PROGRESS))
+        effects.append(EditLabels(number=target.number, remove=(Label.IN_PROGRESS,)))
     effects.append(React(comment_id=target.comment_id, content=Reaction.CONFUSED))
     return effects
 

@@ -311,7 +311,7 @@ jobs:
           - case: queues a ticket with open blockers
             number: 385
             body: '/afk implement'
-            assertion: '.[1] == {"type":"ReplaceLabel","number":385,"remove":"afk:blocked","add":"afk:queued"}'
+            assertion: '.[1] == {"type":"EditLabels","number":385,"add":["afk:queued"],"remove":["afk:blocked"]}'
           - case: dispatches an issue's AFK run
             number: 317
             body: '/afk implement'
@@ -372,7 +372,7 @@ jobs:
           - case: releases an accepted target
             number: 317
             accepted: 'true'
-            assertion: '. == [{"type":"RemoveLabel","number":317,"label":"afk:in-progress"},{"type":"React","comment_id":1,"content":"confused"}]'
+            assertion: '. == [{"type":"EditLabels","number":317,"add":[],"remove":["afk:in-progress"]},{"type":"React","comment_id":1,"content":"confused"}]'
           - case: only reacts when the command was not accepted
             number: 317
             accepted: ''

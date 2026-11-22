@@ -24,7 +24,7 @@ from afk.dispatch import (
     refusal,
     release,
 )
-from afk.effects import Comment, DispatchWorkflow, React, RemoveLabel, ReplaceLabel
+from afk.effects import Comment, DispatchWorkflow, EditLabels, React
 
 
 class TestParse:
@@ -157,7 +157,7 @@ class TestPlan:
 
         assert effects == [
             React(comment_id=555, content="eyes"),
-            ReplaceLabel(number=7, remove="afk:blocked", add="afk:queued"),
+            EditLabels(number=7, add=("afk:queued",), remove=("afk:blocked",)),
             Comment(
                 number=7,
                 body="Queued (`afk:queued`) until its blocking tickets close: #4, #9. "
@@ -171,7 +171,7 @@ class TestPlan:
 
         assert effects == [
             React(comment_id=555, content="eyes"),
-            ReplaceLabel(number=7, remove="afk:blocked", add="afk:in-progress"),
+            EditLabels(number=7, add=("afk:in-progress",), remove=("afk:blocked",)),
             DispatchWorkflow(
                 workflow="afk-run.yml", inputs={"number": "7", "comment-id": "555"}
             ),
@@ -189,7 +189,7 @@ class TestPlan:
 class TestRelease:
     def test_releases_an_accepted_target_and_reacts_confused(self) -> None:
         assert release(TARGET, accepted=True) == [
-            RemoveLabel(number=7, label="afk:in-progress"),
+            EditLabels(number=7, remove=("afk:in-progress",)),
             React(comment_id=555, content="confused"),
         ]
 
@@ -347,10 +347,10 @@ class TestRun:
                 "issue",
                 "edit",
                 "7",
-                "--remove-label",
-                "afk:blocked",
                 "--add-label",
                 "afk:in-progress",
+                "--remove-label",
+                "afk:blocked",
             ],
         ]
 
@@ -362,7 +362,12 @@ class TestRunRelease:
             pytest.param(
                 "true",
                 [
-                    {"type": "RemoveLabel", "number": 7, "label": "afk:in-progress"},
+                    {
+                        "type": "EditLabels",
+                        "number": 7,
+                        "add": [],
+                        "remove": ["afk:in-progress"],
+                    },
                     {"type": "React", "comment_id": 555, "content": "confused"},
                 ],
                 id="releases an accepted target",
