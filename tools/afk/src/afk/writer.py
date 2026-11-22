@@ -113,7 +113,8 @@ class Writer:
             case GhCommand(args=args, token=token):
                 run_gh(self._gh, self._env, token, args)
             case GitCommand(args=args, token=token):
-                run_git(self._git, self._env, token, args)
+                secret = None if token is None else self._env[token]
+                run_git(self._git, self._env, secret, args)
             case command:
                 assert_never(command)
 

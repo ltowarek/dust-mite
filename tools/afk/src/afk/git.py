@@ -3,7 +3,6 @@
 import base64
 from collections.abc import Mapping, Sequence
 
-from afk.github import Token
 from afk.runner import Runner
 
 
@@ -18,14 +17,12 @@ def _authorization(token: str) -> dict[str, str]:
 
 
 def run_git(
-    git: Runner, env: Mapping[str, str], token: Token | None, args: Sequence[str]
+    git: Runner, env: Mapping[str, str], token: str | None, args: Sequence[str]
 ) -> str:
-    """Run a git command without token variables, authenticated by `token` if set."""
+    """Run a git command without `*_TOKEN` variables, authenticated by `token`."""
     # The agent's repository config can run code, so git sees no token variable.
-    clean = {
-        key: value for key, value in env.items() if key not in {"GH_TOKEN", *Token}
-    }
-    auth = _authorization(env[token]) if token is not None else {}
+    clean = {key: value for key, value in env.items() if not key.endswith("_TOKEN")}
+    auth = _authorization(token) if token is not None else {}
     return git(args, {**clean, **auth})
 
 
