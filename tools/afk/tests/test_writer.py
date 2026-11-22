@@ -28,20 +28,6 @@ ENV = {
 }
 
 
-# One of every kind of write.
-EFFECTS: list[Effect] = [
-    DispatchWorkflow(workflow="afk-run.yml", inputs={"number": "7"}),
-    EditLabels(number=7, add=("afk:in-progress",), remove=("afk:queued",)),
-    Comment(number=7, body="Promoted."),
-    React(comment_id=555, content="eyes"),
-    PushBranch(repository="owner/repo", branch="afk/issue-7-100"),
-    CreatePullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
-    EditPullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
-    EditPullRequestLabels(branch="afk/issue-7-100", add=("needs-car:copper",)),
-    MarkPullRequestReady(branch="afk/issue-7-100"),
-]
-
-
 class TestWriter:
     class TestWrite:
         @pytest.mark.parametrize(
@@ -218,7 +204,26 @@ class TestWriter:
             env = {**ENV, "AFK_DRY_RUN": "true"}
             writer = Writer(gh, git, env, tmp_path / "output")
 
-            for effect in EFFECTS:
+            # One of every kind of write.
+            effects: list[Effect] = [
+                DispatchWorkflow(workflow="afk-run.yml", inputs={"number": "7"}),
+                EditLabels(number=7, add=("afk:in-progress",), remove=("afk:queued",)),
+                Comment(number=7, body="Promoted."),
+                React(comment_id=555, content="eyes"),
+                PushBranch(repository="owner/repo", branch="afk/issue-7-100"),
+                CreatePullRequest(
+                    branch="afk/issue-7-100", title="feat: x", body="Closes #7"
+                ),
+                EditPullRequest(
+                    branch="afk/issue-7-100", title="feat: x", body="Closes #7"
+                ),
+                EditPullRequestLabels(
+                    branch="afk/issue-7-100", add=("needs-car:copper",)
+                ),
+                MarkPullRequestReady(branch="afk/issue-7-100"),
+            ]
+
+            for effect in effects:
                 writer.write(effect)
 
             assert (gh.calls, git.calls) == ([], [])

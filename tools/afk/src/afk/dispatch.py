@@ -25,10 +25,6 @@ query($owner: String!, $repo: String!, $number: Int!) {
   }
 }
 """
-_UNKNOWN = (
-    "Unknown AFK command. The first line of the comment must be "
-    "`/afk implement` or `/afk update-branch`."
-)
 
 
 class Verb(StrEnum):
@@ -247,7 +243,11 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
         case None:
             pass
         case Verb.UNKNOWN:
-            effects = plan(target, Refusal(_UNKNOWN))
+            unknown = (
+                "Unknown AFK command. The first line of the comment must be "
+                "`/afk implement` or `/afk update-branch`."
+            )
+            effects = plan(target, Refusal(unknown))
         case verb:
             target_issue = _read_issue(gh, env)
             kind = target_issue.kind

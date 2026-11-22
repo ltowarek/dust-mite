@@ -8,10 +8,6 @@ import pytest
 from afk.__main__ import main
 from tests.test_doubles import GhSpy, GitSpy
 
-NO_BLOCKED_TICKETS = json.dumps(
-    {"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}}
-)
-
 
 class TestMain:
     def test_writes_the_phase_outputs_to_the_step_output_file(
@@ -31,7 +27,13 @@ class TestMain:
 
         main(
             ["promote-queued"],
-            GhSpy({("api", "graphql"): NO_BLOCKED_TICKETS}),
+            GhSpy(
+                {
+                    ("api", "graphql"): json.dumps(
+                        {"data": {"repository": {"issue": {"blocking": {"nodes": []}}}}}
+                    )
+                }
+            ),
             GitSpy(),
             env,
         )

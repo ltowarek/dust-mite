@@ -20,8 +20,6 @@ from afk.effects import (
 from afk.writer import Runner, Token, Writer, run_gh, run_git
 
 _LINE_BREAK = re.compile(r"\s*\n\s*")
-# Code here runs with the AFK App's write token in later runs (ADR 0008).
-_PROTECTED = (".github/", "tools/")
 
 
 @dataclass(frozen=True)
@@ -38,7 +36,8 @@ class Run:
 
 def protected(paths: Iterable[str]) -> list[str]:
     """Return the changed files under `.github/` or `tools/`, sorted and unique."""
-    return sorted({path for path in paths if path.startswith(_PROTECTED)})
+    # Code here runs with the AFK App's write token in later runs (ADR 0008).
+    return sorted({path for path in paths if path.startswith((".github/", "tools/"))})
 
 
 def agent_error(execution: list[dict[str, Any]]) -> str:

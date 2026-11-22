@@ -282,9 +282,6 @@ ENV = {
     "GH_REPO": "owner/repo",
 }
 ISSUE_READ = ("api", "repos/owner/repo/issues/7")
-NO_BLOCKERS = json.dumps(
-    {"data": {"repository": {"issue": {"blockedBy": {"nodes": []}}}}}
-)
 
 
 class TestRun:
@@ -300,7 +297,9 @@ class TestRun:
         gh = GhSpy(
             {
                 ISSUE_READ: json.dumps({"labels": []}),
-                ("api", "graphql"): NO_BLOCKERS,
+                ("api", "graphql"): json.dumps(
+                    {"data": {"repository": {"issue": {"blockedBy": {"nodes": []}}}}}
+                ),
             },
             failing=("workflow", "run"),
         )

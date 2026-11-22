@@ -340,21 +340,14 @@ CHANGED_FILES_READ = (
     "--diff-merges=first-parent",
     "base123..HEAD",
 )
-OPEN_PR_READ = (
-    "pr",
-    "list",
-    "--head",
-    "afk/issue-7-100",
-    "--state",
-    "open",
-    "--json",
-    "url",
-)
-HEAD_READ = ("rev-parse", "HEAD")
-GH_READS: dict[tuple[str, ...], str] = {OPEN_PR_READ: json.dumps([{"url": PR_URL}])}
+GH_READS: dict[tuple[str, ...], str] = {
+    ("pr", "list", "--head", "afk/issue-7-100", "--state", "open", "--json", "url"): (
+        json.dumps([{"url": PR_URL}])
+    ),
+}
 GIT_READS: dict[tuple[str, ...], str] = {
     CHANGED_FILES_READ: "docs/a.md\0",
-    HEAD_READ: "abc123\n",
+    ("rev-parse", "HEAD"): "abc123\n",
 }
 
 

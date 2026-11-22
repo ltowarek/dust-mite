@@ -65,12 +65,6 @@ def make_pr_refusal(number: int) -> str:
     )
 
 
-CHILD_TICKET_REFUSAL = (
-    "Refused to run: this ticket is a child ticket of #3. Child tickets run only "
-    "through their spec; comment `/afk implement` on #3 instead."
-)
-
-
 class TestCheck:
     @pytest.mark.parametrize(
         ("state", "result"),
@@ -94,7 +88,11 @@ class TestCheck:
                 State(make_ticket(parent=3, blocked_by=1)),
                 CheckResult(
                     url=f"{URL}/7",
-                    refusal=CHILD_TICKET_REFUSAL,
+                    refusal=(
+                        "Refused to run: this ticket is a child ticket of #3. Child "
+                        "tickets run only through their spec; comment "
+                        "`/afk implement` on #3 instead."
+                    ),
                     block=True,
                     branch="afk/issue-7-4242",
                     last_run=True,
