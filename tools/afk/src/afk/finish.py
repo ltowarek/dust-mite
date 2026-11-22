@@ -41,9 +41,14 @@ class Run:
     """The AFK run that ends."""
 
     workflow: Workflow
-    ticket: int
+    number: int
     comment_id: int | None
     url: str
+
+    @property
+    def on_pr(self) -> bool:
+        """Whether the run worked on a PR rather than a ticket."""
+        return self.workflow == Workflow.AFK_RUN_PR
 
 
 @dataclass(frozen=True)
@@ -115,24 +120,24 @@ def failed_step(response: Mapping[str, Any]) -> str | None:
 
 
 def _worked(run: Run, needs: Needs) -> int:
-    return needs.child_ticket or run.ticket
+    return needs.child_ticket or run.number
 
 
 def _stopped(run: Run, text: str, reason: str, then: str) -> list[Effect]:
     body = f"{text}.\n\n**Reason:** {reason}\n\n**Run:** {run.url}\n\n{then}\n"
     return [
-        EditLabels(number=run.ticket, add=(Label.BLOCKED,)),
-        Comment(number=run.ticket, body=body),
+        EditLabels(number=run.number, add=(Label.BLOCKED,)),
+        Comment(number=run.number, body=body),
     ]
 
 
 def _refuse(run: Run, needs: Needs) -> list[Effect]:
     if not needs.refusal:
         return []
-    label: list[Effect] = [EditLabels(number=run.ticket, add=(Label.BLOCKED,))]
+    label: list[Effect] = [EditLabels(number=run.number, add=(Label.BLOCKED,))]
     return [
         *(label if needs.block else []),
-        Comment(number=run.ticket, body=needs.refusal),
+        Comment(number=run.number, body=needs.refusal),
     ]
 
 
@@ -164,8 +169,8 @@ def _already_covered(run: Run, needs: Needs) -> list[Effect]:
     if not lines:
         return []
     body = "## Follow-ups already covered\n\n{}\n".format("\n".join(lines))
-    if run.workflow == Workflow.AFK_RUN_PR:
-        return [Comment(number=run.ticket, body=body)]
+    if run.on_pr:
+        return [Comment(number=run.number, body=body)]
     if not needs.pr_url:
         return []
     return [CommentPullRequest(branch=needs.branch, body=body)]
@@ -182,7 +187,7 @@ def _close_child_ticket(run: Run, needs: Needs) -> list[Effect]:
 def _clear_blocked(run: Run, needs: Needs) -> list[Effect]:
     if not needs.implemented:
         return []
-    return [EditLabels(number=run.ticket, remove=(Label.BLOCKED,))]
+    return [EditLabels(number=run.number, remove=(Label.BLOCKED,))]
 
 
 def _stop_spec(run: Run, needs: Needs) -> list[Effect]:
@@ -205,7 +210,7 @@ def _report_failure(run: Run, needs: Needs, step: str) -> list[Effect]:
     if needs.agent_error:
         reason = f"{reason} The agent reported: {needs.agent_error}"
     text = "The AFK run failed"
-    if run.workflow == Workflow.AFK_RUN_PR:
+    if run.on_pr:
         text = "The AFK run on this PR failed"
     elif needs.spec:
         text = f"The AFK run failed on child ticket #{_worked(run, needs)}"
@@ -216,9 +221,9 @@ def _queue(run: Run) -> list[Effect]:
     # The marker carries the AFK command to the run that promote-queued dispatches.
     marker = f"<!-- afk-command: {run.comment_id or ''} -->"
     return [
-        EditLabels(number=run.ticket, add=(Label.QUEUED,)),
+        EditLabels(number=run.number, add=(Label.QUEUED,)),
         Comment(
-            number=run.ticket,
+            number=run.number,
             body=f"Queued (`{Label.QUEUED}`) until one of its child tickets is "
             f"unblocked. {marker}",
         ),
@@ -226,14 +231,14 @@ def _queue(run: Run) -> list[Effect]:
 
 
 def _dispatch_next_run(run: Run) -> list[Effect]:
-    inputs = {"number": str(run.ticket)}
+    inputs = {"number": str(run.number)}
     if run.comment_id is not None:
         inputs["comment-id"] = str(run.comment_id)
     return [DispatchWorkflow(workflow="afk-run.yml", inputs=inputs)]
 
 
 def _release(run: Run) -> list[Effect]:
-    return [EditLabels(number=run.ticket, remove=(Label.IN_PROGRESS,))]
+    return [EditLabels(number=run.number, remove=(Label.IN_PROGRESS,))]
 
 
 def _react(run: Run, content: Reaction) -> list[Effect]:
@@ -260,7 +265,7 @@ def plan(run: Run, needs: Needs, step: str | None) -> list[Effect]:
     if needs.spec and needs.sha and not needs.last_run:
         return [*effects, *_dispatch_next_run(run)]
     # A PR run has no outcome: its work is done when its implement job succeeds.
-    outcome = "done" if run.workflow == Workflow.AFK_RUN_PR else needs.outcome
+    outcome = "done" if run.on_pr else needs.outcome
     done = not needs.refusal and needs.implemented and outcome == "done"
     reaction = Reaction.ROCKET if done else Reaction.CONFUSED
     return [*effects, *_release(run), *_react(run, reaction)]
@@ -280,7 +285,7 @@ def _finished(env: Mapping[str, str]) -> Run:
     comment_id = env.get("AFK_COMMENT_ID", "")
     return Run(
         workflow=Workflow(env["AFK_WORKFLOW"]),
-        ticket=int(env["AFK_TICKET"]),
+        number=int(env["AFK_TICKET"]),
         comment_id=int(comment_id) if comment_id else None,
         url=f"{env['GITHUB_SERVER_URL']}/{repository}/actions/runs/"
         f"{env['GITHUB_RUN_ID']}",

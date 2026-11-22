@@ -28,7 +28,7 @@ from tests.test_doubles import GhCall, GhSpy, GitSpy, read_outputs
 # Joins a job and its step in a failure reason.
 SEP = " \N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK} "
 RUN_URL = "https://github.com/owner/repo/actions/runs/99"
-RUN = Run(workflow=Workflow.AFK_RUN, ticket=12, comment_id=None, url=RUN_URL)
+RUN = Run(workflow=Workflow.AFK_RUN, number=12, comment_id=None, url=RUN_URL)
 BRANCH = "afk/issue-12-99"
 SPEC_RUN = {"spec": "true", "child-ticket": "14"}
 DONE = {
@@ -39,7 +39,7 @@ DONE = {
 BLOCK = EditLabels(number=12, add=("afk:blocked",))
 UNBLOCK = EditLabels(number=12, remove=("afk:blocked",))
 RELEASE = EditLabels(number=12, remove=("afk:in-progress",))
-PR_RUN = Run(workflow=Workflow.AFK_RUN_PR, ticket=12, comment_id=555, url=RUN_URL)
+PR_RUN = Run(workflow=Workflow.AFK_RUN_PR, number=12, comment_id=555, url=RUN_URL)
 
 
 def needs_context(
