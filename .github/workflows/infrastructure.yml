@@ -370,9 +370,11 @@ jobs:
         include:
           # The release reads nothing, so #317 only names a closed ticket.
           - case: releases an accepted target
+            number: 317
             accepted: 'true'
             assertion: '. == [{"type":"RemoveLabel","number":317,"label":"afk:in-progress"},{"type":"React","comment_id":1,"content":"confused"}]'
           - case: only reacts when the command was not accepted
+            number: 317
             accepted: ''
             assertion: '. == [{"type":"React","comment_id":1,"content":"confused"}]'
 
@@ -390,7 +392,7 @@ jobs:
         id: release
         uses: $/.github/actions/afk-dispatch-release
         with:
-          number: 317
+          number: ${{ matrix.number }}
           comment-id: 1
           accepted: ${{ matrix.accepted }}
           app-token: ${{ steps.write-token.outputs.token }}
