@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from afk.effects import EditLabels
@@ -110,12 +110,17 @@ class CheckResult:
 
 def outputs(result: CheckResult) -> dict[str, str]:
     """Return the check job's step outputs; an unset field sets none."""
-    values = {f.name.replace("_", "-"): getattr(result, f.name) for f in fields(result)}
-    return {
-        name: json.dumps(asdict(value)) if isinstance(value, Conversation) else value
-        for name, value in values.items()
-        if value is not None
+    conversation = result.conversation
+    values = {
+        "refusal": result.refusal,
+        "url": result.url,
+        "branch": result.branch,
+        "head-sha": result.head_sha,
+        "conversation": None
+        if conversation is None
+        else json.dumps(asdict(conversation)),
     }
+    return {name: value for name, value in values.items() if value is not None}
 
 
 def check(pr: PullRequest, conversation: Conversation, head_sha: str) -> CheckResult:
