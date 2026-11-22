@@ -78,9 +78,12 @@ class GitCommand:
     token: Token | None
 
 
-def command_for(effect: Effect) -> GhCommand | GitCommand:
+Command = GhCommand | GitCommand
+
+
+def command_for(effect: Effect) -> Command:
     """Return the command that carries out a write."""
-    command: GhCommand | GitCommand
+    command: Command
     match effect:
         case DispatchWorkflow(workflow=workflow, inputs=inputs):
             fields = [
@@ -172,6 +175,8 @@ class Writer:
                 run_gh(self._gh, self._env, token, args)
             case GitCommand(args=args, token=token):
                 run_git(self._git, self._env, token, args)
+            case command:
+                assert_never(command)
 
     def set_output(self, name: str, value: str) -> None:
         """Set a step output now, so that it outlives a later write that fails."""
