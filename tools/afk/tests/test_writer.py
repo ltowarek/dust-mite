@@ -28,12 +28,12 @@ ENV = {
 }
 
 
+# One of every kind of write.
 EFFECTS: list[Effect] = [
     DispatchWorkflow(workflow="afk-run.yml", inputs={"number": "7"}),
     EditLabels(number=7, add=("afk:in-progress",), remove=("afk:queued",)),
     Comment(number=7, body="Promoted."),
-]
-PUBLISH_EFFECTS: list[Effect] = [
+    React(comment_id=555, content="eyes"),
     PushBranch(repository="owner/repo", branch="afk/issue-7-100"),
     CreatePullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
     EditPullRequest(branch="afk/issue-7-100", title="feat: x", body="Closes #7"),
@@ -209,7 +209,7 @@ class TestWriter:
             gh = GhSpy()
             writer = Writer(gh, {**ENV, "AFK_DRY_RUN": "true"}, tmp_path / "output")
 
-            for effect in EFFECTS + PUBLISH_EFFECTS:
+            for effect in EFFECTS:
                 writer.write(effect)
 
             assert gh.calls == []
@@ -230,8 +230,13 @@ class TestWriter:
             output = tmp_path / "output"
             writer = Writer(GhSpy(), {**ENV, "AFK_DRY_RUN": "true"}, output)
 
-            for effect in EFFECTS:
-                writer.write(effect)
+            writer.write(
+                DispatchWorkflow(workflow="afk-run.yml", inputs={"number": "7"})
+            )
+            writer.write(
+                EditLabels(number=7, add=("afk:in-progress",), remove=("afk:queued",))
+            )
+            writer.write(Comment(number=7, body="Promoted."))
             writer.report()
 
             assert json.loads(read_outputs(output)["effects"]) == [
