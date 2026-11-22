@@ -11,7 +11,7 @@ class TestRunGit:
         git = GitSpy()
         env = {"HOME": "/home/runner", "GH_TOKEN": "a", "CLAUDE_CODE_OAUTH_TOKEN": "b"}
 
-        run_git(git, env, "secret", ["push"])
+        run_git(git, env, ["push"], "secret")
 
         assert git.calls == [
             GitCall(

@@ -114,7 +114,7 @@ class Writer:
                 run_gh(self._gh, self._env, token, args)
             case GitCommand(args=args, token=token):
                 secret = None if token is None else self._env[token]
-                run_git(self._git, self._env, secret, args)
+                run_git(self._git, self._env, args, secret)
             case command:
                 assert_never(command)
 

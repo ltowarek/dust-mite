@@ -17,7 +17,7 @@ def _authorization(token: str) -> dict[str, str]:
 
 
 def run_git(
-    git: Runner, env: Mapping[str, str], token: str | None, args: Sequence[str]
+    git: Runner, env: Mapping[str, str], args: Sequence[str], token: str | None = None
 ) -> str:
     """Run a git command without `*_TOKEN` variables, authenticated by `token`."""
     # The agent's repository config can run code, so git sees no token variable.
@@ -44,17 +44,17 @@ def read_changed_files(git: Runner, env: Mapping[str, str], base: str) -> list[s
         "--diff-merges=first-parent",
         f"{base}..HEAD",
     ]
-    return changed_files(run_git(git, env, None, args))
+    return changed_files(run_git(git, env, args))
 
 
 def read_commit_count(git: Runner, env: Mapping[str, str], base: str) -> int:
     """Return how many commits HEAD holds after `base`."""
-    return int(run_git(git, env, None, ["rev-list", "--count", f"{base}..HEAD"]))
+    return int(run_git(git, env, ["rev-list", "--count", f"{base}..HEAD"]))
 
 
 def read_head(git: Runner, env: Mapping[str, str]) -> str:
     """Return the commit that HEAD points at."""
-    return run_git(git, env, None, ["rev-parse", "HEAD"]).strip()
+    return run_git(git, env, ["rev-parse", "HEAD"]).strip()
 
 
 def push_args(repository: str, branch: str, lease: str | None) -> list[str]:
