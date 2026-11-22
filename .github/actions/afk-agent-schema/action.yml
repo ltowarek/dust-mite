@@ -1,0 +1,25 @@
+name: AFK agent schema
+description: Read an AFK agent's output schema from the caller's commit, whatever commit the job checked out
+
+inputs:
+  schema:
+    description: The schema's file name under .github/, such as afk-run-output.schema.json
+    required: true
+
+outputs:
+  json:
+    description: The schema as one line of JSON, for claude-code-action's --json-schema
+    value: ${{ steps.read.outputs.json }}
+
+runs:
+  using: composite
+  steps:
+    # A caller loads this action with $/, which fetches the whole repository at its commit, so the schema sits beside it.
+    - name: Read the schema
+      id: read
+      shell: bash
+      env:
+        SCHEMA: ${{ inputs.schema }}
+      run: |
+        json=$(jq -c . "$GITHUB_ACTION_PATH/../../$SCHEMA")
+        echo "json=$json" >> "$GITHUB_OUTPUT"

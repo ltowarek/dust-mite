@@ -137,13 +137,12 @@ jobs:
           CONVERSATION: ${{ needs.check.outputs.conversation }}
         run: jq . <<<"$CONVERSATION" > "$RUNNER_TEMP/pr-conversation.json"
 
+      # From the workflow's own commit, not the checkout.
       - name: Read the agent's output schema
         id: schema
-        # The workflow's own commit, not the checkout.
-        run: |
-          schema=$(git show "${GITHUB_SHA}:.github/afk-run-pr-output.schema.json")
-          json=$(jq -c . <<<"$schema")
-          echo "json=$json" >> "$GITHUB_OUTPUT"
+        uses: $/.github/actions/afk-agent-schema
+        with:
+          schema: afk-run-pr-output.schema.json
 
       - name: Mint the App's read-only token for the agent
         id: read-token
