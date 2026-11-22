@@ -26,6 +26,13 @@ class Token(StrEnum):
     WORKFLOW = "AFK_WORKFLOW_TOKEN"
 
 
+def run_gh(
+    gh: Runner, env: Mapping[str, str], token: Token, args: Sequence[str]
+) -> str:
+    """Run a gh command with `token` as its GH_TOKEN."""
+    return gh(args, {**env, "GH_TOKEN": env[token]})
+
+
 @dataclass(frozen=True)
 class GhCommand:
     """A `gh` command line and the variable that holds the token it runs with."""
@@ -90,9 +97,7 @@ class Writer:
         if self._dry_run:
             return
         invocation = gh_command(effect)
-        self._gh(
-            invocation.args, {**self._env, "GH_TOKEN": self._env[invocation.token]}
-        )
+        run_gh(self._gh, self._env, invocation.token, invocation.args)
 
     def set_output(self, name: str, value: str) -> None:
         """Set a step output now, so that it outlives a later write that fails."""

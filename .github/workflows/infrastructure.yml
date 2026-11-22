@@ -405,6 +405,62 @@ jobs:
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$EFFECTS"
 
+  afk-run-check:
+    name: afk-run-check (${{ matrix.case }})
+
+    # The production job's permissions.
+    permissions:
+      issues: read
+      pull-requests: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # #217 is a closed spec whose six child tickets are all closed.
+          - case: refuses a spec whose child tickets are all closed
+            number: 217
+            assertion: '.refusal == "Refused to run: every child ticket of this spec is closed, so there is nothing to implement." and (.block // "") == ""'
+          # #239 is a closed child ticket of #217.
+          - case: refuses and blocks a child ticket
+            number: 239
+            assertion: '.refusal == "Refused to run: this ticket is a child ticket of #217. Child tickets run only through their spec; comment `/afk implement` on #217 instead." and .block == "true"'
+          # #253 is closed and has no parent, child tickets, blocking tickets or open PR.
+          - case: runs a plain ticket on its own branch in one run
+            number: 253
+            assertion: '([.refusal, .queue, .spec] | all((. // "") == "")) and .branch == "afk/issue-253-\(env.GITHUB_RUN_ID)" and .["last-run"] == "true"'
+          - case: reports the in-progress mark as a dry run
+            number: 253
+            assertion: '.effects | fromjson == [{"type": "EditLabels", "number": 253, "add": ["afk:in-progress"], "remove": []}]'
+
+    steps:
+      - name: Mint the App's write token for the label
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+
+      - name: Check the ticket as a dry run
+        id: check
+        uses: $/.github/actions/afk-run-check
+        with:
+          number: ${{ matrix.number }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: true
+
+      - name: Assert on the outputs
+        shell: bash
+        env:
+          OUTPUTS: ${{ toJSON(steps.check.outputs) }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: jq -e "$ASSERTION" <<<"$OUTPUTS"
+
   actions-lock:
     permissions:
       contents: read

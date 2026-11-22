@@ -8,13 +8,14 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from afk import dispatch, promote_queued
+from afk import dispatch, promote_queued, run_check
 from afk.writer import Runner, Writer
 
 PHASES = {
     "dispatch": dispatch.run,
     "dispatch-release": dispatch.run_release,
     "promote-queued": promote_queued.run,
+    "run-check": run_check.run,
 }
 
 
