@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, assert_never
 
 from afk.effects import (
     Comment,
@@ -109,6 +109,8 @@ def command(effect: Effect) -> GhCommand | GitCommand:
             args = ["pr", "edit", branch, *_label_flags(add, remove)]
         case MarkPullRequestReady(branch=branch):
             args = ["pr", "ready", branch]
+        case _:
+            assert_never(effect)
     return GhCommand(args, Token.APP)
 
 
