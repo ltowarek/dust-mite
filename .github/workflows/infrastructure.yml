@@ -5,6 +5,8 @@ on:
     secrets:
       AFK_APP_PRIVATE_KEY:
         required: true
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
 
 jobs:
   build-docker:
@@ -673,6 +675,57 @@ jobs:
           EFFECTS: ${{ steps.finish.outputs.effects }}
           ASSERTION: ${{ matrix.assertion }}
         run: jq -e "$ASSERTION" <<<"$EFFECTS"
+
+  # The canary ticket is closed, and asks to create docs/afk-canary.md holding the line `canary`.
+  afk-run-workflow:
+    # The production jobs' permissions.
+    permissions:
+      actions: write
+      contents: read
+      issues: read
+      pull-requests: read
+
+    uses: $/.github/workflows/afk-run.yml
+    with:
+      number: ${{ fromJSON(vars.AFK_CANARY_TICKET) }}
+      dry-run: true
+      model: claude-haiku-5-5
+      effort: low
+    secrets:
+      AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  afk-run-workflow-assertions:
+    needs: afk-run-workflow
+    # Also after a failed run, whose finish effects then hold its failure comment.
+    if: '!cancelled()'
+    permissions: {}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CANARY_TICKET: ${{ vars.AFK_CANARY_TICKET }}
+      PUBLISH_EFFECTS: ${{ needs.afk-run-workflow.outputs.publish-effects }}
+      FINISH_EFFECTS: ${{ needs.afk-run-workflow.outputs.finish-effects }}
+
+    steps:
+      - name: Assert that publish pushes and opens a draft PR that closes the canary ticket
+        run: |
+          jq -e 'any(.[]; .type == "PushBranch")
+            and any(.[]; .type == "CreatePullRequest" and (.body | startswith("Closes #\(env.CANARY_TICKET)\n")))' <<<"$PUBLISH_EFFECTS"
+
+      - name: Assert that finish clears afk:in-progress
+        run: |
+          jq -e 'any(.[]; . == {"type": "EditLabels", "number": (env.CANARY_TICKET | tonumber), "add": [], "remove": ["afk:in-progress"]})' <<<"$FINISH_EFFECTS"
+
+      - name: Assert that finish plans no failure comment
+        run: |
+          jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run failed") | not))' <<<"$FINISH_EFFECTS"
 
   actions-lock:
     permissions:
