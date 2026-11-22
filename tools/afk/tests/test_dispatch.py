@@ -24,7 +24,7 @@ from afk.dispatch import (
     refusal,
     release,
 )
-from afk.effects import Comment, DispatchWorkflow, EditLabels, React
+from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect, React
 from afk.writer import Writer
 from tests.doubles import GhSpy, read_outputs
 
@@ -146,59 +146,94 @@ TARGET = Target(number=7, comment_id=555)
 
 
 class TestPlan:
-    def test_plans_a_refusal_as_a_reply_and_a_confused_reaction(self) -> None:
-        effects = plan(TARGET, Refusal("Refused."))
-
-        assert effects == [
-            Comment(number=7, body="Refused."),
-            React(comment_id=555, content="confused"),
-        ]
-
-    def test_plans_a_queue_with_a_reply_that_carries_the_command(self) -> None:
-        effects = plan(TARGET, Queue(blockers=(4, 9)))
-
-        assert effects == [
-            React(comment_id=555, content="eyes"),
-            EditLabels(number=7, add=("afk:queued",), remove=("afk:blocked",)),
-            Comment(
-                number=7,
-                body="Queued (`afk:queued`) until its blocking tickets close: #4, #9. "
-                "The AFK run starts when the last one closes. "
-                "<!-- afk-command: 555 -->",
+    @pytest.mark.parametrize(
+        ("decision", "effects"),
+        [
+            pytest.param(
+                Refusal("Refused."),
+                [
+                    Comment(number=7, body="Refused."),
+                    React(comment_id=555, content="confused"),
+                ],
+                id="plans a refusal as a reply and a confused reaction",
             ),
-        ]
-
-    def test_plans_an_acceptance_as_in_progress_before_the_dispatch(self) -> None:
-        effects = plan(TARGET, Accept(workflow="afk-run.yml", head_sha=None))
-
-        assert effects == [
-            React(comment_id=555, content="eyes"),
-            EditLabels(number=7, add=("afk:in-progress",), remove=("afk:blocked",)),
-            DispatchWorkflow(
-                workflow="afk-run.yml", inputs={"number": "7", "comment-id": "555"}
+            pytest.param(
+                Queue(blockers=(4, 9)),
+                [
+                    React(comment_id=555, content="eyes"),
+                    EditLabels(number=7, add=("afk:queued",), remove=("afk:blocked",)),
+                    Comment(
+                        number=7,
+                        body="Queued (`afk:queued`) until its blocking tickets close: "
+                        "#4, #9. The AFK run starts when the last one closes. "
+                        "<!-- afk-command: 555 -->",
+                    ),
+                ],
+                id="plans a queue with a reply that carries the command",
             ),
-        ]
-
-    def test_plans_a_dispatch_at_the_head_it_read(self) -> None:
-        effects = plan(TARGET, Accept(workflow="afk-run-pr.yml", head_sha=HEAD_SHA))
-
-        assert effects[-1] == DispatchWorkflow(
-            workflow="afk-run-pr.yml",
-            inputs={"number": "7", "comment-id": "555", "head-sha": HEAD_SHA},
-        )
+            pytest.param(
+                Accept(workflow="afk-run.yml", head_sha=None),
+                [
+                    React(comment_id=555, content="eyes"),
+                    EditLabels(
+                        number=7, add=("afk:in-progress",), remove=("afk:blocked",)
+                    ),
+                    DispatchWorkflow(
+                        workflow="afk-run.yml",
+                        inputs={"number": "7", "comment-id": "555"},
+                    ),
+                ],
+                id="plans an acceptance as in progress before the dispatch",
+            ),
+            pytest.param(
+                Accept(workflow="afk-run-pr.yml", head_sha=HEAD_SHA),
+                [
+                    React(comment_id=555, content="eyes"),
+                    EditLabels(
+                        number=7, add=("afk:in-progress",), remove=("afk:blocked",)
+                    ),
+                    DispatchWorkflow(
+                        workflow="afk-run-pr.yml",
+                        inputs={
+                            "number": "7",
+                            "comment-id": "555",
+                            "head-sha": HEAD_SHA,
+                        },
+                    ),
+                ],
+                id="plans a dispatch at the head it read",
+            ),
+        ],
+    )
+    def test_plans_the_writes_of_a_decision(
+        self, decision: Refusal | Queue | Accept, effects: list[Effect]
+    ) -> None:
+        assert plan(TARGET, decision) == effects
 
 
 class TestRelease:
-    def test_releases_an_accepted_target_and_reacts_confused(self) -> None:
-        assert release(TARGET, accepted=True) == [
-            EditLabels(number=7, remove=("afk:in-progress",)),
-            React(comment_id=555, content="confused"),
-        ]
-
-    def test_leaves_the_labels_of_a_target_it_did_not_accept(self) -> None:
-        assert release(TARGET, accepted=False) == [
-            React(comment_id=555, content="confused")
-        ]
+    @pytest.mark.parametrize(
+        ("accepted", "effects"),
+        [
+            pytest.param(
+                True,
+                [
+                    EditLabels(number=7, remove=("afk:in-progress",)),
+                    React(comment_id=555, content="confused"),
+                ],
+                id="releases an accepted target and reacts confused",
+            ),
+            pytest.param(
+                False,
+                [React(comment_id=555, content="confused")],
+                id="leaves the labels of a target it did not accept",
+            ),
+        ],
+    )
+    def test_plans_the_writes_of_a_release(
+        self, *, accepted: bool, effects: list[Effect]
+    ) -> None:
+        assert release(TARGET, accepted=accepted) == effects
 
 
 class TestIssue:
