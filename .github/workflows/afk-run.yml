@@ -148,7 +148,6 @@ jobs:
 
       - name: Mint the App's write token for the push, PR, labels and comments
         id: write-token
-        if: steps.agent.outcome == 'success'
         uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars.AFK_APP_CLIENT_ID }}
@@ -157,6 +156,7 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
+      # Also after a failed agent, so that the action sets the agent's error for finish.
       - name: Publish the agent's work, or hand the ticket on
         id: publish
         if: '!cancelled()'
