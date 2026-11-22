@@ -1,0 +1,55 @@
+name: AFK finish
+description: Report how an AFK run ended, file its follow-up tickets, and release or continue its ticket
+
+inputs:
+  workflow:
+    description: The AFK run workflow that ends, without .yml; only afk-run for now
+    required: true
+  ticket:
+    description: The ticket or spec that the AFK run runs on
+    required: true
+  comment-id:
+    description: The AFK command's comment; empty when the run started from the Actions tab
+    required: false
+    default: ""
+  needs:
+    description: The finish job's needs context as JSON, with how each earlier job ended and its outputs
+    required: true
+  app-token:
+    description: The AFK App's token with Issues and Pull requests write, for tickets, labels, comments and reactions
+    required: true
+  workflow-token:
+    description: A token with Actions read for the failed step, and Actions write for dispatching a spec's next run
+    required: true
+  dry-run:
+    description: Report the writes in the effects output instead of making them
+    required: false
+    default: "false"
+
+outputs:
+  effects:
+    description: The planned writes as a JSON array, set only in a dry run
+    value: ${{ steps.finish.outputs.effects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
+
+    - name: Report how the run ended, and release or continue its ticket
+      id: finish
+      shell: bash
+      env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
+        AFK_WORKFLOW: ${{ inputs.workflow }}
+        AFK_TICKET: ${{ inputs.ticket }}
+        AFK_COMMENT_ID: ${{ inputs.comment-id }}
+        AFK_NEEDS: ${{ inputs.needs }}
+        AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_WORKFLOW_TOKEN: ${{ inputs.workflow-token }}
+        AFK_DRY_RUN: ${{ inputs.dry-run }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        "$AFK_PYTHON" -m afk finish

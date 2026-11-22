@@ -1178,7 +1178,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - [infrastructure.yml](.github/workflows/infrastructure.yml)
     - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
     - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure), and the `afk` package's checks and unit tests in the `afk` job
-    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests); `ci.yml` grants this area `issues: read` and `pull-requests: read` and passes it the AFK App's private key
+    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests); `ci.yml` grants this area `actions: read`, `issues: read` and `pull-requests: read` and passes it the AFK App's private key
     - Verifies the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
   - [observability.yml](.github/workflows/observability.yml)
     - Runs the observability checks and the synthetic pipeline tests against the observability stack on the runner
@@ -1236,8 +1236,9 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
     - Posts the gaps as a comment on the ticket, with the follow-ups already covered under their own heading
   - Pushes nothing when the agent reports that finding the fix needs the car; instead, as the App, it labels the ticket `needs-car:<variant>` and comments the agent's reason on it, with the follow-ups already covered under their own heading
   - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
-  - Removes `afk:in-progress` when the run ends, unless it has dispatched the spec's next run; after a failure, including a failed step in its last job, labels the ticket or spec `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
+  - Removes `afk:in-progress` when the run ends, unless it has dispatched the spec's next run; after a failure, including a failed write in its last job, labels the ticket or spec `afk:blocked` and comments the failed step, the agent's error when it reports one, the run link and the command that retries
   - Reacts 🚀 to the AFK command when the run, or a spec's whole implementation, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car; a run that dispatches the spec's next run or queues the spec does not react
+  - Makes these last writes in its `finish` job, which mints the App's write token and passes the `needs` context to the [afk-finish](.github/actions/afk-finish/action.yml) action, which runs `python -m afk finish` from the same commit: the refusal, the follow-up tickets, the follow-ups already covered, closing a child ticket, stopping, queueing or continuing a spec, the labels, the failure report and the reaction; a failed write stops the rest, as in every other phase, and the action then labels the ticket or spec `afk:blocked`, comments the failed write, removes `afk:in-progress`, reacts 😕 and fails
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
   - Is an entry workflow: one job mints the App's write token and passes the closed ticket's number to the [afk-promote-queued](.github/actions/afk-promote-queued/action.yml) action, which runs `python -m afk promote-queued` from the same commit

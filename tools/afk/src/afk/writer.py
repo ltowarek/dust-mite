@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import TextIO, assert_never
 
 from afk.effects import (
+    CloseIssue,
     Comment,
+    CommentPullRequest,
+    CreateIssue,
     CreatePullRequest,
     DispatchWorkflow,
     EditLabels,
@@ -95,13 +98,14 @@ def command_for(effect: Effect) -> Command:
             command = GhCommand(["workflow", "run", workflow, *fields], Token.WORKFLOW)
         case PushBranch(repository=repository, branch=branch):
             command = GitCommand(_push(repository, branch), Token.APP)
-        case EditLabels() | Comment() | React():
+        case EditLabels() | Comment() | React() | CreateIssue() | CloseIssue():
             command = GhCommand(_issue_args(effect), Token.APP)
         case (
             CreatePullRequest()
             | EditPullRequest()
             | EditPullRequestLabels()
             | MarkPullRequestReady()
+            | CommentPullRequest()
         ):
             command = GhCommand(_pull_request_args(effect), Token.APP)
         case _:
@@ -122,6 +126,11 @@ def _issue_args(effect: IssueWrite) -> list[str]:
                 f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}/reactions"
             )
             args = ["api", "--method", "POST", endpoint, "-f", f"content={content}"]
+        case CreateIssue(title=title, body=body, labels=labels):
+            flags = [arg for label in labels for arg in ("--label", label)]
+            args = ["issue", "create", "--title", title, "--body", body, *flags]
+        case CloseIssue(number=number, comment=comment):
+            args = ["issue", "close", str(number), "--comment", comment]
         case _:
             assert_never(effect)
     return args
@@ -139,6 +148,8 @@ def _pull_request_args(effect: PullRequestWrite) -> list[str]:
             args = ["pr", "edit", branch, *_label_flags(add, remove)]
         case MarkPullRequestReady(branch=branch):
             args = ["pr", "ready", branch]
+        case CommentPullRequest(branch=branch, body=body):
+            args = ["pr", "comment", branch, "--body", body]
         case _:
             assert_never(effect)
     return args

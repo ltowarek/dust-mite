@@ -565,6 +565,115 @@ jobs:
           jq -e -n --arg outcome "$OUTCOME" --argjson effects "${EFFECTS:-null}" \
             "{outcome: \$outcome, effects: \$effects} | $ASSERTION"
 
+  afk-finish:
+    name: afk-finish (${{ matrix.case }})
+
+    # The production job's read permission; its Actions write only dispatches, which a dry run skips.
+    permissions:
+      actions: read
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # The action reads no ticket, so each case names a closed one: #331 is the spec of the closed #363.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: refuses the ticket
+            ticket: 363
+            needs:
+              check:
+                result: success
+                outputs:
+                  refusal: Refused to run.
+                  block: "true"
+              implement:
+                result: skipped
+                outputs: {}
+            assertion: >-
+              .[0:2] == [
+                {"type": "EditLabels", "number": 363, "add": ["afk:blocked"], "remove": []},
+                {"type": "Comment", "number": 363, "body": "Refused to run."}
+              ]
+          - case: reports a failed implement job
+            ticket: 363
+            needs:
+              check:
+                result: success
+                outputs: {}
+              implement:
+                result: failure
+                outputs:
+                  agent-error: Out of turns.
+            assertion: >-
+              any(.[]; .type == "Comment" and .number == 363
+                and (.body | startswith("The AFK run failed.\n\n**Reason:** "))
+                and (.body | contains("The agent reported: Out of turns.")))
+          - case: continues the spec after a finished child ticket
+            ticket: 331
+            needs:
+              check:
+                result: success
+                outputs:
+                  spec: "true"
+                  child-ticket: "363"
+                  last-run: "false"
+              implement:
+                result: success
+                outputs:
+                  outcome: done
+                  pr-url: https://github.com/ltowarek/dust-mite/pull/376
+                  sha: 4b3c8bcbe47ce60c5ec577bcc251031b44d50c63
+            assertion: >-
+              map(.type) == ["CloseIssue", "EditLabels", "DispatchWorkflow"]
+                and .[0] == {"type": "CloseIssue", "number": 363, "comment": "Implemented in 4b3c8bcbe47ce60c5ec577bcc251031b44d50c63"}
+                and .[2].inputs == {"number": "331"}
+          - case: files the follow-up tickets
+            ticket: 363
+            needs:
+              check:
+                result: success
+                outputs: {}
+              implement:
+                result: success
+                outputs:
+                  outcome: spec_gap
+                  agent-output: '{"outcome": "spec_gap", "needs_dut_run": false, "follow_ups": [{"title": "Fix the camera", "type": "bug", "components": ["camera"], "body": "It breaks."}]}'
+            assertion: >-
+              [.[] | select(.type == "CreateIssue")] | length == 1
+                and .[0].title == "Fix the camera"
+                and .[0].labels == ["needs-triage", "source:follow-up", "bug", "camera"]
+                and (.[0].body | startswith("> *Follow-up ticket filed by an AFK agent session while working #363.*"))
+
+    steps:
+      - name: Mint the App's write token for tickets, labels and comments
+        id: write-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.AFK_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AFK_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Finish the AFK run as a dry run
+        id: finish
+        uses: $/.github/actions/afk-finish
+        with:
+          workflow: afk-run
+          ticket: ${{ matrix.ticket }}
+          needs: ${{ toJSON(matrix.needs) }}
+          app-token: ${{ steps.write-token.outputs.token }}
+          workflow-token: ${{ github.token }}
+          dry-run: true
+
+      - name: Assert on the planned effects
+        shell: bash
+        env:
+          EFFECTS: ${{ steps.finish.outputs.effects }}
+          ASSERTION: ${{ matrix.assertion }}
+        run: jq -e "$ASSERTION" <<<"$EFFECTS"
+
   actions-lock:
     permissions:
       contents: read
