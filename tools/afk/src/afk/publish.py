@@ -19,6 +19,7 @@ from afk.effects import (
 )
 from afk.git import read_head
 from afk.github import Token, run_gh
+from afk.labels import needs_car
 from afk.runner import Runner
 from afk.writer import Writer
 
@@ -60,7 +61,7 @@ def _done(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effe
     if not run.last_run:
         return effects
     if output["needs_dut_run"]:
-        label = f"needs-car:{output.get('car_variant', '')}"
+        label = needs_car(output.get("car_variant", ""))
         effects.append(EditPullRequestLabels(branch=run.branch, add=(label,)))
     else:
         effects.append(MarkPullRequestReady(branch=run.branch))
@@ -76,7 +77,7 @@ def _needs_car(output: Mapping[str, Any], run: Run) -> list[Effect]:
     return [
         EditLabels(
             number=run.worked_ticket,
-            add=(f"needs-car:{output.get('car_variant', '')}",),
+            add=(needs_car(output.get("car_variant", "")),),
         ),
         Comment(number=run.worked_ticket, body=body),
     ]

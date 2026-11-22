@@ -15,6 +15,7 @@ from afk.effects import (
 )
 from afk.git import read_commit_count, read_head
 from afk.github import PullRequest
+from afk.labels import needs_car
 from afk.runner import Runner
 from afk.writer import Writer
 
@@ -35,9 +36,7 @@ def plan(
 ) -> list[Effect]:
     """Return the writes that push the agent's commits and post its comments."""
     push = PushBranch(repository=repository, branch=pr.branch, lease=pr.head_sha)
-    car = EditLabels(
-        number=pr.number, add=(f"needs-car:{output.get('car_variant', '')}",)
-    )
+    car = EditLabels(number=pr.number, add=(needs_car(output.get("car_variant", "")),))
     return [
         *([push] if commits else []),
         *(
