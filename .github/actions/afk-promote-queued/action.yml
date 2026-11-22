@@ -27,30 +27,15 @@ outputs:
 runs:
   using: composite
   steps:
-    # The Python that the package's checks and tests run on.
-    - name: Set up Python
-      id: python
-      uses: actions/setup-python@v7.1.0
-      with:
-        python-version: "3.11"
-        # Leaves the caller's PATH and environment as they were; the next step uses python-path.
-        update-environment: false
-
-    # Needs $/ to fetch the whole repository at the workflow's commit, so that the package sits beside the action.
-    - name: Install the afk package and its pinned runtime requirements
-      shell: bash
-      env:
-        PYTHON: ${{ steps.python.outputs.python-path }}
-      run: |
-        "$PYTHON" -m venv "$RUNNER_TEMP/afk-venv"
-        "$RUNNER_TEMP/afk-venv/bin/pip" install --disable-pip-version-check --quiet \
-          --requirement "$GITHUB_ACTION_PATH/../../../tools/afk/requirements/base.txt" \
-          "$GITHUB_ACTION_PATH/../../../tools/afk"
+    - name: Set up afk
+      id: afk
+      uses: $/.github/actions/setup-afk
 
     - name: Promote the unblocked tickets and specs, and refuse child tickets
       id: promote
       shell: bash
       env:
+        AFK_PYTHON: ${{ steps.afk.outputs.python }}
         AFK_BLOCKING_TICKET: ${{ inputs.blocking-ticket }}
         AFK_APP_TOKEN: ${{ inputs.app-token }}
         AFK_WORKFLOW_TOKEN: ${{ inputs.workflow-token }}
@@ -58,4 +43,4 @@ runs:
         AFK_DRY_RUN: ${{ inputs.dry-run }}
         GH_REPO: ${{ github.repository }}
       run: |
-        "$RUNNER_TEMP/afk-venv/bin/python" -m afk promote-queued
+        "$AFK_PYTHON" -m afk promote-queued

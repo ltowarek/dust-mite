@@ -1,0 +1,31 @@
+name: Set up afk
+description: Install the afk package from the caller's commit into a venv, on the Python its checks and tests run on
+
+outputs:
+  python:
+    description: The venv's Python, which runs `python -m afk <phase>`
+    value: ${{ steps.install.outputs.python }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      id: python
+      uses: actions/setup-python@v7.1.0
+      with:
+        python-version: "3.11"
+        # Leaves the caller's PATH and environment as they were; the next step uses python-path.
+        update-environment: false
+
+    # A caller loads this action with $/, which fetches the whole repository at its commit, so the package sits beside it.
+    - name: Install the afk package and its pinned runtime requirements
+      id: install
+      shell: bash
+      env:
+        PYTHON: ${{ steps.python.outputs.python-path }}
+      run: |
+        "$PYTHON" -m venv "$RUNNER_TEMP/afk-venv"
+        "$RUNNER_TEMP/afk-venv/bin/pip" install --disable-pip-version-check --quiet \
+          --requirement "$GITHUB_ACTION_PATH/../../../tools/afk/requirements/base.txt" \
+          "$GITHUB_ACTION_PATH/../../../tools/afk"
+        echo "python=$RUNNER_TEMP/afk-venv/bin/python" >> "$GITHUB_OUTPUT"
