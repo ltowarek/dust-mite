@@ -1172,6 +1172,8 @@ jobs:
 
   # The canary ticket is closed, and asks to create docs/afk-canary.md holding the line `canary`.
   afk-run-workflow:
+    # Tests run on pull requests only; claude-code-action refuses a push event.
+    if: github.event_name == 'pull_request'
     # The production jobs' permissions.
     permissions:
       actions: write
@@ -1193,7 +1195,7 @@ jobs:
   afk-run-workflow-assertions:
     needs: afk-run-workflow
     # Also after a failed run, whose finish effects then hold its failure comment.
-    if: '!cancelled()'
+    if: github.event_name == 'pull_request' && !cancelled()
     permissions: {}
 
     runs-on: ubuntu-latest
@@ -1224,6 +1226,8 @@ jobs:
 
   # The canary PR is an open draft whose branch creates docs/afk-canary.md holding the line `canary`, with one unresolved review comment that asks for a second line.
   afk-run-pr-workflow:
+    # Tests run on pull requests only; claude-code-action refuses a push event.
+    if: github.event_name == 'pull_request'
     # The production jobs' permissions.
     permissions:
       actions: read
@@ -1244,7 +1248,7 @@ jobs:
   afk-run-pr-workflow-assertions:
     needs: afk-run-pr-workflow
     # Also after a failed run, whose finish effects then hold its failure comment.
-    if: '!cancelled()'
+    if: github.event_name == 'pull_request' && !cancelled()
     permissions:
       pull-requests: read
 
@@ -1283,6 +1287,8 @@ jobs:
 
   # The canary PR's branch sits on an older commit of main without conflicting with it, so its update merges cleanly and runs no agent.
   afk-update-branch-workflow:
+    # Tests run on pull requests only; claude-code-action refuses a push event.
+    if: github.event_name == 'pull_request'
     # The production jobs' permissions.
     permissions:
       actions: read
@@ -1304,7 +1310,7 @@ jobs:
   afk-update-branch-workflow-assertions:
     needs: afk-update-branch-workflow
     # Also after a failed run, whose finish effects then hold its failure comment.
-    if: '!cancelled()'
+    if: github.event_name == 'pull_request' && !cancelled()
     permissions: {}
 
     runs-on: ubuntu-latest
@@ -1339,6 +1345,8 @@ jobs:
   # Dispatches with GITHUB_TOKEN, as the AFK dispatcher does, each run workflow whose canary starts the agent, so that GitHub starts the run as github-actions.
   afk-dispatched-run-workflow:
     name: afk-dispatched-run-workflow (${{ matrix.workflow }})
+    # Tests run on pull requests only.
+    if: github.event_name == 'pull_request'
 
     permissions:
       actions: write
@@ -1368,6 +1376,8 @@ jobs:
           url=$(gh workflow run "$WORKFLOW" --ref "$REF" -f number="$NUMBER" -f dry-run=true -f model=claude-haiku-5-5 -f effort=low \
             | grep -o 'https://[^ ]*/actions/runs/[0-9]*')
           echo "Dispatched $url"
+          # The API returns 404 for a run for a few seconds after its dispatch.
+          for _ in {1..12}; do gh run view "${url##*/}" --json status >/dev/null 2>&1 && break; sleep 5; done
           if ! gh run watch "${url##*/}" --exit-status --interval 30 >/dev/null; then
             gh run view "${url##*/}"
             exit 1

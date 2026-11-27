@@ -205,15 +205,14 @@ jobs:
             1. Read the conversation. For each item, classify it in your head as: code change needed, reply needed (question / disagreement / clarification), or neither.
             2. Make the code changes you decided on. Follow CLAUDE.md, including running every check inside the devcontainer it names before committing; Docker is available. Use Conventional Commits messages, with a body that says why.
             3. If you made no changes that's fine: only commit when there's a real diff.
-
-            Reply in every thread whose request you changed code for, confirming what you changed and in which commit. Reply in other threads only where a reply adds value: explaining why you chose not to make a requested change, answering a question, or pointing out something the reviewer should look at. Silence is fine for context-only comments.
+            4. Reply in every thread whose request you changed code for, confirming what you changed and in which commit. Reply in other threads only where a reply adds value: explaining why you chose not to make a requested change, answering a question, or pointing out something the reviewer should look at. Silence is fine for context-only comments.
 
             You cannot resolve threads. Resolution is the reviewer's job.
 
             # OUTPUT
 
             This is an AFK agent session: no one will answer questions. Commit to the current branch. Do not push, comment, file tickets, or change labels; the workflow posts your output.
-            - `thread_replies`: replies in a thread, by its `comment_id` from the conversation file.
+            - `thread_replies`: replies in a thread, by its `comment_id` from the conversation file; one for every thread whose request you changed code for, as step 4 says.
             - `inline_comments`: new inline comments on a line of the PR's diff at HEAD, when a thread reply isn't the right surface.
             - `top_level_comments`: new top-level PR comments, for cross-cutting summaries.
             A comment that raises a spec gap, as docs/agents/spec-gaps.md defines it, gets your question as a thread reply, or as a top-level comment when it is not in a thread; make no change for it.
