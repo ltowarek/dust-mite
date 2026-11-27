@@ -1,31 +1,53 @@
+import pytest
 from opentelemetry.sdk.resources import SERVICE_NAME
 
 from controller.otel import resolve_git_ref, resolve_vcs_attributes, service_resource
 
 
 class TestResolveGitRef:
-    def test_extracts_hash_from_dev_version(self) -> None:
-        assert resolve_git_ref("0.1.dev198+g48a5c9bc9.d20260811") == "48a5c9bc9"
-
-    def test_extracts_hash_without_dirty_date_suffix(self) -> None:
-        assert resolve_git_ref("0.1.dev198+g48a5c9bc9") == "48a5c9bc9"
-
-    def test_returns_empty_when_built_exactly_on_a_tag(self) -> None:
-        assert resolve_git_ref("1.0.0") == ""
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [
+            pytest.param(
+                "0.1.dev198+g48a5c9bc9.d20260811",
+                "48a5c9bc9",
+                id="extracts hash from dev version",
+            ),
+            pytest.param(
+                "0.1.dev198+g48a5c9bc9",
+                "48a5c9bc9",
+                id="extracts hash without dirty date suffix",
+            ),
+            pytest.param("1.0.0", "", id="returns empty when built exactly on a tag"),
+        ],
+    )
+    def test_resolves_the_git_ref(self, version: str, expected: str) -> None:
+        assert resolve_git_ref(version) == expected
 
 
 class TestResolveVcsAttributes:
-    def test_returns_both_when_fully_configured(self) -> None:
-        assert resolve_vcs_attributes("https://github.com/o/r", "abc123") == {
-            "vcs.repository.url.full": "https://github.com/o/r",
-            "vcs.ref.head.revision": "abc123",
-        }
-
-    def test_empty_when_repository_missing(self) -> None:
-        assert resolve_vcs_attributes(None, "abc123") == {}
-
-    def test_empty_when_git_ref_missing(self) -> None:
-        assert resolve_vcs_attributes("https://github.com/o/r", "") == {}
+    @pytest.mark.parametrize(
+        ("repository", "git_ref", "expected"),
+        [
+            pytest.param(
+                "https://github.com/o/r",
+                "abc123",
+                {
+                    "vcs.repository.url.full": "https://github.com/o/r",
+                    "vcs.ref.head.revision": "abc123",
+                },
+                id="returns both when fully configured",
+            ),
+            pytest.param(None, "abc123", {}, id="empty when repository missing"),
+            pytest.param(
+                "https://github.com/o/r", "", {}, id="empty when git ref missing"
+            ),
+        ],
+    )
+    def test_resolves_the_vcs_attributes(
+        self, repository: str | None, git_ref: str, expected: dict[str, str]
+    ) -> None:
+        assert resolve_vcs_attributes(repository, git_ref) == expected
 
 
 class TestServiceResource:

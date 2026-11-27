@@ -12,10 +12,11 @@ def _colour_jpeg() -> bytes:
     return cv2.imencode(".jpg", image)[1].tobytes()
 
 
-def test_turns_a_colour_frame_into_a_grayscale_jpeg() -> None:
-    processed = cv2.imdecode(
-        np.frombuffer(process_camera_frame(_colour_jpeg()), dtype=np.uint8),
-        cv2.IMREAD_UNCHANGED,
-    )
+class TestProcessCameraFrame:
+    def test_turns_a_colour_frame_into_a_grayscale_jpeg(self) -> None:
+        processed = cv2.imdecode(
+            np.frombuffer(process_camera_frame(_colour_jpeg()), dtype=np.uint8),
+            cv2.IMREAD_UNCHANGED,
+        )
 
-    assert processed.ndim == _GRAYSCALE_DIMENSIONS
+        assert processed.ndim == _GRAYSCALE_DIMENSIONS

@@ -1,3 +1,6 @@
+from collections.abc import Callable
+
+import pytest
 from opentelemetry.sdk.metrics._internal.point import NumberDataPoint
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -33,54 +36,72 @@ def _counter_value(reader: InMemoryMetricReader, name: str) -> int:
     return 0
 
 
-def test_record_camera_frame_processed(reader: InMemoryMetricReader) -> None:
-    calls = 2
+@pytest.mark.parametrize(
+    ("record", "name", "calls"),
+    [
+        pytest.param(
+            record_camera_frame_processed,
+            "dust_mite_camera_frames_processed",
+            2,
+            id="counts every processed camera frame",
+        ),
+        pytest.param(
+            record_viewer_camera_frame_sent,
+            "dust_mite_viewer_camera_frames_sent",
+            1,
+            id="counts every camera frame sent to a viewer",
+        ),
+        pytest.param(
+            record_telemetry_received,
+            "dust_mite_telemetry_messages_received",
+            1,
+            id="counts every telemetry message received",
+        ),
+    ],
+)
+def test_counts_every_call(
+    reader: InMemoryMetricReader, record: Callable[[], None], name: str, calls: int
+) -> None:
     for _ in range(calls):
-        record_camera_frame_processed()
-    assert _counter_value(reader, "dust_mite_camera_frames_processed") == calls
+        record()
+    assert _counter_value(reader, name) == calls
 
 
-def test_record_viewer_camera_frame_sent(reader: InMemoryMetricReader) -> None:
-    record_viewer_camera_frame_sent()
-    assert _counter_value(reader, "dust_mite_viewer_camera_frames_sent") == 1
+class TestRecordCommandSent:
+    def test_record_command_sent(self, reader: InMemoryMetricReader) -> None:
+        calls = 3
+        for _ in range(calls):
+            record_command_sent(Command.BRAKE)
+        assert _counter_value(reader, "dust_mite_commands_sent") == calls
 
-
-def test_record_telemetry_received(reader: InMemoryMetricReader) -> None:
-    record_telemetry_received()
-    assert _counter_value(reader, "dust_mite_telemetry_messages_received") == 1
-
-
-def test_record_command_sent(reader: InMemoryMetricReader) -> None:
-    calls = 3
-    for _ in range(calls):
+    def test_record_command_sent_attributes_by_command_name(
+        self,
+        reader: InMemoryMetricReader,
+    ) -> None:
+        record_command_sent(Command.TURN_LEFT)
         record_command_sent(Command.BRAKE)
-    assert _counter_value(reader, "dust_mite_commands_sent") == calls
+        record_command_sent(Command.BRAKE)
+
+        assert counter_values_by_command(reader, "dust_mite_commands_sent") == {
+            "TURN_LEFT": 1,
+            "BRAKE": 2,
+        }
 
 
-def test_record_command_sent_attributes_by_command_name(
-    reader: InMemoryMetricReader,
-) -> None:
-    record_command_sent(Command.TURN_LEFT)
-    record_command_sent(Command.BRAKE)
-    record_command_sent(Command.BRAKE)
+class TestRecordCommandBlocked:
+    def test_record_command_blocked_attributes_by_command_name(
+        self,
+        reader: InMemoryMetricReader,
+    ) -> None:
+        record_command_blocked(Command.ADVANCE)
 
-    assert counter_values_by_command(reader, "dust_mite_commands_sent") == {
-        "TURN_LEFT": 1,
-        "BRAKE": 2,
-    }
-
-
-def test_record_command_blocked_attributes_by_command_name(
-    reader: InMemoryMetricReader,
-) -> None:
-    record_command_blocked(Command.ADVANCE)
-
-    assert counter_values_by_command(reader, "dust_mite_commands_blocked") == {
-        "ADVANCE": 1,
-    }
+        assert counter_values_by_command(reader, "dust_mite_commands_blocked") == {
+            "ADVANCE": 1,
+        }
 
 
-def test_configure_metrics_skips_export_without_an_endpoint() -> None:
-    configure_metrics(None, Resource.get_empty())
+class TestConfigureMetrics:
+    def test_configure_metrics_skips_export_without_an_endpoint(self) -> None:
+        configure_metrics(None, Resource.get_empty())
 
-    record_command_sent(Command.BRAKE)
+        record_command_sent(Command.BRAKE)

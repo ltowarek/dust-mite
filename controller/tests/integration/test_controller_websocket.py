@@ -12,39 +12,42 @@ from .conftest import LocalServerSpy
 _WAIT_TIMEOUT_S = 5
 
 
-@pytest.mark.asyncio
-async def test_send_delivers_command_and_value_over_the_wire(
-    local_server_spy: LocalServerSpy,
-) -> None:
-    sent_value = 50
-    async with websockets.asyncio.client.connect(
-        local_server_spy.uri, proxy=None
-    ) as connection:
-        await send_command(connection, (Command.ADVANCE, sent_value))
-        assert local_server_spy.message_received.wait(timeout=_WAIT_TIMEOUT_S)
-
-    assert local_server_spy.received[0]["command"] == Command.ADVANCE.value
-    assert local_server_spy.received[0]["value"] == sent_value
-
-
-@pytest.mark.asyncio
-async def test_send_injects_trace_context(local_server_spy: LocalServerSpy) -> None:
-    # A local provider, never registered as the process-wide global one, so
-    # this doesn't leak into other tests: `send_command`'s tracer picks up the
-    # active span's context from the ambient (contextvars-based) context
-    # regardless of which provider created it.
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(InMemorySpanExporter()))
-    tracer = provider.get_tracer(__name__)
-
-    with tracer.start_as_current_span("outer") as outer_span:
-        trace_id = outer_span.get_span_context().trace_id
-
+class TestSendCommand:
+    @pytest.mark.asyncio
+    async def test_send_delivers_command_and_value_over_the_wire(
+        self,
+        local_server_spy: LocalServerSpy,
+    ) -> None:
+        sent_value = 50
         async with websockets.asyncio.client.connect(
             local_server_spy.uri, proxy=None
         ) as connection:
-            await send_command(connection, (Command.BRAKE, None))
+            await send_command(connection, (Command.ADVANCE, sent_value))
             assert local_server_spy.message_received.wait(timeout=_WAIT_TIMEOUT_S)
 
-    traceparent = local_server_spy.received[0]["traceparent"]
-    assert f"{trace_id:032x}" in traceparent
+        assert local_server_spy.received[0]["command"] == Command.ADVANCE.value
+        assert local_server_spy.received[0]["value"] == sent_value
+
+    @pytest.mark.asyncio
+    async def test_send_injects_trace_context(
+        self, local_server_spy: LocalServerSpy
+    ) -> None:
+        # A local provider, never registered as the process-wide global one, so
+        # this doesn't leak into other tests: `send_command`'s tracer picks up the
+        # active span's context from the ambient (contextvars-based) context
+        # regardless of which provider created it.
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(InMemorySpanExporter()))
+        tracer = provider.get_tracer(__name__)
+
+        with tracer.start_as_current_span("outer") as outer_span:
+            trace_id = outer_span.get_span_context().trace_id
+
+            async with websockets.asyncio.client.connect(
+                local_server_spy.uri, proxy=None
+            ) as connection:
+                await send_command(connection, (Command.BRAKE, None))
+                assert local_server_spy.message_received.wait(timeout=_WAIT_TIMEOUT_S)
+
+        traceparent = local_server_spy.received[0]["traceparent"]
+        assert f"{trace_id:032x}" in traceparent

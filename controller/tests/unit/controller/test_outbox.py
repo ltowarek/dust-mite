@@ -7,97 +7,95 @@ import pytest
 from controller.outbox import Broadcast, Inbox, Outbox, RefCountFeed
 
 
-@pytest.mark.asyncio
-async def test_every_outbox_receives_a_published_message() -> None:
-    frames = Broadcast[str]()
-    async with Outbox(frames) as first, Outbox(frames) as second:
-        frames.publish("frame")
+class TestOutbox:
+    @pytest.mark.asyncio
+    async def test_every_outbox_receives_a_published_message(self) -> None:
+        frames = Broadcast[str]()
+        async with Outbox(frames) as first, Outbox(frames) as second:
+            frames.publish("frame")
 
-        assert [await anext(first), await anext(second)] == ["frame", "frame"]
+            assert [await anext(first), await anext(second)] == ["frame", "frame"]
 
+    @pytest.mark.asyncio
+    async def test_a_lagging_outbox_receives_only_the_newest_message_of_each_source(
+        self,
+    ) -> None:
+        commands, states = Broadcast[str](), Broadcast[str]()
+        async with Outbox(commands, states) as outbox:
+            commands.publish("stale")
+            commands.publish("newest")
+            states.publish("only")
 
-@pytest.mark.asyncio
-async def test_a_lagging_outbox_receives_only_the_newest_message_of_each_source() -> (
-    None
-):
-    commands, states = Broadcast[str](), Broadcast[str]()
-    async with Outbox(commands, states) as outbox:
-        commands.publish("stale")
-        commands.publish("newest")
-        states.publish("only")
+            assert [await anext(outbox), await anext(outbox)] == ["newest", "only"]
 
-        assert [await anext(outbox), await anext(outbox)] == ["newest", "only"]
+    @pytest.mark.asyncio
+    async def test_a_message_published_before_the_outbox_opens_is_not_received(
+        self,
+    ) -> None:
+        frames = Broadcast[str]()
+        frames.publish("early")
+        async with Outbox(frames) as outbox:
+            frames.publish("late")
 
+            assert await anext(outbox) == "late"
 
-@pytest.mark.asyncio
-async def test_an_inbox_receives_every_message_in_order() -> None:
-    readings = Broadcast[int]()
-    async with Inbox(readings) as inbox:
-        readings.publish(3)
-        readings.publish(7)
+    @pytest.mark.asyncio
+    async def test_leaving_the_outbox_stops_receiving(self) -> None:
+        frames = Broadcast[str]()
+        async with Outbox(frames) as outbox:
+            pass
+        frames.publish("after")
 
-        assert [await anext(inbox), await anext(inbox)] == [3, 7]
+        assert [message async for message in outbox] == []
 
+    @pytest.mark.asyncio
+    async def test_cancelling_the_holder_of_the_outbox_stops_receiving(self) -> None:
+        frames = Broadcast[str]()
+        outbox = Outbox(frames)
+        opened = asyncio.Event()
 
-@pytest.mark.asyncio
-async def test_a_message_published_before_the_outbox_opens_is_not_received() -> None:
-    frames = Broadcast[str]()
-    frames.publish("early")
-    async with Outbox(frames) as outbox:
-        frames.publish("late")
+        async def hold() -> None:
+            async with outbox:
+                opened.set()
+                await asyncio.Event().wait()
 
-        assert await anext(outbox) == "late"
+        holder = asyncio.create_task(hold())
+        await opened.wait()
+        holder.cancel()
+        await asyncio.wait([holder])
+        frames.publish("after")
 
+        assert [message async for message in outbox] == []
 
-@pytest.mark.asyncio
-async def test_leaving_the_outbox_stops_receiving() -> None:
-    frames = Broadcast[str]()
-    async with Outbox(frames) as outbox:
-        pass
-    frames.publish("after")
-
-    assert [message async for message in outbox] == []
-
-
-@pytest.mark.asyncio
-async def test_cancelling_the_holder_of_the_outbox_stops_receiving() -> None:
-    frames = Broadcast[str]()
-    outbox = Outbox(frames)
-    opened = asyncio.Event()
-
-    async def hold() -> None:
-        async with outbox:
-            opened.set()
-            await asyncio.Event().wait()
-
-    holder = asyncio.create_task(hold())
-    await opened.wait()
-    holder.cancel()
-    await asyncio.wait([holder])
-    frames.publish("after")
-
-    assert [message async for message in outbox] == []
-
-
-@pytest.mark.asyncio
-async def test_a_closed_outbox_cannot_be_reopened() -> None:
-    outbox = Outbox(Broadcast[str]())
-    async with outbox:
-        pass
-
-    with pytest.raises(RuntimeError):
+    @pytest.mark.asyncio
+    async def test_a_closed_outbox_cannot_be_reopened(self) -> None:
+        outbox = Outbox(Broadcast[str]())
         async with outbox:
             pass
 
+        with pytest.raises(RuntimeError):
+            async with outbox:
+                pass
 
-@pytest.mark.asyncio
-async def test_closing_an_outbox_ends_it_after_its_messages() -> None:
-    frames = Broadcast[str]()
-    async with Outbox(frames) as outbox:
-        frames.publish("last")
-        outbox.close()
+    @pytest.mark.asyncio
+    async def test_closing_an_outbox_ends_it_after_its_messages(self) -> None:
+        frames = Broadcast[str]()
+        async with Outbox(frames) as outbox:
+            frames.publish("last")
+            outbox.close()
 
-        assert [message async for message in outbox] == ["last"]
+            assert [message async for message in outbox] == ["last"]
+
+
+class TestInbox:
+    @pytest.mark.asyncio
+    async def test_an_inbox_receives_every_message_in_order(self) -> None:
+        readings = Broadcast[int]()
+        async with Inbox(readings) as inbox:
+            readings.publish(3)
+            readings.publish(7)
+
+            assert [await anext(inbox), await anext(inbox)] == [3, 7]
 
 
 class _ReadSpy:
@@ -136,77 +134,73 @@ async def _settle() -> None:
     await asyncio.sleep(0.01)
 
 
-@pytest.mark.asyncio
-async def test_outboxes_share_one_read() -> None:
-    read = _ReadSpy()
-    feed = RefCountFeed(read)
-    async with _supervised(feed), feed.outbox(), feed.outbox():
-        await _settle()
-
-    assert read.most_running == 1
-
-
-@pytest.mark.asyncio
-async def test_the_read_ends_after_the_last_outbox_closes() -> None:
-    read = _ReadSpy()
-    feed = RefCountFeed(read)
-    async with _supervised(feed):
-        async with feed.outbox():
-            await _settle()
-        await asyncio.wait_for(read.ended.wait(), timeout=1)
-
-        assert read.running == 0
-
-
-@pytest.mark.asyncio
-async def test_a_new_read_waits_for_the_previous_one_to_end() -> None:
-    read = _ReadSpy(closing_s=0.05)
-    feed = RefCountFeed(read)
-    async with _supervised(feed):
-        async with feed.outbox():
-            await _settle()
-        await _settle()
-        async with feed.outbox():
-            await asyncio.sleep(0.1)
-
-    assert read.most_running == 1
-
-
-@pytest.mark.asyncio
-async def test_an_outbox_reopened_at_once_keeps_the_read() -> None:
-    read = _ReadSpy()
-    feed = RefCountFeed(read)
-    async with _supervised(feed):
-        async with feed.outbox():
-            await _settle()
-        async with feed.outbox():
+class TestRefCountFeed:
+    @pytest.mark.asyncio
+    async def test_outboxes_share_one_read(self) -> None:
+        read = _ReadSpy()
+        feed = RefCountFeed(read)
+        async with _supervised(feed), feed.outbox(), feed.outbox():
             await _settle()
 
-    assert read.started == 1
+        assert read.most_running == 1
 
+    @pytest.mark.asyncio
+    async def test_the_read_ends_after_the_last_outbox_closes(self) -> None:
+        read = _ReadSpy()
+        feed = RefCountFeed(read)
+        async with _supervised(feed):
+            async with feed.outbox():
+                await _settle()
+            await asyncio.wait_for(read.ended.wait(), timeout=1)
 
-@pytest.mark.asyncio
-async def test_an_outbox_receives_what_the_read_publishes() -> None:
-    async def read_stub(publish: Callable[[str], None]) -> None:
-        publish("frame")
-        await asyncio.Event().wait()
+            assert read.running == 0
 
-    feed = RefCountFeed(read_stub)
-    async with _supervised(feed), feed.outbox() as outbox:
-        received = await anext(outbox)
+    @pytest.mark.asyncio
+    async def test_a_new_read_waits_for_the_previous_one_to_end(self) -> None:
+        read = _ReadSpy(closing_s=0.05)
+        feed = RefCountFeed(read)
+        async with _supervised(feed):
+            async with feed.outbox():
+                await _settle()
+            await _settle()
+            async with feed.outbox():
+                await asyncio.sleep(0.1)
 
-    assert received == "frame"
+        assert read.most_running == 1
 
+    @pytest.mark.asyncio
+    async def test_an_outbox_reopened_at_once_keeps_the_read(self) -> None:
+        read = _ReadSpy()
+        feed = RefCountFeed(read)
+        async with _supervised(feed):
+            async with feed.outbox():
+                await _settle()
+            async with feed.outbox():
+                await _settle()
 
-@pytest.mark.asyncio
-async def test_an_error_from_the_read_stops_the_supervisor() -> None:
-    async def read_stub(_publish: Callable[[str], None]) -> None:
-        raise ValueError
+        assert read.started == 1
 
-    feed = RefCountFeed(read_stub)
-    supervisor = asyncio.create_task(feed.supervise())
-    with pytest.raises(ExceptionGroup) as raised:
-        async with feed.outbox():
-            await supervisor
+    @pytest.mark.asyncio
+    async def test_an_outbox_receives_what_the_read_publishes(self) -> None:
+        async def read_stub(publish: Callable[[str], None]) -> None:
+            publish("frame")
+            await asyncio.Event().wait()
 
-    assert raised.group_contains(ValueError)
+        feed = RefCountFeed(read_stub)
+        async with _supervised(feed), feed.outbox() as outbox:
+            received = await anext(outbox)
+
+        assert received == "frame"
+
+    @pytest.mark.asyncio
+    async def test_an_error_from_the_read_stops_the_supervisor(self) -> None:
+        async def read_stub(_publish: Callable[[str], None]) -> None:
+            raise ValueError
+
+        feed = RefCountFeed(read_stub)
+        supervisor = asyncio.create_task(feed.supervise())
+        with pytest.raises(ExceptionGroup) as raised:
+            async with feed.outbox():
+                await supervisor
+
+        assert raised.group_contains(ValueError)

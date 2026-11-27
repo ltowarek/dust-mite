@@ -1,26 +1,37 @@
 import threading
 
+import pytest
+
 from otlp_profiler import linux_thread_state
 
 
 class TestParseState:
-    def test_simple_running(self) -> None:
-        raw = "123 (python) R 1 123 123 0 -1 4194560 0 0 0 0 0 0 0 0"
-        assert linux_thread_state.parse_state(raw) == "R"
-
-    def test_comm_with_space_is_not_split_on(self) -> None:
-        raw = "123 (my thread) S 1 123 123 0 -1 4194560 0 0 0 0 0 0 0 0"
-        assert linux_thread_state.parse_state(raw) == "S"
-
-    def test_comm_with_nested_parens(self) -> None:
-        raw = "123 (weird (name)) D 1 123 123 0 -1 4194560 0 0 0 0 0 0 0 0"
-        assert linux_thread_state.parse_state(raw) == "D"
-
-    def test_no_closing_paren_returns_none(self) -> None:
-        assert linux_thread_state.parse_state("123 python R 1") is None
-
-    def test_truncated_after_closing_paren_returns_none(self) -> None:
-        assert linux_thread_state.parse_state("123 (python) ") is None
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            pytest.param(
+                "123 (python) R 1 123 123 0 -1 4194560 0 0 0 0 0 0 0 0",
+                "R",
+                id="simple running",
+            ),
+            pytest.param(
+                "123 (my thread) S 1 123 123 0 -1 4194560 0 0 0 0 0 0 0 0",
+                "S",
+                id="comm with space is not split on",
+            ),
+            pytest.param(
+                "123 (weird (name)) D 1 123 123 0 -1 4194560 0 0 0 0 0 0 0 0",
+                "D",
+                id="comm with nested parens",
+            ),
+            pytest.param("123 python R 1", None, id="no closing paren returns none"),
+            pytest.param(
+                "123 (python) ", None, id="truncated after closing paren returns none"
+            ),
+        ],
+    )
+    def test_parses_the_state(self, raw: str, expected: str | None) -> None:
+        assert linux_thread_state.parse_state(raw) == expected
 
 
 class TestIsRunning:

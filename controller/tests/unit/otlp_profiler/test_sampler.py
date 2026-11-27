@@ -41,220 +41,225 @@ class TestWalkStack:
 
 
 class TestSampler:
+    class TestStart:
+        @pytest.mark.skipif(
+            sys.platform != "linux", reason="on-CPU filtering is Linux-only"
+        )
+        def test_samples_are_recorded_while_running(self) -> None:
+            aggregator = Aggregator()
+            registry = ActiveSpanRegistry()
+            sampler = Sampler(
+                aggregator,
+                registry,
+                sample_rate=200,
+                export_interval_seconds=100,
+                export_fn=lambda _time_unix_nano: None,
+            )
+
+            # A thread that's actually spinning on CPU is needed here: the main
+            # thread spends nearly all of its time blocked in time.sleep below,
+            # so it's rarely (if ever) in Linux's "R" state when the sampler's
+            # on-CPU filter checks it, making this test flaky without one.
+            stop_busy = threading.Event()
+
+            def _busy() -> None:
+                while not stop_busy.is_set():
+                    pass
+
+            busy_thread = threading.Thread(
+                target=_busy, name="busy-thread-samples-test"
+            )
+            busy_thread.start()
+
+            sampler.start()
+            try:
+                deadline = time.monotonic() + 2
+                counts: dict[SampleKey, int] = {}
+                while time.monotonic() < deadline and not counts:
+                    time.sleep(0.05)
+                    counts = aggregator.drain()
+            finally:
+                sampler.stop()
+                stop_busy.set()
+                busy_thread.join()
+
+            assert counts
+
+        def test_export_fn_is_invoked_after_export_interval(self) -> None:
+            aggregator = Aggregator()
+            registry = ActiveSpanRegistry()
+            export_calls = []
+            sampler = Sampler(
+                aggregator,
+                registry,
+                sample_rate=200,
+                export_interval_seconds=0.1,
+                export_fn=lambda _time_unix_nano: export_calls.append(1),
+            )
+
+            sampler.start()
+            try:
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline and not export_calls:
+                    time.sleep(0.05)
+            finally:
+                sampler.stop()
+
+            assert export_calls
+
+        def test_start_is_idempotent(self) -> None:
+            aggregator = Aggregator()
+            registry = ActiveSpanRegistry()
+            sampler = Sampler(
+                aggregator, registry, 200, 100, export_fn=lambda _time_unix_nano: None
+            )
+
+            sampler.start()
+            sampler.start()
+            try:
+                sampler_threads = [
+                    thread
+                    for thread in threading.enumerate()
+                    if thread.name == SAMPLER_THREAD_NAME
+                ]
+            finally:
+                sampler.stop()
+
+            assert len(sampler_threads) == 1
+
+        def test_does_not_sample_its_own_thread(self) -> None:
+            aggregator = Aggregator()
+            registry = ActiveSpanRegistry()
+            sampler = Sampler(
+                aggregator,
+                registry,
+                sample_rate=200,
+                export_interval_seconds=100,
+                export_fn=lambda _time_unix_nano: None,
+            )
+
+            sampler.start()
+            try:
+                time.sleep(0.3)
+            finally:
+                sampler.stop()
+
+            counts = aggregator.drain()
+            for stack, _thread_name, _span_id in counts:
+                names = [entry[0] for entry in stack]
+                assert "_sample_once" not in names
+                assert "_run" not in names
+
+    class TestStop:
+        def test_stop_exports_the_window_still_open(self) -> None:
+            export_calls = []
+            sampler = Sampler(
+                Aggregator(),
+                ActiveSpanRegistry(),
+                sample_rate=200,
+                export_interval_seconds=100,
+                export_fn=lambda _time_unix_nano: export_calls.append(1),
+            )
+
+            sampler.start()
+            sampler.stop()
+
+            assert export_calls == [1]
+
+        def test_stopping_twice_exports_once(self) -> None:
+            export_calls = []
+            sampler = Sampler(
+                Aggregator(),
+                ActiveSpanRegistry(),
+                sample_rate=200,
+                export_interval_seconds=100,
+                export_fn=lambda _time_unix_nano: export_calls.append(1),
+            )
+
+            sampler.start()
+            sampler.stop()
+            sampler.stop()
+
+            assert export_calls == [1]
+
+        def test_stop_does_not_wait_for_an_export_in_flight(self) -> None:
+            held_s = 1.0
+            export_started = threading.Event()
+
+            def slow_first_export(_time_unix_nano: int) -> None:
+                if not export_started.is_set():
+                    export_started.set()
+                    time.sleep(held_s)
+
+            sampler = Sampler(
+                Aggregator(),
+                ActiveSpanRegistry(),
+                sample_rate=200,
+                export_interval_seconds=0.05,
+                export_fn=slow_first_export,
+            )
+            sampler.start()
+            export_started.wait(timeout=2)
+
+            stop_started = time.monotonic()
+            sampler.stop()
+
+            assert time.monotonic() - stop_started < held_s / 2
+
     @pytest.mark.skipif(
-        sys.platform != "linux", reason="on-CPU filtering is Linux-only"
+        sys.platform != "linux", reason="/proc-based filtering is Linux-only"
     )
-    def test_samples_are_recorded_while_running(self) -> None:
-        aggregator = Aggregator()
-        registry = ActiveSpanRegistry()
-        sampler = Sampler(
-            aggregator,
-            registry,
-            sample_rate=200,
-            export_interval_seconds=100,
-            export_fn=lambda _time_unix_nano: None,
-        )
+    class TestOnCpuFiltering:
+        def test_busy_thread_is_sampled_much_more_than_blocked_thread(self) -> None:
+            aggregator = Aggregator()
+            registry = ActiveSpanRegistry()
+            sampler = Sampler(
+                aggregator,
+                registry,
+                sample_rate=200,
+                export_interval_seconds=100,
+                export_fn=lambda _time_unix_nano: None,
+            )
 
-        # A thread that's actually spinning on CPU is needed here: the main
-        # thread spends nearly all of its time blocked in time.sleep below,
-        # so it's rarely (if ever) in Linux's "R" state when the sampler's
-        # on-CPU filter checks it, making this test flaky without one.
-        stop_busy = threading.Event()
+            stop_busy = threading.Event()
+            stop_blocked = threading.Event()
 
-        def _busy() -> None:
-            while not stop_busy.is_set():
-                pass
+            def _busy() -> None:
+                while not stop_busy.is_set():
+                    pass
 
-        busy_thread = threading.Thread(target=_busy, name="busy-thread-samples-test")
-        busy_thread.start()
+            def _blocked() -> None:
+                stop_blocked.wait()
 
-        sampler.start()
-        try:
-            deadline = time.monotonic() + 2
-            counts: dict[SampleKey, int] = {}
-            while time.monotonic() < deadline and not counts:
-                time.sleep(0.05)
-                counts = aggregator.drain()
-        finally:
-            sampler.stop()
-            stop_busy.set()
-            busy_thread.join()
+            busy_thread = threading.Thread(target=_busy, name="busy-thread-test")
+            blocked_thread = threading.Thread(
+                target=_blocked, name="blocked-thread-test"
+            )
+            busy_thread.start()
+            blocked_thread.start()
 
-        assert counts
+            sampler.start()
+            try:
+                time.sleep(1)
+            finally:
+                sampler.stop()
+                stop_busy.set()
+                stop_blocked.set()
+                busy_thread.join()
+                blocked_thread.join()
 
-    def test_export_fn_is_invoked_after_export_interval(self) -> None:
-        aggregator = Aggregator()
-        registry = ActiveSpanRegistry()
-        export_calls = []
-        sampler = Sampler(
-            aggregator,
-            registry,
-            sample_rate=200,
-            export_interval_seconds=0.1,
-            export_fn=lambda _time_unix_nano: export_calls.append(1),
-        )
+            counts = aggregator.drain()
+            busy_count = sum(
+                count
+                for (_stack, name, _span_id), count in counts.items()
+                if name == "busy-thread-test"
+            )
+            blocked_count = sum(
+                count
+                for (_stack, name, _span_id), count in counts.items()
+                if name == "blocked-thread-test"
+            )
 
-        sampler.start()
-        try:
-            deadline = time.monotonic() + 2
-            while time.monotonic() < deadline and not export_calls:
-                time.sleep(0.05)
-        finally:
-            sampler.stop()
-
-        assert export_calls
-
-    def test_stop_exports_the_window_still_open(self) -> None:
-        export_calls = []
-        sampler = Sampler(
-            Aggregator(),
-            ActiveSpanRegistry(),
-            sample_rate=200,
-            export_interval_seconds=100,
-            export_fn=lambda _time_unix_nano: export_calls.append(1),
-        )
-
-        sampler.start()
-        sampler.stop()
-
-        assert export_calls == [1]
-
-    def test_stopping_twice_exports_once(self) -> None:
-        export_calls = []
-        sampler = Sampler(
-            Aggregator(),
-            ActiveSpanRegistry(),
-            sample_rate=200,
-            export_interval_seconds=100,
-            export_fn=lambda _time_unix_nano: export_calls.append(1),
-        )
-
-        sampler.start()
-        sampler.stop()
-        sampler.stop()
-
-        assert export_calls == [1]
-
-    def test_stop_does_not_wait_for_an_export_in_flight(self) -> None:
-        held_s = 1.0
-        export_started = threading.Event()
-
-        def slow_first_export(_time_unix_nano: int) -> None:
-            if not export_started.is_set():
-                export_started.set()
-                time.sleep(held_s)
-
-        sampler = Sampler(
-            Aggregator(),
-            ActiveSpanRegistry(),
-            sample_rate=200,
-            export_interval_seconds=0.05,
-            export_fn=slow_first_export,
-        )
-        sampler.start()
-        export_started.wait(timeout=2)
-
-        stop_started = time.monotonic()
-        sampler.stop()
-
-        assert time.monotonic() - stop_started < held_s / 2
-
-    def test_start_is_idempotent(self) -> None:
-        aggregator = Aggregator()
-        registry = ActiveSpanRegistry()
-        sampler = Sampler(
-            aggregator, registry, 200, 100, export_fn=lambda _time_unix_nano: None
-        )
-
-        sampler.start()
-        sampler.start()
-        try:
-            sampler_threads = [
-                thread
-                for thread in threading.enumerate()
-                if thread.name == SAMPLER_THREAD_NAME
-            ]
-        finally:
-            sampler.stop()
-
-        assert len(sampler_threads) == 1
-
-    def test_does_not_sample_its_own_thread(self) -> None:
-        aggregator = Aggregator()
-        registry = ActiveSpanRegistry()
-        sampler = Sampler(
-            aggregator,
-            registry,
-            sample_rate=200,
-            export_interval_seconds=100,
-            export_fn=lambda _time_unix_nano: None,
-        )
-
-        sampler.start()
-        try:
-            time.sleep(0.3)
-        finally:
-            sampler.stop()
-
-        counts = aggregator.drain()
-        for stack, _thread_name, _span_id in counts:
-            names = [entry[0] for entry in stack]
-            assert "_sample_once" not in names
-            assert "_run" not in names
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux", reason="/proc-based filtering is Linux-only"
-)
-class TestOnCpuFiltering:
-    def test_busy_thread_is_sampled_much_more_than_blocked_thread(self) -> None:
-        aggregator = Aggregator()
-        registry = ActiveSpanRegistry()
-        sampler = Sampler(
-            aggregator,
-            registry,
-            sample_rate=200,
-            export_interval_seconds=100,
-            export_fn=lambda _time_unix_nano: None,
-        )
-
-        stop_busy = threading.Event()
-        stop_blocked = threading.Event()
-
-        def _busy() -> None:
-            while not stop_busy.is_set():
-                pass
-
-        def _blocked() -> None:
-            stop_blocked.wait()
-
-        busy_thread = threading.Thread(target=_busy, name="busy-thread-test")
-        blocked_thread = threading.Thread(target=_blocked, name="blocked-thread-test")
-        busy_thread.start()
-        blocked_thread.start()
-
-        sampler.start()
-        try:
-            time.sleep(1)
-        finally:
-            sampler.stop()
-            stop_busy.set()
-            stop_blocked.set()
-            busy_thread.join()
-            blocked_thread.join()
-
-        counts = aggregator.drain()
-        busy_count = sum(
-            count
-            for (_stack, name, _span_id), count in counts.items()
-            if name == "busy-thread-test"
-        )
-        blocked_count = sum(
-            count
-            for (_stack, name, _span_id), count in counts.items()
-            if name == "blocked-thread-test"
-        )
-
-        min_ratio = 10
-        assert busy_count > 0
-        assert busy_count >= min_ratio * blocked_count
+            min_ratio = 10
+            assert busy_count > 0
+            assert busy_count >= min_ratio * blocked_count
