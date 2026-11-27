@@ -20,6 +20,7 @@ runs:
       shell: bash
       env:
         SCHEMA: ${{ inputs.schema }}
+      # Callers pass the JSON in single quotes in claude_args, so an apostrophe goes out as its JSON escape.
       run: |
-        json=$(jq -c . "$GITHUB_ACTION_PATH/../../$SCHEMA")
+        json=$(jq -c . "$GITHUB_ACTION_PATH/../../$SCHEMA" | sed "s/'/\\\\u0027/g")
         echo "json=$json" >> "$GITHUB_OUTPUT"
