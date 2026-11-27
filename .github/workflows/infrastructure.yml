@@ -1009,9 +1009,10 @@ jobs:
   afk-finish:
     name: afk-finish (${{ matrix.case }})
 
-    # The production job's read permission; its Actions write only dispatches, which a dry run skips.
+    # The production job's read permissions; its Actions write only dispatches, which a dry run skips.
     permissions:
       actions: read
+      checks: read
 
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1174,6 +1175,7 @@ jobs:
     # The production jobs' permissions.
     permissions:
       actions: write
+      checks: read
       contents: read
       issues: read
       pull-requests: read
@@ -1225,6 +1227,7 @@ jobs:
     # The production jobs' permissions.
     permissions:
       actions: read
+      checks: read
       contents: read
       pull-requests: read
 
@@ -1283,6 +1286,7 @@ jobs:
     # The production jobs' permissions.
     permissions:
       actions: read
+      checks: read
       contents: read
       issues: read
       pull-requests: read
@@ -1331,6 +1335,43 @@ jobs:
       - name: Assert that finish plans no failure comment
         run: |
           jq -e 'all(.[]; .type != "Comment" or (.body | startswith("The AFK run that updates this PR") | not))' <<<"$FINISH_EFFECTS"
+
+  # Dispatches with GITHUB_TOKEN, as the AFK dispatcher does, each run workflow whose canary starts the agent, so that GitHub starts the run as github-actions.
+  afk-dispatched-run-workflow:
+    name: afk-dispatched-run-workflow (${{ matrix.workflow }})
+
+    permissions:
+      actions: write
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - workflow: afk-run.yml
+            number: ${{ vars.AFK_CANARY_TICKET }}
+          - workflow: afk-run-pr.yml
+            number: ${{ vars.AFK_CANARY_PR }}
+
+    steps:
+      - name: Dispatch the workflow as a dry run, and wait for it to succeed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW: ${{ matrix.workflow }}
+          NUMBER: ${{ matrix.number }}
+          REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          url=$(gh workflow run "$WORKFLOW" --ref "$REF" -f number="$NUMBER" -f dry-run=true -f model=claude-haiku-5-5 -f effort=low \
+            | grep -o 'https://[^ ]*/actions/runs/[0-9]*')
+          echo "Dispatched $url"
+          if ! gh run watch "${url##*/}" --exit-status --interval 30 >/dev/null; then
+            gh run view "${url##*/}"
+            exit 1
+          fi
 
   actions-lock:
     permissions:

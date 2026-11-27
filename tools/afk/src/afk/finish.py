@@ -1,9 +1,10 @@
 """End an AFK run: report how it ended, then release or continue its ticket."""
 
 import json
+import re
 import subprocess
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
@@ -26,6 +27,8 @@ from afk.writer import Writer
 
 _STOPPED = {"failure", "cancelled"}
 _STEP_SEPARATOR = " \N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK} "
+# The runner adds it to every failed step, so it names no cause.
+_EXIT_CODE = re.compile(r"Process completed with exit code \d+\.")
 
 
 class Workflow(StrEnum):
@@ -119,7 +122,16 @@ class Needs:
         return self.work_result == "success"
 
 
-def failed_step(response: Mapping[str, Any]) -> str | None:
+@dataclass(frozen=True)
+class FailedStep:
+    """A run's failed step, named after its job, and the errors its job reported."""
+
+    name: str
+    job_id: int | None = None
+    errors: tuple[str, ...] = ()
+
+
+def failed_step(response: Mapping[str, Any]) -> FailedStep | None:
     """Return the first failed or cancelled job of a run attempt, with its step."""
     for job in response["jobs"]:
         steps = job.get("steps") or []
@@ -127,8 +139,18 @@ def failed_step(response: Mapping[str, Any]) -> str | None:
         if job["conclusion"] in _STOPPED or any(
             s["conclusion"] == "failure" for s in steps
         ):
-            return _STEP_SEPARATOR.join([job["name"], *stopped[:1]])
+            name = _STEP_SEPARATOR.join([job["name"], *stopped[:1]])
+            return FailedStep(name=name, job_id=job["id"])
     return None
+
+
+def job_errors(annotations: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
+    """Return the messages of a job's failure annotations that name a cause."""
+    return tuple(
+        a["message"]
+        for a in annotations
+        if a["annotation_level"] == "failure" and not _EXIT_CODE.fullmatch(a["message"])
+    )
 
 
 def _worked(run: Run, needs: Needs) -> int:
@@ -216,10 +238,17 @@ def _stop_spec(run: Run, needs: Needs) -> list[Effect]:
     )
 
 
-def _report_failure(run: Run, needs: Needs, step: str) -> list[Effect]:
-    reason = f"`{step}` failed."
+def _quote(text: str) -> str:
+    return "\n".join(f"> {line}".rstrip() for line in text.splitlines())
+
+
+def _report_failure(run: Run, needs: Needs, step: FailedStep) -> list[Effect]:
+    reason = f"`{step.name}` failed."
     if needs.agent_error:
         reason = f"{reason} The agent reported: {needs.agent_error}"
+    errors = [error for error in step.errors if error != needs.agent_error]
+    if errors:
+        reason = f"{reason} Its job reported:\n\n" + "\n\n".join(map(_quote, errors))
     text = "The AFK run failed"
     if run.workflow == Workflow.AFK_UPDATE_BRANCH:
         text = "The AFK run that updates this PR's branch failed"
@@ -260,7 +289,7 @@ def _react(run: Run, content: Reaction) -> list[Effect]:
     return [React(comment_id=run.comment_id, content=content)]
 
 
-def plan(run: Run, needs: Needs, step: str | None) -> list[Effect]:
+def plan(run: Run, needs: Needs, step: FailedStep | None) -> list[Effect]:
     """Return the run's last writes, given the failed step when a job failed."""
     effects = [
         *_refuse(run, needs),
@@ -271,7 +300,7 @@ def plan(run: Run, needs: Needs, step: str | None) -> list[Effect]:
         *_stop_spec(run, needs),
     ]
     if needs.failed:
-        effects += _report_failure(run, needs, step or "unknown step")
+        effects += _report_failure(run, needs, step or FailedStep("unknown step"))
     # A queued or continued spec keeps the command's reaction until it ends.
     if needs.queue:
         return [*effects, *_queue(run), *_release(run)]
@@ -287,7 +316,7 @@ def plan(run: Run, needs: Needs, step: str | None) -> list[Effect]:
 def plan_failure(run: Run, needs: Needs, failed: str) -> list[Effect]:
     """Return the writes that report and release the ticket after `failed` failed."""
     return [
-        *_report_failure(run, needs, f"finish{_STEP_SEPARATOR}{failed}"),
+        *_report_failure(run, needs, FailedStep(f"finish{_STEP_SEPARATOR}{failed}")),
         *_release(run),
         *_react(run, Reaction.CONFUSED),
     ]
@@ -305,12 +334,22 @@ def _finished(env: Mapping[str, str]) -> Run:
     )
 
 
-def _read_failed_step(gh: Runner, env: Mapping[str, str]) -> str | None:
+def _read_failed_step(gh: Runner, env: Mapping[str, str]) -> FailedStep | None:
     endpoint = (
         f"repos/{env['GH_REPO']}/actions/runs/{env['GITHUB_RUN_ID']}"
         f"/attempts/{env['GITHUB_RUN_ATTEMPT']}/jobs?per_page=100"
     )
-    return failed_step(json.loads(run_gh(gh, env, Token.WORKFLOW, ["api", endpoint])))
+    step = failed_step(json.loads(run_gh(gh, env, Token.WORKFLOW, ["api", endpoint])))
+    if step is None:
+        return None
+    # A job's id is its check run's id.
+    annotations = (
+        f"repos/{env['GH_REPO']}/check-runs/{step.job_id}/annotations?per_page=100"
+    )
+    errors = job_errors(
+        json.loads(run_gh(gh, env, Token.WORKFLOW, ["api", annotations]))
+    )
+    return replace(step, errors=errors)
 
 
 def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:

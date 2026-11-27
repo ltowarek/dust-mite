@@ -21,7 +21,16 @@ from afk.effects import (
     Effect,
     React,
 )
-from afk.finish import Needs, Run, Workflow, failed_step, plan, plan_failure
+from afk.finish import (
+    FailedStep,
+    Needs,
+    Run,
+    Workflow,
+    failed_step,
+    job_errors,
+    plan,
+    plan_failure,
+)
 from afk.writer import Writer
 from tests.test_doubles import GhCall, GhSpy, GitSpy, read_outputs
 
@@ -338,7 +347,7 @@ class TestPlan:
             pytest.param(
                 RUN,
                 needs(implement_result="failure"),
-                f"implement{SEP}Run the AFK agent session",
+                FailedStep(f"implement{SEP}Run the AFK agent session"),
                 [
                     BLOCK,
                     failure_report(
@@ -355,7 +364,7 @@ class TestPlan:
                     implement={"agent-error": "Out of turns."},
                     implement_result="failure",
                 ),
-                f"implement{SEP}Run the AFK agent session",
+                FailedStep(f"implement{SEP}Run the AFK agent session"),
                 [
                     BLOCK,
                     failure_report(
@@ -366,6 +375,46 @@ class TestPlan:
                     RELEASE,
                 ],
                 id="adds the agent's error",
+            ),
+            pytest.param(
+                RUN,
+                needs(implement_result="failure"),
+                FailedStep(
+                    f"implement{SEP}Run the AFK agent session",
+                    errors=("Action failed.\n\nAdd the bot.", "Disk full."),
+                ),
+                [
+                    BLOCK,
+                    failure_report(
+                        "The AFK run failed",
+                        f"`implement{SEP}Run the AFK agent session` failed. "
+                        "Its job reported:\n\n> Action failed.\n>\n> Add the bot."
+                        "\n\n> Disk full.",
+                    ),
+                    RELEASE,
+                ],
+                id="quotes each error that its job reported",
+            ),
+            pytest.param(
+                RUN,
+                needs(
+                    implement={"agent-error": "Out of turns."},
+                    implement_result="failure",
+                ),
+                FailedStep(
+                    f"implement{SEP}Run the AFK agent session",
+                    errors=("Out of turns.",),
+                ),
+                [
+                    BLOCK,
+                    failure_report(
+                        "The AFK run failed",
+                        f"`implement{SEP}Run the AFK agent session` failed. "
+                        "The agent reported: Out of turns.",
+                    ),
+                    RELEASE,
+                ],
+                id="leaves out a job error that repeats the agent's error",
             ),
             pytest.param(
                 RUN,
@@ -381,7 +430,7 @@ class TestPlan:
             pytest.param(
                 RUN,
                 needs(check=SPEC_RUN, implement_result="failure"),
-                f"implement{SEP}Run the AFK agent session",
+                FailedStep(f"implement{SEP}Run the AFK agent session"),
                 [
                     BLOCK,
                     failure_report(
@@ -398,7 +447,7 @@ class TestPlan:
                     implement={"agent-error": "Out of turns."},
                     implement_result="failure",
                 ),
-                f"implement{SEP}Run the agent",
+                FailedStep(f"implement{SEP}Run the agent"),
                 [
                     BLOCK,
                     failure_report(
@@ -414,7 +463,7 @@ class TestPlan:
             pytest.param(
                 UPDATE_RUN,
                 needs(implement_result="failure"),
-                f"update-branch{SEP}Merge main",
+                FailedStep(f"update-branch{SEP}Merge main"),
                 [
                     BLOCK,
                     failure_report(
@@ -430,14 +479,14 @@ class TestPlan:
         ],
     )
     def test_reports_a_failed_job_then_releases(
-        self, run: Run, failed: Needs, step: str | None, effects: list[Effect]
+        self, run: Run, failed: Needs, step: FailedStep | None, effects: list[Effect]
     ) -> None:
         assert plan(run, failed, step) == effects
 
     def test_reports_a_cancelled_check_job(self) -> None:
         cancelled = needs(check_result="cancelled", implement_result="skipped")
 
-        assert plan(RUN, cancelled, "check") == [
+        assert plan(RUN, cancelled, FailedStep("check")) == [
             BLOCK,
             failure_report("The AFK run failed", "`check` failed."),
             RELEASE,
@@ -524,6 +573,7 @@ def job(
     name: str, conclusion: str | None, *steps: tuple[str, str | None]
 ) -> dict[str, Any]:
     return {
+        "id": 7,
         "name": name,
         "conclusion": conclusion,
         "steps": [{"name": n, "conclusion": c} for n, c in steps],
@@ -544,7 +594,7 @@ class TestFailedStep:
                         ("Agent", "failure"),
                     ),
                 ],
-                f"implement{SEP}Agent",
+                FailedStep(f"implement{SEP}Agent", job_id=7),
                 id="names the failed job's failed step",
             ),
             pytest.param(
@@ -556,7 +606,7 @@ class TestFailedStep:
                         ("Agent", "cancelled"),
                     )
                 ],
-                f"implement{SEP}Agent",
+                FailedStep(f"implement{SEP}Agent", job_id=7),
                 id="names a cancelled job's cancelled step",
             ),
             pytest.param(
@@ -564,17 +614,17 @@ class TestFailedStep:
                     job("check", "failure", ("Read", "failure")),
                     job("implement", "failure", ("Agent", "failure")),
                 ],
-                f"check{SEP}Read",
+                FailedStep(f"check{SEP}Read", job_id=7),
                 id="names the first failed job",
             ),
             pytest.param(
                 [job("finish", None, ("Mint", "failure"), ("Finish", None))],
-                f"finish{SEP}Mint",
+                FailedStep(f"finish{SEP}Mint", job_id=7),
                 id="names a failed step of a job that is still running",
             ),
             pytest.param(
                 [job("implement", "cancelled")],
-                "implement",
+                FailedStep("implement", job_id=7),
                 id="names a cancelled job that ran no step",
             ),
             pytest.param(
@@ -583,7 +633,7 @@ class TestFailedStep:
                 id="skips a running job whose only stopped step was cancelled",
             ),
             pytest.param(
-                [{"name": "check", "conclusion": "success", "steps": None}],
+                [{"id": 7, "name": "check", "conclusion": "success", "steps": None}],
                 None,
                 id="skips a job without steps",
             ),
@@ -595,15 +645,47 @@ class TestFailedStep:
         ],
     )
     def test_finds_the_first_failed_step(
-        self, jobs: list[dict[str, Any]], step: str | None
+        self, jobs: list[dict[str, Any]], step: FailedStep | None
     ) -> None:
         assert failed_step({"total_count": len(jobs), "jobs": jobs}) == step
+
+
+def annotation(level: str, message: str) -> dict[str, Any]:
+    return {"annotation_level": level, "message": message}
+
+
+class TestJobErrors:
+    @pytest.mark.parametrize(
+        ("annotations", "errors"),
+        [
+            pytest.param(
+                [annotation("failure", "Action failed with error: Add the bot.")],
+                ("Action failed with error: Add the bot.",),
+                id="keeps a failure annotation's message",
+            ),
+            pytest.param(
+                [annotation("failure", "Process completed with exit code 1.")],
+                (),
+                id="drops the runner's exit code, which names no cause",
+            ),
+            pytest.param(
+                [annotation("warning", "Node 20 is deprecated.")],
+                (),
+                id="drops a warning",
+            ),
+        ],
+    )
+    def test_keeps_the_errors_that_name_a_cause(
+        self, annotations: list[dict[str, Any]], errors: tuple[str, ...]
+    ) -> None:
+        assert job_errors(annotations) == errors
 
 
 FAILED_STEP_READ = (
     "api",
     "repos/owner/repo/actions/runs/99/attempts/1/jobs?per_page=100",
 )
+JOB_ERRORS_READ = ("api", "repos/owner/repo/check-runs/7/annotations?per_page=100")
 ENV = {
     "AFK_APP_TOKEN": "app-token",
     "AFK_WORKFLOW_TOKEN": "workflow-token",
@@ -664,19 +746,21 @@ class TestRun:
             ],
         )
 
-    def test_reads_the_failed_step_with_the_workflow_token(
+    def test_reads_the_failed_step_and_its_job_s_errors_with_the_workflow_token(
         self, tmp_path: Path
     ) -> None:
-        response = {
-            "jobs": [
-                {
-                    "name": "implement",
-                    "conclusion": "failure",
-                    "steps": [{"name": "Agent", "conclusion": "failure"}],
-                }
-            ]
-        }
-        gh, git = GhSpy({FAILED_STEP_READ: json.dumps(response)}), GitSpy()
+        response = {"jobs": [job("implement", "failure", ("Agent", "failure"))]}
+        annotations = [
+            annotation("failure", "Add the bot."),
+            annotation("failure", "Process completed with exit code 1."),
+        ]
+        gh = GhSpy(
+            {
+                FAILED_STEP_READ: json.dumps(response),
+                JOB_ERRORS_READ: json.dumps(annotations),
+            }
+        )
+        git = GitSpy()
         env = env_for(needs_context(implement_result="failure"), dry_run=True)
         output = tmp_path / "output"
         writer = Writer(gh, git, env, output)
@@ -685,8 +769,14 @@ class TestRun:
         writer.report()
 
         assert (gh.calls, written(read_outputs(output)["effects"])[1]["body"]) == (
-            [GhCall(list(FAILED_STEP_READ), "workflow-token", "owner/repo")],
-            failure_report("The AFK run failed", f"`implement{SEP}Agent` failed.").body,
+            [
+                GhCall(list(FAILED_STEP_READ), "workflow-token", "owner/repo"),
+                GhCall(list(JOB_ERRORS_READ), "workflow-token", "owner/repo"),
+            ],
+            failure_report(
+                "The AFK run failed",
+                f"`implement{SEP}Agent` failed. Its job reported:\n\n> Add the bot.",
+            ).body,
         )
 
     def test_reports_and_releases_after_a_failed_write_then_fails(

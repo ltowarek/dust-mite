@@ -1,5 +1,5 @@
 name: AFK run on a PR
-run-name: 'afk implement #${{ inputs.number }}'
+run-name: "afk implement #${{ inputs.number }}${{ inputs.dry-run && ' (dry run)' || '' }}"
 
 on:
   workflow_dispatch:
@@ -16,6 +16,21 @@ on:
         description: The PR's head when the AFK command was accepted; empty for the current head
         required: false
         type: string
+      dry-run:
+        description: Report the writes in the effects outputs instead of making them
+        required: false
+        type: boolean
+        default: false
+      model:
+        description: The agent's model
+        required: false
+        type: string
+        default: claude-opus-5-5
+      effort:
+        description: The agent's effort
+        required: false
+        type: string
+        default: medium
   workflow_call:
     inputs:
       number:
@@ -163,8 +178,8 @@ jobs:
           github_token: ${{ steps.read-token.outputs.token }}
           bot_name: ${{ vars.AFK_APP_SLUG }}[bot]
           bot_id: ${{ vars.AFK_APP_BOT_ID }}
-          # A dry run in a Dependabot pull request's CI starts as Dependabot.
-          allowed_bots: ${{ inputs.dry-run && 'dependabot' || '' }}
+          # The AFK dispatcher's GITHUB_TOKEN starts a run as github-actions; a dry run in a Dependabot pull request's CI starts as Dependabot.
+          allowed_bots: ${{ inputs.dry-run && 'github-actions,dependabot' || 'github-actions' }}
           prompt: |
             # TASK
 
@@ -204,9 +219,8 @@ jobs:
             A comment that raises a spec gap, as docs/agents/spec-gaps.md defines it, gets your question as a thread reply, or as a top-level comment when it is not in a thread; make no change for it.
             Follow docs/agents/follow-up-tickets.md: list follow-up tickets in follow_ups and follow-ups already covered in already_covered.
             Set needs_dut_run to whether your commits can only be confirmed by a DUT run on the car, judged from the change itself; if they can, set car_variant.
-          # A dispatch has no model or effort input.
           claude_args: >-
-            --model ${{ inputs.model || 'claude-opus-5-5' }} --effort ${{ inputs.effort || 'medium' }}
+            --model ${{ inputs.model }} --effort ${{ inputs.effort }}
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Task,TodoWrite
             --json-schema '${{ steps.schema.outputs.json }}'
 
@@ -242,6 +256,7 @@ jobs:
 
     permissions:
       actions: read
+      checks: read
 
     outputs:
       effects: ${{ steps.finish.outputs.effects }}
