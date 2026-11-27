@@ -14,8 +14,9 @@ from afk.effects import (
     Effect,
     React,
     Reaction,
+    Unreact,
 )
-from afk.github import Token, run_gh
+from afk.github import Token, read_own_reaction, run_gh
 from afk.labels import Label
 from afk.runner import Runner
 from afk.writer import Writer
@@ -186,13 +187,16 @@ def plan(target: Target, decision: Refusal | Queue | Accept) -> list[Effect]:
             return _accept(target, decision)
 
 
-def release(target: Target, *, accepted: bool) -> list[Effect]:
-    """Return the writes that release a target after the command's job failed."""
+def release(target: Target, *, accepted: bool, eyes: int | None) -> list[Effect]:
+    """Return the writes that release a target after its job failed, 😕 replacing 👀."""
     # Only an accepted command added afk:in-progress; otherwise another run owns it.
     effects: list[Effect] = []
     if accepted:
         effects.append(EditLabels(number=target.number, remove=(Label.IN_PROGRESS,)))
+    # React before removing 👀, so that the command never shows no state.
     effects.append(React(comment_id=target.comment_id, content=Reaction.CONFUSED))
+    if eyes is not None:
+        effects.append(Unreact(comment_id=target.comment_id, reaction_id=eyes))
     return effects
 
 
@@ -269,7 +273,10 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
         writer.write(effect)
 
 
-def run_release(_gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
+def run_release(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     """Release the command's target after its job failed."""
-    for effect in release(_target(env), accepted=env["AFK_ACCEPTED"] == "true"):
+    target = _target(env)
+    eyes = read_own_reaction(gh, env, target.comment_id, Reaction.EYES)
+    accepted = env["AFK_ACCEPTED"] == "true"
+    for effect in release(target, accepted=accepted, eyes=eyes):
         writer.write(effect)

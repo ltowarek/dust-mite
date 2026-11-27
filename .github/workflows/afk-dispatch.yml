@@ -49,3 +49,4 @@ jobs:
           comment-id: ${{ github.event.comment.id }}
           accepted: ${{ steps.dispatch.outputs.accepted }}
           app-token: ${{ steps.write-token.outputs.token }}
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}

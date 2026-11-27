@@ -1,5 +1,5 @@
 name: AFK dispatch release
-description: Release an AFK command's target after its job failed, and react confused to the command
+description: Release an AFK command's target after its job failed, and replace the App's 👀 on the command with 😕
 
 inputs:
   number:
@@ -13,7 +13,10 @@ inputs:
     required: false
     default: ""
   app-token:
-    description: The AFK App's token with Issues and Pull requests write, for the label and the reaction
+    description: The AFK App's token with Issues and Pull requests write, for the label and the reactions
+    required: true
+  bot-id:
+    description: The account id of the AFK App's bot, whose 👀 on the command the 😕 replaces
     required: true
   dry-run:
     description: Report the writes in the effects output instead of making them
@@ -32,7 +35,7 @@ runs:
       id: afk
       uses: $/.github/actions/setup-afk
 
-    - name: Release the target and react confused
+    - name: Release the target and react confused instead of 👀
       id: release
       shell: bash
       env:
@@ -41,6 +44,7 @@ runs:
         AFK_COMMENT_ID: ${{ inputs.comment-id }}
         AFK_ACCEPTED: ${{ inputs.accepted }}
         AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_BOT_ID: ${{ inputs.bot-id }}
         AFK_DRY_RUN: ${{ inputs.dry-run }}
         GH_REPO: ${{ github.repository }}
       run: |

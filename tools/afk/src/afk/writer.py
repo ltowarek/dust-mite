@@ -23,6 +23,7 @@ from afk.effects import (
     PushBranch,
     React,
     ReplyToReviewComment,
+    Unreact,
 )
 from afk.git import push_args, run_git
 from afk.github import (
@@ -64,7 +65,14 @@ def command_for(effect: Effect) -> Command:
             command = GhCommand(dispatch_args(workflow, inputs), Token.WORKFLOW)
         case PushBranch(repository=repository, branch=branch, lease=lease):
             command = GitCommand(push_args(repository, branch, lease), Token.APP)
-        case EditLabels() | Comment() | React() | CreateIssue() | CloseIssue():
+        case (
+            EditLabels()
+            | Comment()
+            | React()
+            | Unreact()
+            | CreateIssue()
+            | CloseIssue()
+        ):
             command = GhCommand(issue_args(effect), Token.APP)
         case (
             CreatePullRequest()

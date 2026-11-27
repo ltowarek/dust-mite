@@ -22,6 +22,7 @@ from afk.effects import (
     React,
     ReplyToReviewComment,
     ReviewWrite,
+    Unreact,
 )
 from afk.runner import Runner
 
@@ -70,6 +71,23 @@ def read_graphql(
     return response
 
 
+def own_reaction(reactions: list[dict[str, Any]], bot_id: int) -> int | None:
+    """Return the id of the App's reaction among a comment's reactions, if any."""
+    return next((r["id"] for r in reactions if r["user"]["id"] == bot_id), None)
+
+
+def read_own_reaction(
+    gh: Runner, env: Mapping[str, str], comment_id: int, content: str
+) -> int | None:
+    """Return the id of the App's `content` reaction to a comment, read as the App."""
+    endpoint = (
+        f"repos/{env['GH_REPO']}/issues/comments/{comment_id}/reactions"
+        f"?content={content}&per_page=100"
+    )
+    reactions = json.loads(run_gh(gh, env, Token.APP, ["api", endpoint]))
+    return own_reaction(reactions, int(env["AFK_BOT_ID"]))
+
+
 def dispatch_args(workflow: str, inputs: Mapping[str, str]) -> list[str]:
     """Return the `gh` arguments that dispatch `workflow` with `inputs`."""
     fields = [arg for key, value in inputs.items() for arg in ("-f", f"{key}={value}")]
@@ -90,6 +108,12 @@ def issue_args(effect: IssueWrite) -> list[str]:
                 f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}/reactions"
             )
             args = ["api", "--method", "POST", endpoint, "-f", f"content={content}"]
+        case Unreact(comment_id=comment_id, reaction_id=reaction_id):
+            endpoint = (
+                f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}"
+                f"/reactions/{reaction_id}"
+            )
+            args = ["api", "--method", "DELETE", endpoint]
         case CreateIssue(title=title, body=body, labels=labels):
             flags = [arg for label in labels for arg in ("--label", label)]
             args = ["issue", "create", "--title", title, "--body", body, *flags]

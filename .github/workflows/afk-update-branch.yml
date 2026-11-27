@@ -97,6 +97,7 @@ jobs:
           head-sha: ${{ inputs.head-sha }}
           app-token: ${{ steps.write-token.outputs.token }}
           workflow-token: ${{ github.token }}
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}
           dry-run: ${{ inputs.dry-run }}
 
   update-branch:

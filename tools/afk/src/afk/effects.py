@@ -46,6 +46,14 @@ class React:
 
 
 @dataclass(frozen=True)
+class Unreact:
+    """Remove a reaction from a conversation comment."""
+
+    comment_id: int
+    reaction_id: int
+
+
+@dataclass(frozen=True)
 class PushBranch:
     """Push `HEAD` to a branch of a repository, only from `lease` when set."""
 
@@ -133,7 +141,7 @@ class CloseIssue:
     comment: str
 
 
-IssueWrite = EditLabels | Comment | React | CreateIssue | CloseIssue
+IssueWrite = EditLabels | Comment | React | Unreact | CreateIssue | CloseIssue
 """A write on an issue or its conversation, which `gh issue` or `gh api` makes."""
 
 PullRequestWrite = (
