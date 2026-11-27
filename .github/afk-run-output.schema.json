@@ -3,7 +3,10 @@
   "properties": {
     "outcome": { "enum": ["done", "spec_gap", "needs_car"] },
     "pr_title": { "type": "string" },
-    "pr_body": { "type": "string" },
+    "pr_body": {
+      "type": "string",
+      "description": "The pr skill's template: only its Summary, Evidence and Merge Danger sections, with no Closes line."
+    },
     "spec_gaps": { "type": "string" },
     "needs_dut_run": { "type": "boolean" },
     "car_variant": { "enum": ["copper"] },
