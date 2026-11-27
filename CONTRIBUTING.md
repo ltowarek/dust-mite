@@ -1319,7 +1319,9 @@ The `afk-update-branch-workflow` job likewise calls the pull request's own [afk-
 
 `ci.yml` grants the area `actions: write` only because the called workflow's `finish` job requests it to dispatch a spec's next run, and GitHub refuses to start a nested job that requests more than its caller grants; a dry run dispatches nothing.
 
-Dependabot pull requests run the same tests. The AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN` are therefore also Dependabot secrets, and in a dry run each run workflow sets `claude-code-action`'s `allowed_bots` to `dependabot`, because the action refuses a run that a bot outside that list started. A real AFK run allows no bot, because the App, which has no Actions permission, cannot start one.
+`claude-code-action` refuses a run that a bot outside its `allowed_bots` list started. Each run workflow therefore allows `github-actions`, because [afk-dispatch.yml](.github/workflows/afk-dispatch.yml), [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml) and a spec's `finish` job dispatch runs with `GITHUB_TOKEN`, whose runs GitHub starts as `github-actions`. The AFK App, which has no Actions permission, cannot start a run, so the workflows never allow it.
+
+Dependabot pull requests run the same tests. The AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN` are therefore also Dependabot secrets, and in a dry run each run workflow also allows `dependabot`; a real AFK run never does.
 
 ### AFK commands
 
