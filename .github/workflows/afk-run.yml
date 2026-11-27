@@ -187,7 +187,7 @@ jobs:
             At a spec gap, follow docs/agents/spec-gaps.md: make no commits, set outcome to spec_gap, and write the comment in spec_gaps.
             If finding the fix needs the car (flashing it, or watching how it behaves), make no commits, set outcome to needs_car, set car_variant to the variant on which the ticket's code runs, and explain why in needs_car_reason.
             Otherwise set outcome to done and write a Conventional Commits PR title in pr_title.
-            Then invoke the /mattpocock-skills:pr skill and write the PR body in pr_body as its template: only its Summary, Evidence and Merge Danger sections, in that order. Leave out a Closes line, because the run adds one.
+            Then invoke the /mattpocock-skills:pr skill and fill pr_body's fields with its sections' content; the run renders the skill's template from them.
             Set needs_dut_run to whether your change can only be confirmed by a DUT run on the car, judged from the change itself; if it can, set car_variant.
             ${{ needs.check.outputs.spec == 'true' && format('This ticket is a child ticket of the spec #{0}, and the current branch already holds the commits of its earlier child tickets. Review only your own commits, but write pr_title and pr_body and judge needs_dut_run for the branch''s whole change against main.', inputs.number) || '' }}
           claude_args: >-

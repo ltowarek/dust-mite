@@ -809,7 +809,14 @@ jobs:
             output:
               outcome: done
               pr_title: "docs: append canary"
-              pr_body: Appends the line.
+              pr_body:
+                summary: Appends the line.
+                evidence:
+                  before: The canary file has no line.
+                  after: The canary file has the line.
+                merge_danger:
+                  door: two-way
+                  blast_radius: none
               needs_dut_run: false
             assertion: '(.effects | map(.type)) == ["PushBranch","CreatePullRequest","MarkPullRequestReady"] and (.effects[1].body | startswith("Closes #315\n"))'
           - case: hands a spec gap back to triage
@@ -830,7 +837,14 @@ jobs:
             output:
               outcome: done
               pr_title: "docs: append canary"
-              pr_body: Appends the line.
+              pr_body:
+                summary: Appends the line.
+                evidence:
+                  before: The canary file has no line.
+                  after: The canary file has the line.
+                merge_danger:
+                  door: two-way
+                  blast_radius: none
               needs_dut_run: false
             assertion: '.outcome == "failure" and .effects == null'
 

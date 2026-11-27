@@ -35,8 +35,33 @@ class Run:
     url: str
 
 
+def _list_item(text: str) -> str:
+    """Indent the lines after the first, so that they stay in the list item."""
+    first, *rest = text.split("\n")
+    return "\n".join([first, *(f"  {line}" if line else "" for line in rest)])
+
+
+def _render_pr_body(pr_body: Mapping[str, Any]) -> str:
+    """Render the agent's `pr_body` fields as the pr skill's template."""
+    evidence = pr_body["evidence"]
+    merge_danger = pr_body["merge_danger"]
+    parts = [
+        "## Summary",
+        pr_body["summary"],
+        "## Evidence",
+        f"- **Before:** {_list_item(evidence['before'])}\n"
+        f"  **After:** {_list_item(evidence['after'])}",
+        "## Merge Danger",
+        f"**Door:** {merge_danger['door']}",
+        merge_danger.get("door_note", ""),
+        f"**Blast Radius:** {merge_danger['blast_radius']}",
+        merge_danger.get("blast_radius_note", ""),
+    ]
+    return "\n\n".join(part for part in parts if part)
+
+
 def _done(output: Mapping[str, Any], run: Run, open_pr: str | None) -> list[Effect]:
-    pr_body = output.get("pr_body", "")
+    pr_body = _render_pr_body(output["pr_body"])
     body = f"Closes #{run.ticket}\n\n{pr_body}\n\n[AFK run]({run.url})\n"
     title = output.get("pr_title", "")
     effects: list[Effect] = [PushBranch(repository=run.repository, branch=run.branch)]

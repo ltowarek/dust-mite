@@ -4,8 +4,36 @@
     "outcome": { "enum": ["done", "spec_gap", "needs_car"] },
     "pr_title": { "type": "string" },
     "pr_body": {
-      "type": "string",
-      "description": "The pr skill's template: only its Summary, Evidence and Merge Danger sections, with no Closes line."
+      "type": "object",
+      "description": "The pr skill's sections; the run renders its template and adds the Closes line.",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "The Summary section's body: the smallest visual that makes the key point clear, next to brief text."
+        },
+        "evidence": {
+          "type": "object",
+          "properties": {
+            "before": { "type": "string" },
+            "after": { "type": "string" }
+          },
+          "required": ["before", "after"],
+          "additionalProperties": false
+        },
+        "merge_danger": {
+          "type": "object",
+          "properties": {
+            "door": { "enum": ["one-way", "two-way"] },
+            "door_note": { "type": "string" },
+            "blast_radius": { "type": "string", "description": "One word." },
+            "blast_radius_note": { "type": "string" }
+          },
+          "required": ["door", "blast_radius"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["summary", "evidence", "merge_danger"],
+      "additionalProperties": false
     },
     "spec_gaps": { "type": "string" },
     "needs_dut_run": { "type": "boolean" },
