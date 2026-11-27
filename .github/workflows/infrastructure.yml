@@ -1376,6 +1376,8 @@ jobs:
           url=$(gh workflow run "$WORKFLOW" --ref "$REF" -f number="$NUMBER" -f dry-run=true -f model=claude-haiku-5-5 -f effort=low \
             | grep -o 'https://[^ ]*/actions/runs/[0-9]*')
           echo "Dispatched $url"
+          # The API returns 404 for a run for a few seconds after its dispatch.
+          until gh run view "${url##*/}" --json status >/dev/null 2>&1; do sleep 5; done
           if ! gh run watch "${url##*/}" --exit-status --interval 30 >/dev/null; then
             gh run view "${url##*/}"
             exit 1
