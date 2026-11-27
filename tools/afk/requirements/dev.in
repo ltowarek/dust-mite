@@ -3,5 +3,6 @@
 pip-compile-multi
 tox
 pytest
+pytest-cov
 ruff==0.15.2
 mypy

@@ -19,7 +19,7 @@ legacy_tox_ini = """
     [testenv]
     package = editable
     deps = -r requirements/dev.txt
-    commands = pytest --junitxml=results.xml -o junit_family=legacy {posargs:tests/}
+    commands = pytest --cov=src --cov-report=xml:coverage.xml --junitxml=results.xml -o junit_family=legacy {posargs:tests/}
 """
 
 [tool.mypy]

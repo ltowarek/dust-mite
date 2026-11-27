@@ -1178,8 +1178,8 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
     - Runs firmware build for [car/](car/) and build-only checks for each component test app
   - [infrastructure.yml](.github/workflows/infrastructure.yml)
     - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
-    - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure), and the `afk` package's checks and unit tests in the `afk` job
-    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) in the [AFK workflow tests](#afk-workflow-tests); `ci.yml` grants this area `actions: write`, `issues: read` and `pull-requests: read` and passes it the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN`
+    - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure), and the `afk` package's checks and unit tests in the `afk` job, which uploads the tests' coverage and results to Codecov under the `afk` flag
+    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) in the [AFK workflow tests](#afk-workflow-tests); `ci.yml` grants this area `actions: write`, `issues: read` and `pull-requests: read` and passes it the AFK App's private key, `CLAUDE_CODE_OAUTH_TOKEN` and `CODECOV_TOKEN`
     - Verifies the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
   - [observability.yml](.github/workflows/observability.yml)
     - Runs the observability checks and the synthetic pipeline tests against the observability stack on the runner

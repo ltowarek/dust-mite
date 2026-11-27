@@ -7,6 +7,8 @@ on:
         required: true
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
+      CODECOV_TOKEN:
+        required: true
 
 jobs:
   build-docker:
@@ -227,6 +229,24 @@ jobs:
         run: ./scripts/run_requirements_checks.sh
       - name: Run tests
         run: ./scripts/run_tests.sh
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tools/afk/coverage.xml
+          flags: afk
+          fail_ci_if_error: false
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tools/afk/results.xml
+          flags: afk
+          fail_ci_if_error: false
+          report_type: test_results
 
   afk-promote-queued:
     name: afk-promote-queued (${{ matrix.case }})
