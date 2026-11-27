@@ -1009,9 +1009,10 @@ jobs:
   afk-finish:
     name: afk-finish (${{ matrix.case }})
 
-    # The production job's read permission; its Actions write only dispatches, which a dry run skips.
+    # The production job's read permissions; its Actions write only dispatches, which a dry run skips.
     permissions:
       actions: read
+      checks: read
 
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1174,6 +1175,7 @@ jobs:
     # The production jobs' permissions.
     permissions:
       actions: write
+      checks: read
       contents: read
       issues: read
       pull-requests: read
@@ -1225,6 +1227,7 @@ jobs:
     # The production jobs' permissions.
     permissions:
       actions: read
+      checks: read
       contents: read
       pull-requests: read
 
@@ -1283,6 +1286,7 @@ jobs:
     # The production jobs' permissions.
     permissions:
       actions: read
+      checks: read
       contents: read
       issues: read
       pull-requests: read

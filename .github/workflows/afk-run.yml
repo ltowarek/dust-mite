@@ -214,6 +214,7 @@ jobs:
 
     permissions:
       actions: write
+      checks: read
 
     outputs:
       effects: ${{ steps.finish.outputs.effects }}

@@ -242,6 +242,7 @@ jobs:
 
     permissions:
       actions: read
+      checks: read
 
     outputs:
       effects: ${{ steps.finish.outputs.effects }}

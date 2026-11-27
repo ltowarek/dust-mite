@@ -30,6 +30,7 @@ jobs:
   infrastructure:
     permissions:
       actions: write
+      checks: read
       contents: read
       issues: read
       packages: write
