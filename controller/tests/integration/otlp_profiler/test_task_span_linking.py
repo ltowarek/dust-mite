@@ -79,65 +79,64 @@ def _span_context_of(span: Span) -> SpanContext:
     return context.trace_id, context.span_id
 
 
-@pytest.mark.asyncio
-@pytest.mark.usefixtures("sampler")
-async def test_busy_task_samples_carry_its_span_not_a_later_suspended_one(
-    aggregator: Aggregator, provider: TracerProvider
-) -> None:
-    tracer = provider.get_tracer(__name__)
-    suspended_started = asyncio.Event()
-    release_suspended = asyncio.Event()
+class TestSampler:
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("sampler")
+    async def test_busy_task_samples_carry_its_span_not_a_later_suspended_one(
+        self, aggregator: Aggregator, provider: TracerProvider
+    ) -> None:
+        tracer = provider.get_tracer(__name__)
+        suspended_started = asyncio.Event()
+        release_suspended = asyncio.Event()
 
-    async def _suspended() -> None:
-        with tracer.start_as_current_span("suspended"):
-            suspended_started.set()
-            await release_suspended.wait()
+        async def _suspended() -> None:
+            with tracer.start_as_current_span("suspended"):
+                suspended_started.set()
+                await release_suspended.wait()
 
-    async def _busy() -> SpanContext:
-        with tracer.start_as_current_span("busy") as span:
-            suspended = asyncio.create_task(_suspended())
-            await suspended_started.wait()
+        async def _busy() -> SpanContext:
+            with tracer.start_as_current_span("busy") as span:
+                suspended = asyncio.create_task(_suspended())
+                await suspended_started.wait()
+                _spin()
+                release_suspended.set()
+                await suspended
+                return _span_context_of(span)
+
+        busy_span = await asyncio.create_task(_busy())
+
+        assert _span_contexts_of(aggregator.drain(), _busy) == {busy_span}
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("sampler")
+    async def test_worker_thread_samples_carry_the_span_started_there(
+        self, aggregator: Aggregator, provider: TracerProvider
+    ) -> None:
+        tracer = provider.get_tracer(__name__)
+
+        def _work() -> SpanContext:
+            with tracer.start_as_current_span("worker") as span:
+                _spin()
+                return _span_context_of(span)
+
+        worker_span = await asyncio.to_thread(_work)
+
+        assert _span_contexts_of(aggregator.drain(), _work) == {worker_span}
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("sampler")
+    async def test_callback_samples_carry_no_span(
+        self, aggregator: Aggregator, provider: TracerProvider
+    ) -> None:
+        tracer = provider.get_tracer(__name__)
+        callback_done = asyncio.Event()
+
+        def _callback() -> None:
             _spin()
-            release_suspended.set()
-            await suspended
-            return _span_context_of(span)
+            callback_done.set()
 
-    busy_span = await asyncio.create_task(_busy())
+        with tracer.start_as_current_span("waiting"):
+            asyncio.get_running_loop().call_soon(_callback)
+            await callback_done.wait()
 
-    assert _span_contexts_of(aggregator.drain(), _busy) == {busy_span}
-
-
-@pytest.mark.asyncio
-@pytest.mark.usefixtures("sampler")
-async def test_worker_thread_samples_carry_the_span_started_there(
-    aggregator: Aggregator, provider: TracerProvider
-) -> None:
-    tracer = provider.get_tracer(__name__)
-
-    def _work() -> SpanContext:
-        with tracer.start_as_current_span("worker") as span:
-            _spin()
-            return _span_context_of(span)
-
-    worker_span = await asyncio.to_thread(_work)
-
-    assert _span_contexts_of(aggregator.drain(), _work) == {worker_span}
-
-
-@pytest.mark.asyncio
-@pytest.mark.usefixtures("sampler")
-async def test_callback_samples_carry_no_span(
-    aggregator: Aggregator, provider: TracerProvider
-) -> None:
-    tracer = provider.get_tracer(__name__)
-    callback_done = asyncio.Event()
-
-    def _callback() -> None:
-        _spin()
-        callback_done.set()
-
-    with tracer.start_as_current_span("waiting"):
-        asyncio.get_running_loop().call_soon(_callback)
-        await callback_done.wait()
-
-    assert _span_contexts_of(aggregator.drain(), _callback) == {None}
+        assert _span_contexts_of(aggregator.drain(), _callback) == {None}

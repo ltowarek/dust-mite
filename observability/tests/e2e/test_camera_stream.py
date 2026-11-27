@@ -124,43 +124,42 @@ def send_spans(window: StreamWindow) -> list[SendSpan]:
     return spans
 
 
-@pytest.mark.dut(reason=_REASON)
-def test_viewer_receives_camera_rate(
-    window: StreamWindow, record_property: RecordProperty
-) -> None:
-    record_property("viewer_fps", round(window.fps, 1))
-    assert window.fps >= MIN_VIEWER_FPS
+class TestCameraStream:
+    @pytest.mark.dut(reason=_REASON)
+    def test_viewer_receives_camera_rate(
+        self, window: StreamWindow, record_property: RecordProperty
+    ) -> None:
+        record_property("viewer_fps", round(window.fps, 1))
+        assert window.fps >= MIN_VIEWER_FPS
 
+    @pytest.mark.dut(reason=_REASON)
+    def test_car_sends_frames_promptly(
+        self, send_spans: list[SendSpan], record_property: RecordProperty
+    ) -> None:
+        durations = [s.duration_ms for s in send_spans]
+        percentiles = statistics.quantiles(durations, n=100)
+        p95 = percentiles[94]
+        record_property("send_spans", len(send_spans))
+        record_property("send_p50_ms", round(percentiles[49], 2))
+        record_property("send_p95_ms", round(p95, 2))
+        record_property(
+            "bytes_per_frame", round(statistics.mean(s.size for s in send_spans))
+        )
+        assert p95 <= MAX_SEND_P95_MS
 
-@pytest.mark.dut(reason=_REASON)
-def test_car_sends_frames_promptly(
-    send_spans: list[SendSpan], record_property: RecordProperty
-) -> None:
-    durations = [s.duration_ms for s in send_spans]
-    percentiles = statistics.quantiles(durations, n=100)
-    p95 = percentiles[94]
-    record_property("send_spans", len(send_spans))
-    record_property("send_p50_ms", round(percentiles[49], 2))
-    record_property("send_p95_ms", round(p95, 2))
-    record_property(
-        "bytes_per_frame", round(statistics.mean(s.size for s in send_spans))
-    )
-    assert p95 <= MAX_SEND_P95_MS
-
-
-@pytest.mark.dut(reason=_REASON)
-def test_stream_task_keeps_stack_headroom(
-    window: StreamWindow, record_property: RecordProperty
-) -> None:
-    seconds = int(window.end - window.start) + 1
-    selector = f'dust_mite_task_stack_min_free_bytes{{task="{STREAM_TASK}"}}'
-    result = query(
-        MIMIR_UID,
-        "prometheus",
-        {"expr": f"min_over_time({selector}[{seconds}s])", "instant": True},
-        time_range=str(int(window.start * 1000)),
-        until=str(int(window.end * 1000)),
-    )
-    min_free = int(cast("float", result["frames"][0]["data"]["values"][1][0]))
-    record_property("stream_task_stack_min_free_bytes", min_free)
-    assert min_free >= MIN_STACK_FREE_BYTES
+    @pytest.mark.dut(reason=_REASON)
+    def test_stream_task_keeps_stack_headroom(
+        self, window: StreamWindow, record_property: RecordProperty
+    ) -> None:
+        seconds = int(window.end - window.start) + 1
+        selector = f'dust_mite_task_stack_min_free_bytes{{task="{STREAM_TASK}"}}'
+        result = query(
+            MIMIR_UID,
+            "prometheus",
+            {"expr": f"min_over_time({selector}[{seconds}s])", "instant": True},
+            time_range=str(int(window.start * 1000)),
+            until=str(int(window.end * 1000)),
+        )
+        min_free = int(cast("float", result["frames"][0]["data"]["values"][1][0]))
+        record_property("stream_task_stack_min_free_bytes", min_free)
+        assert min_free >= MIN_STACK_FREE_BYTES

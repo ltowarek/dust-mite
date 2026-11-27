@@ -88,26 +88,27 @@ _TRANSITIONS = [
 ]
 
 
-@pytest.mark.parametrize("case", _TRANSITIONS)
-def test_sends(case: Transition) -> None:
-    _, sent = transition(case.state, case.event, case.now)
+class TestTransition:
+    @pytest.mark.parametrize("case", _TRANSITIONS)
+    def test_sends(self, case: Transition) -> None:
+        _, sent = transition(case.state, case.event, case.now)
 
-    assert sent == case.sent
+        assert sent == case.sent
+
+    @pytest.mark.parametrize("case", _TRANSITIONS)
+    def test_moves_to(self, case: Transition) -> None:
+        next_state, _ = transition(case.state, case.event, case.now)
+
+        assert next_state == case.next_state
 
 
-@pytest.mark.parametrize("case", _TRANSITIONS)
-def test_moves_to(case: Transition) -> None:
-    next_state, _ = transition(case.state, case.event, case.now)
-
-    assert next_state == case.next_state
-
-
-@pytest.mark.parametrize(
-    ("state", "expected"),
-    [
-        pytest.param(Parked(), None, id="parked"),
-        pytest.param(Driving(_ADVANCE, resend_at=0.1), 0.1, id="driving"),
-    ],
-)
-def test_resend_due(state: SendState, expected: float | None) -> None:
-    assert resend_due(state) == expected
+class TestResendDue:
+    @pytest.mark.parametrize(
+        ("state", "expected"),
+        [
+            pytest.param(Parked(), None, id="parked"),
+            pytest.param(Driving(_ADVANCE, resend_at=0.1), 0.1, id="driving"),
+        ],
+    )
+    def test_resend_due(self, state: SendState, expected: float | None) -> None:
+        assert resend_due(state) == expected

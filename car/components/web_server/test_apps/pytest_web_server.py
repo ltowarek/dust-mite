@@ -78,8 +78,20 @@ def _expect_brake(dut: Dut, value: int, timeout: float) -> None:
     dut.expect(rf'JSON=\{{"command": {BRAKE}, "value": {value}\}}', timeout=timeout)
 
 
-def test_unity_cases_pass(dut: Dut) -> None:
-    dut.run_all_single_board_cases(reset=True, timeout=60)
+def _command_delay(dut: Dut, drive, value: int) -> float:
+    """How long a drive command takes to reach the car, or infinity if it never arrives."""
+    sent_at = time.monotonic()
+    drive.send(json.dumps({'command': BRAKE, 'value': value}))
+    try:
+        _expect_brake(dut, value, timeout=COMMAND_ARRIVAL_TIMEOUT_S)
+    except pexpect.TIMEOUT:
+        return math.inf
+    return time.monotonic() - sent_at
+
+
+class TestWebServer:
+    def test_unity_cases_pass(self, dut: Dut) -> None:
+        dut.run_all_single_board_cases(reset=True, timeout=60)
 
 
 @pytest.mark.parametrize('endpoint_of', _WEBSOCKET_ENDPOINTS)
@@ -93,84 +105,74 @@ def test_web_server_endpoint_reachable(
     asyncio.run(run())
 
 
-def test_camera_endpoint_streams(dut: Dut, car: CarEndpoints) -> None:
-    with open_stream(car.camera) as stream:
-        assert stream.status == 200
+class TestCameraEndpoint:
+    def test_camera_endpoint_streams(self, dut: Dut, car: CarEndpoints) -> None:
+        with open_stream(car.camera) as stream:
+            assert stream.status == 200
 
 
-@pytest.mark.dut(reason=_SLOW_CLIENT_REASON)
-def test_command_not_delayed_by_slow_stream_reader(dut: Dut, car: CarEndpoints) -> None:
-    command_count = 150
-    command_interval_s = 0.1
-    slow_read_interval_s = 0.3
-    slow_read_rcvbuf_bytes = 8192
+class TestDriveEndpoint:
+    @pytest.mark.dut(reason=_SLOW_CLIENT_REASON)
+    def test_command_not_delayed_by_slow_stream_reader(self, dut: Dut, car: CarEndpoints) -> None:
+        command_count = 150
+        command_interval_s = 0.1
+        slow_read_interval_s = 0.3
+        slow_read_rcvbuf_bytes = 8192
 
-    with open_stream(car.camera, _small_window_socket(car.camera, slow_read_rcvbuf_bytes)) as stream:
-        stop = threading.Event()
+        with open_stream(car.camera, _small_window_socket(car.camera, slow_read_rcvbuf_bytes)) as stream:
+            stop = threading.Event()
 
-        def _read_slowly() -> None:
-            while not stop.is_set():
-                read_part(stream)
-                stop.wait(slow_read_interval_s)
+            def _read_slowly() -> None:
+                while not stop.is_set():
+                    read_part(stream)
+                    stop.wait(slow_read_interval_s)
 
-        reader = threading.Thread(target=_read_slowly, daemon=True)
-        reader.start()
+            reader = threading.Thread(target=_read_slowly, daemon=True)
+            reader.start()
 
-        drive = connect(car.drive.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S)
-        sent_at: dict[int, float] = {}
+            drive = connect(car.drive.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S)
+            sent_at: dict[int, float] = {}
 
-        def _send_commands() -> None:
-            for value in range(command_count):
-                sent_at[value] = time.monotonic()
-                drive.send(json.dumps({'command': BRAKE, 'value': value}))
-                time.sleep(command_interval_s)
+            def _send_commands() -> None:
+                for value in range(command_count):
+                    sent_at[value] = time.monotonic()
+                    drive.send(json.dumps({'command': BRAKE, 'value': value}))
+                    time.sleep(command_interval_s)
 
-        sender = threading.Thread(target=_send_commands, daemon=True)
-        sender.start()
+            sender = threading.Thread(target=_send_commands, daemon=True)
+            sender.start()
 
-        delays = []
-        try:
-            for value in range(command_count):
-                _expect_brake(dut, value, timeout=COMMAND_ARRIVAL_TIMEOUT_S)
-                delays.append(time.monotonic() - sent_at[value])
-        finally:
-            stop.set()
-            sender.join(timeout=command_count * command_interval_s + 5)
-            _close_in_background(drive)
+            delays = []
+            try:
+                for value in range(command_count):
+                    _expect_brake(dut, value, timeout=COMMAND_ARRIVAL_TIMEOUT_S)
+                    delays.append(time.monotonic() - sent_at[value])
+            finally:
+                stop.set()
+                sender.join(timeout=command_count * command_interval_s + 5)
+                _close_in_background(drive)
 
-    worst = max(delays)
-    assert worst < COMMAND_DELAY_BUDGET_S, (
-        f'drive command took {worst:.2f}s to reach the car while /stream was read slowly (delays: {delays})'
-    )
+        worst = max(delays)
+        assert worst < COMMAND_DELAY_BUDGET_S, (
+            f'drive command took {worst:.2f}s to reach the car while /stream was read slowly (delays: {delays})'
+        )
 
+    @pytest.mark.dut(reason=_SLOW_CLIENT_REASON)
+    @pytest.mark.parametrize('stall', [_stall_camera, _stall_telemetry], ids=['camera', 'telemetry'])
+    def test_command_still_read_after_close_while_push_send_stalls(
+        self, dut: Dut, car: CarEndpoints, stall: Callable[[CarEndpoints, int], contextlib.AbstractContextManager[None]]
+    ) -> None:
+        stalled_rcvbuf_bytes = 1024
+        stall_settle_s = 60.0
+        stalled_command_value = 7
 
-def _command_delay(dut: Dut, drive, value: int) -> float:
-    """How long a drive command takes to reach the car, or infinity if it never arrives."""
-    sent_at = time.monotonic()
-    drive.send(json.dumps({'command': BRAKE, 'value': value}))
-    try:
-        _expect_brake(dut, value, timeout=COMMAND_ARRIVAL_TIMEOUT_S)
-    except pexpect.TIMEOUT:
-        return math.inf
-    return time.monotonic() - sent_at
+        with stall(car, stalled_rcvbuf_bytes):
+            time.sleep(stall_settle_s)
+            with connect(car.drive.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S):
+                pass
+            with connect(car.drive.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S) as drive:
+                delay = _command_delay(dut, drive, stalled_command_value)
 
-
-@pytest.mark.dut(reason=_SLOW_CLIENT_REASON)
-@pytest.mark.parametrize('stall', [_stall_camera, _stall_telemetry], ids=['camera', 'telemetry'])
-def test_command_still_read_after_close_while_push_send_stalls(
-    dut: Dut, car: CarEndpoints, stall: Callable[[CarEndpoints, int], contextlib.AbstractContextManager[None]]
-) -> None:
-    stalled_rcvbuf_bytes = 1024
-    stall_settle_s = 60.0
-    stalled_command_value = 7
-
-    with stall(car, stalled_rcvbuf_bytes):
-        time.sleep(stall_settle_s)
-        with connect(car.drive.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S):
-            pass
-        with connect(car.drive.uri, open_timeout=OPEN_TIMEOUT_S, close_timeout=CLOSE_TIMEOUT_S) as drive:
-            delay = _command_delay(dut, drive, stalled_command_value)
-
-    assert delay < COMMAND_DELAY_BUDGET_S, (
-        f'drive command took {delay:.2f}s to reach the car while a push client had stopped reading'
-    )
+        assert delay < COMMAND_DELAY_BUDGET_S, (
+            f'drive command took {delay:.2f}s to reach the car while a push client had stopped reading'
+        )

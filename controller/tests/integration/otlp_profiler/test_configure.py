@@ -40,35 +40,40 @@ def _profile_until(collector: CollectorServer, condition: Callable[[], bool]) ->
         otlp_profiler.shutdown()
 
 
-def test_exports_profiles_of_the_given_resource(collector: CollectorServer) -> None:
-    _profile_until(collector, lambda: bool(collector.received))
+class TestConfigure:
+    def test_exports_profiles_of_the_given_resource(
+        self, collector: CollectorServer
+    ) -> None:
+        _profile_until(collector, lambda: bool(collector.received))
 
-    request = profiles_service_pb2.ExportProfilesServiceRequest.FromString(
-        collector.received[0].body
-    )
-    resource = request.resource_profiles[0].resource
-    assert {kv.key: kv.value.string_value for kv in resource.attributes} == {
-        SERVICE_NAME: "configure-test"
-    }
-
-
-def test_logs_a_failed_export(
-    collector: CollectorServer, caplog: pytest.LogCaptureFixture
-) -> None:
-    collector.response_status = 500
-
-    with caplog.at_level(logging.ERROR, logger="otlp_profiler"):
-        _profile_until(
-            collector, lambda: "failed to export profiles" in caplog.messages
+        request = profiles_service_pb2.ExportProfilesServiceRequest.FromString(
+            collector.received[0].body
         )
+        resource = request.resource_profiles[0].resource
+        assert {kv.key: kv.value.string_value for kv in resource.attributes} == {
+            SERVICE_NAME: "configure-test"
+        }
 
-    assert "failed to export profiles" in caplog.messages
+    def test_logs_a_failed_export(
+        self, collector: CollectorServer, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        collector.response_status = 500
+
+        with caplog.at_level(logging.ERROR, logger="otlp_profiler"):
+            _profile_until(
+                collector, lambda: "failed to export profiles" in caplog.messages
+            )
+
+        assert "failed to export profiles" in caplog.messages
 
 
-def test_shutdown_stops_every_started_sampler(collector: CollectorServer) -> None:
-    otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
-    otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
+class TestShutdown:
+    def test_shutdown_stops_every_started_sampler(
+        self, collector: CollectorServer
+    ) -> None:
+        otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
+        otlp_profiler.configure(collector.profiles_endpoint, _RESOURCE)
 
-    otlp_profiler.shutdown()
+        otlp_profiler.shutdown()
 
-    assert "otlp-profiler-sampler" not in {t.name for t in threading.enumerate()}
+        assert "otlp-profiler-sampler" not in {t.name for t in threading.enumerate()}

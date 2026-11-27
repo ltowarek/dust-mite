@@ -18,80 +18,80 @@ def _stopping_monitor() -> CollisionMonitor:
     return monitor
 
 
-class TestCollisionMonitorUpdate:
-    def test_starts_stopping_below_the_stop_distance(self) -> None:
-        monitor = CollisionMonitor()
+class TestCollisionMonitor:
+    class TestUpdate:
+        def test_starts_stopping_below_the_stop_distance(self) -> None:
+            monitor = CollisionMonitor()
 
-        changed = monitor.update(CollisionMonitor.STOP_DISTANCE_CM - 1)
+            changed = monitor.update(CollisionMonitor.STOP_DISTANCE_CM - 1)
 
-        assert changed is True
-        assert monitor.stopping is True
+            assert changed is True
+            assert monitor.stopping is True
 
-    def test_does_not_stop_at_the_stop_distance(self) -> None:
-        monitor = CollisionMonitor()
+        def test_does_not_stop_at_the_stop_distance(self) -> None:
+            monitor = CollisionMonitor()
 
-        changed = monitor.update(CollisionMonitor.STOP_DISTANCE_CM)
+            changed = monitor.update(CollisionMonitor.STOP_DISTANCE_CM)
 
-        assert changed is False
-        assert monitor.stopping is False
+            assert changed is False
+            assert monitor.stopping is False
 
-    def test_keeps_stopping_until_past_the_resume_distance(self) -> None:
-        monitor = _stopping_monitor()
+        def test_keeps_stopping_until_past_the_resume_distance(self) -> None:
+            monitor = _stopping_monitor()
 
-        monitor.update(CollisionMonitor.RESUME_DISTANCE_CM - 1)
+            monitor.update(CollisionMonitor.RESUME_DISTANCE_CM - 1)
 
-        assert monitor.stopping is True
+            assert monitor.stopping is True
 
-    def test_resumes_at_the_resume_distance(self) -> None:
-        monitor = _stopping_monitor()
+        def test_resumes_at_the_resume_distance(self) -> None:
+            monitor = _stopping_monitor()
 
-        changed = monitor.update(CollisionMonitor.RESUME_DISTANCE_CM)
+            changed = monitor.update(CollisionMonitor.RESUME_DISTANCE_CM)
 
-        assert changed is True
-        assert monitor.stopping is False
+            assert changed is True
+            assert monitor.stopping is False
 
-    def test_reset_clears_stopping(self) -> None:
-        monitor = _stopping_monitor()
+        def test_reset_clears_stopping(self) -> None:
+            monitor = _stopping_monitor()
 
-        monitor.reset()
+            monitor.reset()
 
-        assert monitor.stopping is False
+            assert monitor.stopping is False
 
-    def test_ignores_a_reading_with_no_echo(self) -> None:
-        monitor = _stopping_monitor()
+        def test_ignores_a_reading_with_no_echo(self) -> None:
+            monitor = _stopping_monitor()
 
-        changed = monitor.update(-1)
+            changed = monitor.update(-1)
 
-        assert changed is False
-        assert monitor.stopping is True
+            assert changed is False
+            assert monitor.stopping is True
 
+    class TestFilter:
+        def test_turns_advance_into_brake_while_stopping(self) -> None:
+            monitor = _stopping_monitor()
 
-class TestCollisionMonitorFilter:
-    def test_turns_advance_into_brake_while_stopping(self) -> None:
-        monitor = _stopping_monitor()
+            assert monitor.filter(_drive_command(Command.ADVANCE)) == _drive_command(
+                Command.BRAKE, None
+            )
 
-        assert monitor.filter(_drive_command(Command.ADVANCE)) == _drive_command(
-            Command.BRAKE, None
+        def test_passes_advance_through_when_not_stopping(self) -> None:
+            monitor = CollisionMonitor()
+
+            assert monitor.filter(_drive_command(Command.ADVANCE)) == _drive_command(
+                Command.ADVANCE
+            )
+
+        @pytest.mark.parametrize(
+            "command",
+            [
+                pytest.param(Command.RETREAT, id="retreat"),
+                pytest.param(Command.TURN_LEFT, id="turn_left"),
+                pytest.param(Command.TURN_RIGHT, id="turn_right"),
+            ],
         )
+        def test_lets_the_operator_back_away_or_turn_while_stopping(
+            self, command: Command
+        ) -> None:
+            monitor = _stopping_monitor()
 
-    def test_passes_advance_through_when_not_stopping(self) -> None:
-        monitor = CollisionMonitor()
-
-        assert monitor.filter(_drive_command(Command.ADVANCE)) == _drive_command(
-            Command.ADVANCE
-        )
-
-    @pytest.mark.parametrize(
-        "command",
-        [
-            pytest.param(Command.RETREAT, id="retreat"),
-            pytest.param(Command.TURN_LEFT, id="turn_left"),
-            pytest.param(Command.TURN_RIGHT, id="turn_right"),
-        ],
-    )
-    def test_lets_the_operator_back_away_or_turn_while_stopping(
-        self, command: Command
-    ) -> None:
-        monitor = _stopping_monitor()
-
-        assert monitor.filter(_drive_command(command)) == _drive_command(command)
+            assert monitor.filter(_drive_command(command)) == _drive_command(command)

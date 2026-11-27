@@ -1,5 +1,6 @@
 from pytest_embedded import Dut
 
 
-def test_motor(dut: Dut) -> None:
-    dut.expect_unity_test_output(timeout=120)
+class TestMotor:
+    def test_motor(self, dut: Dut) -> None:
+        dut.expect_unity_test_output(timeout=120)

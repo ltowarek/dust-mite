@@ -18,7 +18,10 @@ CASES = [
 ]
 
 
-@pytest.mark.dut
-@pytest.mark.parametrize(("service_name", "span_name"), CASES)
-def test_service_has_recent_trace(service_name: str, span_name: str) -> None:
-    assert has_traces(query(TEMPO_UID, "tempo", traceql_query(service_name, span_name)))
+class TestTracePipeline:
+    @pytest.mark.dut
+    @pytest.mark.parametrize(("service_name", "span_name"), CASES)
+    def test_service_has_recent_trace(self, service_name: str, span_name: str) -> None:
+        assert has_traces(
+            query(TEMPO_UID, "tempo", traceql_query(service_name, span_name))
+        )

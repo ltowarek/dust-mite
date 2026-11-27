@@ -40,11 +40,12 @@ def _longest_frame_gap(camera: Endpoint) -> float:
     return max(later - earlier for earlier, later in zip(edges, edges[1:]))
 
 
-@pytest.mark.parametrize('build_dir', _BUILDS, indirect=True)
-def test_streams_without_gaps(dut: Dut) -> None:
-    car = car_endpoints(get_dut_ip(dut))
-    dut.expect_exact(READY, timeout=BOOT_TIMEOUT_S)
+class TestCameraEndpoint:
+    @pytest.mark.parametrize('build_dir', _BUILDS, indirect=True)
+    def test_streams_without_gaps(self, dut: Dut) -> None:
+        car = car_endpoints(get_dut_ip(dut))
+        dut.expect_exact(READY, timeout=BOOT_TIMEOUT_S)
 
-    gap = _longest_frame_gap(car.camera)
+        gap = _longest_frame_gap(car.camera)
 
-    assert gap <= MAX_FRAME_GAP_S, f'no Camera frame for {gap:.1f} s'
+        assert gap <= MAX_FRAME_GAP_S, f'no Camera frame for {gap:.1f} s'
