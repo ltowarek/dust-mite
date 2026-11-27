@@ -33,11 +33,24 @@ RUN = Run(
 )
 
 
+PR_BODY = {
+    "summary": "Adds a thing.",
+    "evidence": {"before": "No thing.", "after": "A thing."},
+    "merge_danger": {"door": "two-way", "blast_radius": "tiny"},
+}
+
+RENDERED_PR_BODY = (
+    "## Summary\n\nAdds a thing.\n\n"
+    "## Evidence\n\n- **Before:** No thing.\n  **After:** A thing.\n\n"
+    "## Merge Danger\n\n**Door:** two-way\n\n**Blast Radius:** tiny"
+)
+
+
 def make_output(**fields: object) -> dict[str, Any]:
     return {
         "outcome": "done",
         "pr_title": "feat: add a thing",
-        "pr_body": "Adds a thing.",
+        "pr_body": PR_BODY,
         "needs_dut_run": False,
         **fields,
     }
@@ -55,7 +68,7 @@ class TestPlan:
                 CreatePullRequest(
                     branch="afk/issue-7-100",
                     title="feat: add a thing",
-                    body="Closes #7\n\nAdds a thing.\n\n"
+                    body=f"Closes #7\n\n{RENDERED_PR_BODY}\n\n"
                     "[AFK run](https://github.com/owner/repo/actions/runs/100)\n",
                 ),
             ]
@@ -70,9 +83,48 @@ class TestPlan:
             assert effects[1] == EditPullRequest(
                 branch="afk/issue-7-100",
                 title="feat: add a thing",
-                body="Closes #7\n\nAdds a thing.\n\n"
+                body=f"Closes #7\n\n{RENDERED_PR_BODY}\n\n"
                 "[AFK run](https://github.com/owner/repo/actions/runs/100)\n",
             )
+
+        @pytest.mark.parametrize(
+            ("pr_body", "rendered"),
+            [
+                pytest.param(
+                    {
+                        **PR_BODY,
+                        "merge_danger": {
+                            "door": "one-way",
+                            "door_note": "Drops a table.",
+                            "blast_radius": "data",
+                            "blast_radius_note": "Old rows are lost.",
+                        },
+                    },
+                    "## Merge Danger\n\n**Door:** one-way\n\nDrops a table.\n\n"
+                    "**Blast Radius:** data\n\nOld rows are lost.",
+                    id="writes each merge danger note under its line",
+                ),
+                pytest.param(
+                    {
+                        **PR_BODY,
+                        "evidence": {
+                            "before": "318 tests:\n\n```text\nfailed\n```",
+                            "after": "318 tests:\n\n```text\npassed\n```",
+                        },
+                    },
+                    "- **Before:** 318 tests:\n\n  ```text\n  failed\n  ```\n"
+                    "  **After:** 318 tests:\n\n  ```text\n  passed\n  ```",
+                    id="keeps multi-line evidence inside its list item",
+                ),
+            ],
+        )
+        def test_writes_the_pr_body_as_the_pr_skill_s_template(
+            self, pr_body: dict[str, Any], rendered: str
+        ) -> None:
+            effects = plan(make_output(pr_body=pr_body), RUN, open_pr=None)
+
+            assert isinstance(effects[1], CreatePullRequest)
+            assert rendered in effects[1].body
 
         def test_leaves_an_open_pr_as_it_is_before_the_last_run(self) -> None:
             effects = plan(
@@ -318,7 +370,7 @@ class TestRun:
                         "type": "EditPullRequest",
                         "branch": "afk/issue-7-100",
                         "title": "feat: add a thing",
-                        "body": "Closes #7\n\nAdds a thing.\n\n[AFK run]"
+                        "body": f"Closes #7\n\n{RENDERED_PR_BODY}\n\n[AFK run]"
                         "(https://github.com/owner/repo/actions/runs/100)\n",
                     },
                     {"type": "MarkPullRequestReady", "branch": "afk/issue-7-100"},
