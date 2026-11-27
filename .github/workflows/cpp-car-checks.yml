@@ -1,0 +1,137 @@
+name: C++ car checks
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: The C++ devcontainer image, referenced by digest
+        required: true
+        type: string
+
+jobs:
+  build:
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - name: main
+            path: car
+          - name: main-debug
+            path: car
+            sdkconfig_overlay: sdkconfig.defaults.debug
+          - name: test-tracing
+            path: car/components/tracing/test_apps
+          - name: test-camera
+            path: car/components/camera/test_apps
+          - name: test-motor
+            path: car/components/motor/test_apps
+
+    container:
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Cache ccache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-idf-${{ matrix.path }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-idf-${{ matrix.path }}-
+            ccache-${{ runner.os }}-idf-
+
+      - name: Build
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          SDKCONFIG_DEFAULTS: ${{ matrix.sdkconfig_overlay && format('sdkconfig.defaults;{0}', matrix.sdkconfig_overlay) || '' }}
+        run: |
+          source "$IDF_PATH/export.sh"
+          idf.py build
+        working-directory: ${{ matrix.path }}
+
+  clang-format:
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./car
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run clang-format
+        run: ./scripts/run_clang_format.sh -n --Werror
+
+  clang-tidy:
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Cache ccache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-idf-clang-tidy-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-idf-clang-tidy-
+
+      # Building with esp-idf's clang toolchain is still experimental
+      # (see CONTRIBUTING.md). run_clang_tidy.sh tolerates the known
+      # link-step failure on its own; a non-zero exit here means clang-tidy
+      # itself failed (tool crash) or surfaced a finding in a check that
+      # WarningsAsErrors promotes, not the expected link failure.
+      - name: Run clang-tidy
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+        run: ./scripts/run_clang_tidy.sh
+        working-directory: car

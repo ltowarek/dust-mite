@@ -1,7 +1,12 @@
-name: Infrastructure
+name: Infrastructure checks
 
 on:
   workflow_call:
+    inputs:
+      image:
+        description: The infrastructure devcontainer image, referenced by digest
+        required: true
+        type: string
     secrets:
       AFK_APP_PRIVATE_KEY:
         required: true
@@ -9,25 +14,14 @@ on:
         required: true
 
 jobs:
-  build-docker:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/devcontainer-image.yml
-    with:
-      file: ./.devcontainer/infrastructure/Dockerfile
-      image: ghcr.io/ltowarek/dust-mite-infrastructure-devcontainer
-
   actionlint:
-    needs: build-docker
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -47,14 +41,13 @@ jobs:
         run: ./scripts/run_actionlint.sh -format '{{range .}}::error file={{.Filepath}},line={{.Line}},col={{.Column}}::{{.Message}}\n{{end}}'
 
   shellcheck:
-    needs: build-docker
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -77,14 +70,13 @@ jobs:
           ./scripts/run_shellcheck.sh
 
   shfmt:
-    needs: build-docker
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -106,14 +98,13 @@ jobs:
           ./scripts/run_shfmt.sh --diff
 
   yamllint:
-    needs: build-docker
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -135,14 +126,13 @@ jobs:
           ./scripts/run_yamllint.sh -f github
 
   zizmor:
-    needs: build-docker
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -164,14 +154,13 @@ jobs:
         run: ./scripts/run_zizmor.sh --format=github
 
   hadolint:
-    needs: build-docker
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -192,15 +181,14 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           ./scripts/run_hadolint.sh
 
-  afk:
-    needs: build-docker
+  afk-lint:
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -225,8 +213,6 @@ jobs:
         run: ./scripts/run_type_checks.sh
       - name: Run requirements checks
         run: ./scripts/run_requirements_checks.sh
-      - name: Run tests
-        run: ./scripts/run_tests.sh
 
   afk-promote-queued:
     name: afk-promote-queued (${{ matrix.case }})
@@ -1363,7 +1349,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           WORKFLOW: ${{ matrix.workflow }}
           NUMBER: ${{ matrix.number }}
-          REF: ${{ github.head_ref || github.ref_name }}
+          REF: ${{ github.head_ref }}
         run: |
           url=$(gh workflow run "$WORKFLOW" --ref "$REF" -f number="$NUMBER" -f dry-run=true -f model=claude-haiku-5-5 -f effort=low \
             | grep -o 'https://[^ ]*/actions/runs/[0-9]*')

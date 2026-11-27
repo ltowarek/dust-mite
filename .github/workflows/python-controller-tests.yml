@@ -1,31 +1,25 @@
-name: JavaScript web
+name: Python controller tests
 
 on:
   workflow_call:
+    inputs:
+      image:
+        description: The Python devcontainer image, referenced by digest
+        required: true
+        type: string
     secrets:
       CODECOV_TOKEN:
         required: true
 
 jobs:
-  build-docker:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/devcontainer-image.yml
-    with:
-      file: ./.devcontainer/js/Dockerfile
-      image: ghcr.io/ltowarek/dust-mite-js-devcontainer
-
-  run-checks:
-    needs: build-docker
+  tests:
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -34,7 +28,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: ./web
+        working-directory: ./controller
 
     steps:
       - name: Checkout
@@ -42,26 +36,24 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Activate venv
+        run: |
+          source /home/vscode/venv/bin/activate
+          echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> "$GITHUB_ENV"
+          echo "$VIRTUAL_ENV/bin" >> "$GITHUB_PATH"
 
-      - name: Run linters
-        run: ./scripts/run_linters.sh
-      - name: Run formatter
-        run: ./scripts/run_formatter.sh --check
-      - name: Run build
-        run: ./scripts/run_build.sh
+      - name: Install package
+        run: pip install --disable-pip-version-check --no-cache-dir -e .
+
       - name: Run tests
-        env:
-          HOME: /root
         run: ./scripts/run_tests.sh
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: web/coverage/cobertura-coverage.xml
-          flags: js
+          files: controller/coverage.xml
+          flags: python
           fail_ci_if_error: false
 
       - name: Upload test results to Codecov
@@ -69,7 +61,7 @@ jobs:
         uses: codecov/codecov-action@v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: web/test-report.junit.xml
-          flags: js
+          files: controller/results.xml
+          flags: python
           fail_ci_if_error: false
           report_type: test_results

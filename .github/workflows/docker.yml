@@ -2,6 +2,11 @@ name: Docker
 
 on:
   workflow_call:
+    inputs:
+      push:
+        description: Whether to publish the images to GHCR
+        required: true
+        type: boolean
 
 jobs:
   build-car:
@@ -32,7 +37,7 @@ jobs:
         uses: docker/build-push-action@v7.4.0
         with:
           context: ./car
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ inputs.push }}
           tags: ghcr.io/ltowarek/dust-mite-car
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -67,7 +72,7 @@ jobs:
           context: ./controller
           build-contexts: |
             root=.
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ inputs.push }}
           tags: ghcr.io/ltowarek/dust-mite-controller
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -99,7 +104,7 @@ jobs:
         uses: docker/build-push-action@v7.4.0
         with:
           context: ./web
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ inputs.push }}
           tags: ghcr.io/ltowarek/dust-mite-web
           cache-from: type=gha
           cache-to: type=gha,mode=max

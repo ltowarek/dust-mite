@@ -2,73 +2,80 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
 
 concurrency:
-  group: ${{ github.head_ref || github.run_id }}
+  group: ${{ github.head_ref }}
   cancel-in-progress: true
 
 jobs:
-  cpp-car:
+  publish:
     permissions:
       contents: read
       packages: write
 
-    uses: $/.github/workflows/cpp-car.yml
+    uses: $/.github/workflows/publish.yml
+    with:
+      dry-run: true
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  docker:
+  cpp-car-checks:
+    needs: publish
     permissions:
       contents: read
-      packages: write
 
-    uses: $/.github/workflows/docker.yml
+    uses: $/.github/workflows/cpp-car-checks.yml
+    with:
+      image: ${{ needs.publish.outputs.cpp-car-image }}
 
-  infrastructure:
+  infrastructure-checks:
+    needs: publish
     permissions:
       actions: write
       checks: read
       contents: read
       issues: read
-      packages: write
       pull-requests: read
 
-    uses: $/.github/workflows/infrastructure.yml
+    uses: $/.github/workflows/infrastructure-checks.yml
+    with:
+      image: ${{ needs.publish.outputs.infrastructure-image }}
     secrets:
       AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-  js-web:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/js-web.yml
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  observability:
+  js-web-checks:
+    needs: publish
     permissions:
       contents: read
 
-    uses: $/.github/workflows/observability.yml
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    uses: $/.github/workflows/js-web-checks.yml
+    with:
+      image: ${{ needs.publish.outputs.js-web-image }}
 
-  python-controller:
+  observability-checks:
     permissions:
       contents: read
-      packages: write
 
-    uses: $/.github/workflows/python-controller.yml
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    uses: $/.github/workflows/observability-checks.yml
+
+  python-controller-checks:
+    needs: publish
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/python-controller-checks.yml
+    with:
+      image: ${{ needs.publish.outputs.python-controller-image }}
 
   ci-status:
-    needs: [cpp-car, docker, infrastructure, js-web, observability, python-controller]
+    needs:
+      - publish
+      - cpp-car-checks
+      - infrastructure-checks
+      - js-web-checks
+      - observability-checks
+      - python-controller-checks
     if: always()
     permissions: {}
     runs-on: ubuntu-latest

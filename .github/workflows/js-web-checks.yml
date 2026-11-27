@@ -1,0 +1,44 @@
+name: JavaScript web checks
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: The JavaScript devcontainer image, referenced by digest
+        required: true
+        type: string
+
+jobs:
+  lint:
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linters
+        run: ./scripts/run_linters.sh
+      - name: Run formatter
+        run: ./scripts/run_formatter.sh --check
+      - name: Run build
+        run: ./scripts/run_build.sh

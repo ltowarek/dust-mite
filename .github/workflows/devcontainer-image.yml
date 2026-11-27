@@ -11,6 +11,10 @@ on:
         description: Image name without a tag, such as ghcr.io/owner/name
         required: true
         type: string
+      write-cache:
+        description: Whether to write the layer cache to the image's buildcache tag
+        required: true
+        type: boolean
     outputs:
       image:
         description: The pushed image, referenced by digest
@@ -57,4 +61,4 @@ jobs:
           file: ${{ inputs.file }}
           push: true
           cache-from: ${{ env.BUILDCACHE }}
-          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0},mode=max', env.BUILDCACHE) || '' }}
+          cache-to: ${{ inputs.write-cache && format('{0},mode=max', env.BUILDCACHE) || '' }}
