@@ -1,5 +1,6 @@
 from pytest_embedded import Dut
 
 
-def test_telemetry(dut: Dut) -> None:
-    dut.expect_unity_test_output()
+class TestTelemetry:
+    def test_telemetry(self, dut: Dut) -> None:
+        dut.expect_unity_test_output()

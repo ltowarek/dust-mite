@@ -1,5 +1,6 @@
 from pytest_embedded import Dut
 
 
-def test_tracing(dut: Dut) -> None:
-    dut.expect_unity_test_output()
+class TestTracing:
+    def test_tracing(self, dut: Dut) -> None:
+        dut.expect_unity_test_output()

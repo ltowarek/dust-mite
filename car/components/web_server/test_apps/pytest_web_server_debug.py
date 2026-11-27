@@ -13,6 +13,7 @@ def _debug_build(dut: Dut) -> None:
         pytest.skip('needs the debug build (sdkconfig.defaults.debug)')
 
 
-@pytest.mark.dut(reason='measures the frame rate of the real camera')
-def test_stream_keeps_the_camera_rate(dut: Dut) -> None:
-    dut.run_single_board_case('stream_keeps_the_camera_rate', reset=True, timeout=60)
+class TestCameraEndpoint:
+    @pytest.mark.dut(reason='measures the frame rate of the real camera')
+    def test_stream_keeps_the_camera_rate(self, dut: Dut) -> None:
+        dut.run_single_board_case('stream_keeps_the_camera_rate', reset=True, timeout=60)
