@@ -1377,7 +1377,7 @@ jobs:
             | grep -o 'https://[^ ]*/actions/runs/[0-9]*')
           echo "Dispatched $url"
           # The API returns 404 for a run for a few seconds after its dispatch.
-          until gh run view "${url##*/}" --json status >/dev/null 2>&1; do sleep 5; done
+          for _ in {1..12}; do gh run view "${url##*/}" --json status >/dev/null 2>&1 && break; sleep 5; done
           if ! gh run watch "${url##*/}" --exit-status --interval 30 >/dev/null; then
             gh run view "${url##*/}"
             exit 1
