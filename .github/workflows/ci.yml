@@ -2,90 +2,34 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
 
 concurrency:
-  group: ${{ github.head_ref || github.run_id }}
+  group: ${{ github.head_ref }}
   cancel-in-progress: true
 
 jobs:
-  cpp-car-image:
+  publish:
     permissions:
       contents: read
       packages: write
 
-    uses: $/.github/workflows/devcontainer-image.yml
+    uses: $/.github/workflows/publish.yml
     with:
-      file: ./.devcontainer/cpp/Dockerfile
-      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
-      write-cache: ${{ github.event_name == 'push' }}
-
-  infrastructure-image:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/devcontainer-image.yml
-    with:
-      file: ./.devcontainer/infrastructure/Dockerfile
-      image: ghcr.io/ltowarek/dust-mite-infrastructure-devcontainer
-      write-cache: ${{ github.event_name == 'push' }}
-
-  js-web-image:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/devcontainer-image.yml
-    with:
-      file: ./.devcontainer/js/Dockerfile
-      image: ghcr.io/ltowarek/dust-mite-js-devcontainer
-      write-cache: ${{ github.event_name == 'push' }}
-
-  python-controller-image:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/devcontainer-image.yml
-    with:
-      file: ./.devcontainer/python/Dockerfile
-      image: ghcr.io/ltowarek/dust-mite-python-devcontainer
-      write-cache: ${{ github.event_name == 'push' }}
+      dry-run: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   cpp-car-checks:
-    needs: cpp-car-image
+    needs: publish
     permissions:
       contents: read
 
     uses: $/.github/workflows/cpp-car-checks.yml
     with:
-      image: ${{ needs.cpp-car-image.outputs.image }}
-
-  cpp-car-tests:
-    needs: cpp-car-image
-    permissions:
-      contents: read
-
-    uses: $/.github/workflows/cpp-car-tests.yml
-    with:
-      image: ${{ needs.cpp-car-image.outputs.image }}
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  docker:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/docker.yml
-    with:
-      push: ${{ github.event_name == 'push' }}
+      image: ${{ needs.publish.outputs.cpp-car-image }}
 
   infrastructure-checks:
-    needs: infrastructure-image
+    needs: publish
     permissions:
       actions: write
       checks: read
@@ -95,39 +39,19 @@ jobs:
 
     uses: $/.github/workflows/infrastructure-checks.yml
     with:
-      image: ${{ needs.infrastructure-image.outputs.image }}
+      image: ${{ needs.publish.outputs.infrastructure-image }}
     secrets:
       AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-  infrastructure-tests:
-    needs: infrastructure-image
-    permissions:
-      contents: read
-
-    uses: $/.github/workflows/infrastructure-tests.yml
-    with:
-      image: ${{ needs.infrastructure-image.outputs.image }}
-
   js-web-checks:
-    needs: js-web-image
+    needs: publish
     permissions:
       contents: read
 
     uses: $/.github/workflows/js-web-checks.yml
     with:
-      image: ${{ needs.js-web-image.outputs.image }}
-
-  js-web-tests:
-    needs: js-web-image
-    permissions:
-      contents: read
-
-    uses: $/.github/workflows/js-web-tests.yml
-    with:
-      image: ${{ needs.js-web-image.outputs.image }}
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      image: ${{ needs.publish.outputs.js-web-image }}
 
   observability-checks:
     permissions:
@@ -135,51 +59,23 @@ jobs:
 
     uses: $/.github/workflows/observability-checks.yml
 
-  observability-tests:
-    permissions:
-      contents: read
-
-    uses: $/.github/workflows/observability-tests.yml
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
   python-controller-checks:
-    needs: python-controller-image
+    needs: publish
     permissions:
       contents: read
 
     uses: $/.github/workflows/python-controller-checks.yml
     with:
-      image: ${{ needs.python-controller-image.outputs.image }}
-
-  python-controller-tests:
-    needs: python-controller-image
-    permissions:
-      contents: read
-
-    uses: $/.github/workflows/python-controller-tests.yml
-    with:
-      image: ${{ needs.python-controller-image.outputs.image }}
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      image: ${{ needs.publish.outputs.python-controller-image }}
 
   ci-status:
     needs:
-      - cpp-car-image
+      - publish
       - cpp-car-checks
-      - cpp-car-tests
-      - docker
-      - infrastructure-image
       - infrastructure-checks
-      - infrastructure-tests
-      - js-web-image
       - js-web-checks
-      - js-web-tests
       - observability-checks
-      - observability-tests
-      - python-controller-image
       - python-controller-checks
-      - python-controller-tests
     if: always()
     permissions: {}
     runs-on: ubuntu-latest

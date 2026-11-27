@@ -1349,7 +1349,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           WORKFLOW: ${{ matrix.workflow }}
           NUMBER: ${{ matrix.number }}
-          REF: ${{ github.head_ref || github.ref_name }}
+          REF: ${{ github.head_ref }}
         run: |
           url=$(gh workflow run "$WORKFLOW" --ref "$REF" -f number="$NUMBER" -f dry-run=true -f model=claude-haiku-5-5 -f effort=low \
             | grep -o 'https://[^ ]*/actions/runs/[0-9]*')

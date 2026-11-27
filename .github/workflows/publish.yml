@@ -1,0 +1,137 @@
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+  workflow_call:
+    inputs:
+      dry-run:
+        description: Build and test without publishing the production images or writing the devcontainer layer caches
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      cpp-car-image:
+        description: The C++ devcontainer image, referenced by digest
+        value: ${{ jobs.cpp-car-image.outputs.image }}
+      infrastructure-image:
+        description: The infrastructure devcontainer image, referenced by digest
+        value: ${{ jobs.infrastructure-image.outputs.image }}
+      js-web-image:
+        description: The JavaScript devcontainer image, referenced by digest
+        value: ${{ jobs.js-web-image.outputs.image }}
+      python-controller-image:
+        description: The Python devcontainer image, referenced by digest
+        value: ${{ jobs.python-controller-image.outputs.image }}
+    secrets:
+      CODECOV_TOKEN:
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cpp-car-image:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/cpp/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      write-cache: ${{ !inputs.dry-run }}
+
+  infrastructure-image:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/infrastructure/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-infrastructure-devcontainer
+      write-cache: ${{ !inputs.dry-run }}
+
+  js-web-image:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/js/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-js-devcontainer
+      write-cache: ${{ !inputs.dry-run }}
+
+  python-controller-image:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/python/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-python-devcontainer
+      write-cache: ${{ !inputs.dry-run }}
+
+  cpp-car-tests:
+    needs: cpp-car-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/cpp-car-tests.yml
+    with:
+      image: ${{ needs.cpp-car-image.outputs.image }}
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  docker:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/docker.yml
+    with:
+      push: ${{ !inputs.dry-run }}
+
+  infrastructure-tests:
+    needs: infrastructure-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/infrastructure-tests.yml
+    with:
+      image: ${{ needs.infrastructure-image.outputs.image }}
+
+  js-web-tests:
+    needs: js-web-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/js-web-tests.yml
+    with:
+      image: ${{ needs.js-web-image.outputs.image }}
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  observability-tests:
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/observability-tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  python-controller-tests:
+    needs: python-controller-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/python-controller-tests.yml
+    with:
+      image: ${{ needs.python-controller-image.outputs.image }}
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

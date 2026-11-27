@@ -1161,15 +1161,21 @@ The tool versions are pinned by build arguments in [.devcontainer/infrastructure
 GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/).
 
 - [ci.yml](.github/workflows/ci.yml)
-  - The `CI` entry workflow; triggers on pull requests, including drafts, and on pushes to `main`
-  - Builds each area's devcontainer image once through [devcontainer-image.yml](.github/workflows/devcontainer-image.yml), in a job named `<area>-image`, and passes it by digest to that area's checks and tests workflows
-  - Calls each area's checks and tests workflows below, in calling jobs named after the file, so that the jobs appear as, for example, `cpp-car-checks / build`
-  - Grants each call only the `GITHUB_TOKEN` permissions its jobs use, and passes `CODECOV_TOKEN` only to the tests workflows
-  - Publishes the production images and writes the devcontainer layer caches only on pushes to `main`, through the `push` and `write-cache` inputs
-  - Aggregates every call in the `ci-status` job, which fails when a call fails, is cancelled, or is skipped; the `main` ruleset requires this check
-  - Cancels a pull request's previous run when a new commit is pushed to it, so the outdated commit shows a failed `ci-status`; runs on `main` are never cancelled
-- Areas, each split into a checks workflow and a tests workflow, which build no image themselves; those whose jobs run in a container take the area's devcontainer image as the `image` input:
-  - A tests workflow holds every job that runs tests, and each of its jobs uploads coverage, test results, or both to Codecov; a checks workflow holds the static checks and the build-only jobs
+  - The `CI` entry workflow; triggers on pull requests only, including drafts
+  - Calls [publish.yml](.github/workflows/publish.yml) as a dry run in the `publish` job, so that every pull request runs the image builds, the tests and the production image builds of a push to `main`, without publishing the production images or writing the devcontainer layer caches
+  - Calls each area's checks workflow below with that area's devcontainer image from the `publish` job's outputs, in calling jobs named after the file, so that the jobs appear as, for example, `cpp-car-checks / build`; it calls no image build, tests workflow or production image build itself, so nothing runs twice
+  - Grants each call only the `GITHUB_TOKEN` permissions its jobs use
+  - Aggregates the `publish` job and every checks call in the `ci-status` job, which fails when one fails, is cancelled, or is skipped; the `main` ruleset requires this check
+  - Cancels a pull request's previous run when a new commit is pushed to it, so the outdated commit shows a failed `ci-status`
+- [publish.yml](.github/workflows/publish.yml)
+  - The `Publish` entry workflow; triggers on pushes to `main`, and on `workflow_call` with the boolean `dry-run` input, which `ci.yml` sets
+  - Runs no checks; [ADR 0010](docs/adr/0010-main-runs-no-checks-after-a-merge.md) records why, and the risk that this accepts
+  - Builds each area's devcontainer image once through [devcontainer-image.yml](.github/workflows/devcontainer-image.yml), in a job named `<area>-image`, passes it by digest to that area's tests workflow, and outputs it as `<area>-image`
+  - Calls each area's tests workflow, passing `CODECOV_TOKEN` only to those that upload to Codecov, and [docker.yml](.github/workflows/docker.yml)
+  - Passes the negation of `dry-run` as the `push` and `write-cache` inputs, so that a push to `main`, which gives no input, publishes the production images and writes the devcontainer layer caches
+  - Queues its runs in a concurrency group of the workflow name and the ref without cancelling the run in progress, so that two quick merges publish in order; a call from `ci.yml` gets a group named after `CI` and the pull request's ref
+- Areas, each split into a checks workflow, which `ci.yml` calls, and a tests workflow, which `publish.yml` calls; both build no image themselves, and those whose jobs run in a container take the area's devcontainer image as the `image` input:
+  - A tests workflow holds every job that runs tests, and each of its jobs uploads coverage, test results, or both to Codecov; a checks workflow holds the static checks and the build-only jobs. A new job therefore goes in the tests workflow when it runs tests, so that a push to `main` runs it, and otherwise in the checks workflow
   - [python-controller-checks.yml](.github/workflows/python-controller-checks.yml) and [python-controller-tests.yml](.github/workflows/python-controller-tests.yml)
     - Run the controller's lint, format check, type checks and requirements checks in the `lint` job, and its tests in the `tests` job, in the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
   - [js-web-checks.yml](.github/workflows/js-web-checks.yml) and [js-web-tests.yml](.github/workflows/js-web-tests.yml)
@@ -1179,7 +1185,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
     - Run the QEMU tests in the `qemu` job, and the `ubsan` and `coverage` jobs, as the tests
   - [infrastructure-checks.yml](.github/workflows/infrastructure-checks.yml) and [infrastructure-tests.yml](.github/workflows/infrastructure-tests.yml)
     - Run the infrastructure checks in the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile), as described in [Infrastructure](#infrastructure), and the `afk` package's checks in the `afk-lint` job; the tests workflow runs the `afk` package's unit tests in the `afk-tests` job
-    - Run each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) in the [AFK workflow tests](#afk-workflow-tests), as checks; `ci.yml` grants the checks `actions: write`, `issues: read` and `pull-requests: read` and passes them the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN`
+    - Run each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) in the [AFK workflow tests](#afk-workflow-tests), as checks, so that a push to `main` runs none of them; `ci.yml` grants the checks `actions: write`, `issues: read` and `pull-requests: read` and passes them the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN`
     - Verify the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
   - [observability-checks.yml](.github/workflows/observability-checks.yml) and [observability-tests.yml](.github/workflows/observability-tests.yml)
     - Run the observability checks on the runner, and the synthetic pipeline tests against the observability stack on the runner
