@@ -854,8 +854,9 @@ documented pattern — enabling UBSan project-wide grows code/data size too much
 which is also why it is never enabled for the production firmware build. A dedicated `ubsan` CI
 job builds and runs each opted-in test app with `sdkconfig.defaults.ubsan` layered on top of
 `sdkconfig.defaults.qemu`, using its own matrix (separate from the `build` job's matrix) so the
-default test apps keep building without the sanitizer. The `ubsan` CI job is blocking (part of
-`ci-status`).
+default test apps keep building without the sanitizer. The `ubsan` CI job uploads its test results
+to Codecov under the flag `cpp-ubsan`, separately from the `build` job's `cpp` test results,
+because both jobs report the same test names. The job is blocking (part of `ci-status`).
 
 ESP-IDF's `malloc` aligns allocations to only 4 bytes
 ([espressif/esp-idf#18685](https://github.com/espressif/esp-idf/issues/18685)), so a `cJSON` node,

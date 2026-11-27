@@ -225,6 +225,16 @@ jobs:
       - name: Run QEMU tests
         run: ./scripts/run_qemu_tests.sh ${{ matrix.component_path }} ${{ matrix.pytest_pattern }}
 
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: car/${{ matrix.component_path }}/results.xml
+          flags: cpp-ubsan
+          fail_ci_if_error: false
+          report_type: test_results
+
   coverage:
     needs: build-docker
     permissions:
