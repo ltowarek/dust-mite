@@ -28,7 +28,10 @@ workflows:
     '.github/workflows/claude.yml':
         - 'actions/checkout@v7.0.1'
         - 'anthropics/claude-code-action@v1.0.269'
-    '.github/workflows/cpp-car.yml':
+    '.github/workflows/cpp-car-checks.yml':
+        - 'actions/cache@v6.1.0'
+        - 'actions/checkout@v7.0.1'
+    '.github/workflows/cpp-car-tests.yml':
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v7.1.1'
@@ -44,21 +47,30 @@ workflows:
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.8.0'
         - 'docker/setup-buildx-action@v4.4.1'
-    '.github/workflows/infrastructure.yml':
+    '.github/workflows/infrastructure-checks.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
         - 'actions/setup-python@v7.1.0'
-    '.github/workflows/js-web.yml':
+    '.github/workflows/infrastructure-tests.yml':
+        - 'actions/checkout@v7.0.1'
+    '.github/workflows/js-web-checks.yml':
+        - 'actions/checkout@v7.0.1'
+    '.github/workflows/js-web-tests.yml':
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v7.1.1'
-    '.github/workflows/observability.yml':
+    '.github/workflows/observability-checks.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'actions/setup-python@v7.1.0'
+    '.github/workflows/observability-tests.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-python@v7.1.0'
         - 'codecov/codecov-action@v7.1.1'
     '.github/workflows/pr-metadata.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
-    '.github/workflows/python-controller.yml':
+    '.github/workflows/python-controller-checks.yml':
+        - 'actions/checkout@v7.0.1'
+    '.github/workflows/python-controller-tests.yml':
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v7.1.1'
 dependencies:

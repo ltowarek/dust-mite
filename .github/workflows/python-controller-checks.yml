@@ -1,31 +1,22 @@
-name: Python controller
+name: Python controller checks
 
 on:
   workflow_call:
-    secrets:
-      CODECOV_TOKEN:
+    inputs:
+      image:
+        description: The Python devcontainer image, referenced by digest
         required: true
+        type: string
 
 jobs:
-  build-docker:
-    permissions:
-      contents: read
-      packages: write
-
-    uses: $/.github/workflows/devcontainer-image.yml
-    with:
-      file: ./.devcontainer/python/Dockerfile
-      image: ghcr.io/ltowarek/dust-mite-python-devcontainer
-
-  run-checks:
-    needs: build-docker
+  lint:
     permissions:
       contents: read
 
     runs-on: ubuntu-latest
 
     container:
-      image: ${{ needs.build-docker.outputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
       options: --user root
       credentials:
         username: ${{ github.repository_owner }}
@@ -59,24 +50,3 @@ jobs:
         run: ./scripts/run_type_checks.sh
       - name: Run requirements checks
         run: ./scripts/run_requirements_checks.sh
-
-      - name: Run tests
-        run: ./scripts/run_tests.sh
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7.1.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: controller/coverage.xml
-          flags: python
-          fail_ci_if_error: false
-
-      - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v7.1.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: controller/results.xml
-          flags: python
-          fail_ci_if_error: false
-          report_type: test_results

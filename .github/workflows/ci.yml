@@ -11,12 +11,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cpp-car:
+  cpp-car-image:
     permissions:
       contents: read
       packages: write
 
-    uses: $/.github/workflows/cpp-car.yml
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/cpp/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-cpp-devcontainer
+      write-cache: ${{ github.event_name == 'push' }}
+
+  infrastructure-image:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/infrastructure/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-infrastructure-devcontainer
+      write-cache: ${{ github.event_name == 'push' }}
+
+  js-web-image:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/js/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-js-devcontainer
+      write-cache: ${{ github.event_name == 'push' }}
+
+  python-controller-image:
+    permissions:
+      contents: read
+      packages: write
+
+    uses: $/.github/workflows/devcontainer-image.yml
+    with:
+      file: ./.devcontainer/python/Dockerfile
+      image: ghcr.io/ltowarek/dust-mite-python-devcontainer
+      write-cache: ${{ github.event_name == 'push' }}
+
+  cpp-car-checks:
+    needs: cpp-car-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/cpp-car-checks.yml
+    with:
+      image: ${{ needs.cpp-car-image.outputs.image }}
+
+  cpp-car-tests:
+    needs: cpp-car-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/cpp-car-tests.yml
+    with:
+      image: ${{ needs.cpp-car-image.outputs.image }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -26,49 +81,105 @@ jobs:
       packages: write
 
     uses: $/.github/workflows/docker.yml
+    with:
+      push: ${{ github.event_name == 'push' }}
 
-  infrastructure:
+  infrastructure-checks:
+    needs: infrastructure-image
     permissions:
       actions: write
       checks: read
       contents: read
       issues: read
-      packages: write
       pull-requests: read
 
-    uses: $/.github/workflows/infrastructure.yml
+    uses: $/.github/workflows/infrastructure-checks.yml
+    with:
+      image: ${{ needs.infrastructure-image.outputs.image }}
     secrets:
       AFK_APP_PRIVATE_KEY: ${{ secrets.AFK_APP_PRIVATE_KEY }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-  js-web:
+  infrastructure-tests:
+    needs: infrastructure-image
     permissions:
       contents: read
-      packages: write
 
-    uses: $/.github/workflows/js-web.yml
+    uses: $/.github/workflows/infrastructure-tests.yml
+    with:
+      image: ${{ needs.infrastructure-image.outputs.image }}
+
+  js-web-checks:
+    needs: js-web-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/js-web-checks.yml
+    with:
+      image: ${{ needs.js-web-image.outputs.image }}
+
+  js-web-tests:
+    needs: js-web-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/js-web-tests.yml
+    with:
+      image: ${{ needs.js-web-image.outputs.image }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  observability:
+  observability-checks:
     permissions:
       contents: read
 
-    uses: $/.github/workflows/observability.yml
+    uses: $/.github/workflows/observability-checks.yml
+
+  observability-tests:
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/observability-tests.yml
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  python-controller:
+  python-controller-checks:
+    needs: python-controller-image
     permissions:
       contents: read
-      packages: write
 
-    uses: $/.github/workflows/python-controller.yml
+    uses: $/.github/workflows/python-controller-checks.yml
+    with:
+      image: ${{ needs.python-controller-image.outputs.image }}
+
+  python-controller-tests:
+    needs: python-controller-image
+    permissions:
+      contents: read
+
+    uses: $/.github/workflows/python-controller-tests.yml
+    with:
+      image: ${{ needs.python-controller-image.outputs.image }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   ci-status:
-    needs: [cpp-car, docker, infrastructure, js-web, observability, python-controller]
+    needs:
+      - cpp-car-image
+      - cpp-car-checks
+      - cpp-car-tests
+      - docker
+      - infrastructure-image
+      - infrastructure-checks
+      - infrastructure-tests
+      - js-web-image
+      - js-web-checks
+      - js-web-tests
+      - observability-checks
+      - observability-tests
+      - python-controller-image
+      - python-controller-checks
+      - python-controller-tests
     if: always()
     permissions: {}
     runs-on: ubuntu-latest

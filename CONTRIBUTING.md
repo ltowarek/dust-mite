@@ -1152,7 +1152,7 @@ The script runs every infrastructure check except the lockfile verification, whi
 
 Locally, zizmor runs offline by default and skips its online audits, such as known-vulnerable actions and impostor commits. To run them, pass a GitHub token to the devcontainer command, for example `docker exec -e GH_TOKEN="$(gh auth token)" -w /workspaces/dust-mite <container> ./scripts/run_infrastructure_checks.sh`.
 
-The `infrastructure` area of the [CI entry workflow](#cicd), defined in [infrastructure.yml](.github/workflows/infrastructure.yml), runs the same scripts in the same devcontainer image, and annotates each actionlint, yamllint, and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck and hadolint jobs show their findings in their logs, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
+The `infrastructure` area of the [CI entry workflow](#cicd), defined in [infrastructure-checks.yml](.github/workflows/infrastructure-checks.yml), runs the same scripts in the same devcontainer image, and annotates each actionlint, yamllint, and zizmor finding on the offending line of the pull request. The zizmor job runs the online audits with the workflow token. The ShellCheck and hadolint jobs show their findings in their logs, and the shfmt job shows the required changes as a diff in its log. The `actions-lock` job is the only job outside the image: it runs directly on the runner, where `gh` is preinstalled.
 
 The tool versions are pinned by build arguments in [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile): `ACTIONLINT_VERSION`, `SHELLCHECK_VERSION`, `SHFMT_VERSION`, and `HADOLINT_VERSION`. Dependabot does not update them. yamllint and zizmor are installed from PyPI and pinned in [.devcontainer/infrastructure/requirements.txt](.devcontainer/infrastructure/requirements.txt), which Dependabot updates. To update a tool, set its build argument to the new release from the tool's GitHub releases page, rebuild the devcontainer, and run the checks.
 
@@ -1162,36 +1162,36 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
 
 - [ci.yml](.github/workflows/ci.yml)
   - The `CI` entry workflow; triggers on pull requests, including drafts, and on pushes to `main`
-  - Calls each area below as a reusable workflow, in a calling job named after the area, so that the area's jobs appear as, for example, `cpp-car / build`
-  - Grants each area only the `GITHUB_TOKEN` permissions its jobs use, and passes `CODECOV_TOKEN` only to the areas that upload to Codecov
-  - Aggregates all areas in the `ci-status` job, which fails when an area fails, is cancelled, or is skipped; the `main` ruleset requires this check
+  - Builds each area's devcontainer image once through [devcontainer-image.yml](.github/workflows/devcontainer-image.yml), in a job named `<area>-image`, and passes it by digest to that area's checks and tests workflows
+  - Calls each area's checks and tests workflows below, in calling jobs named after the file, so that the jobs appear as, for example, `cpp-car-checks / build`
+  - Grants each call only the `GITHUB_TOKEN` permissions its jobs use, and passes `CODECOV_TOKEN` only to the tests workflows
+  - Publishes the production images and writes the devcontainer layer caches only on pushes to `main`, through the `push` and `write-cache` inputs
+  - Aggregates every call in the `ci-status` job, which fails when a call fails, is cancelled, or is skipped; the `main` ruleset requires this check
   - Cancels a pull request's previous run when a new commit is pushed to it, so the outdated commit shows a failed `ci-status`; runs on `main` are never cancelled
-- Areas, each called only by [ci.yml](.github/workflows/ci.yml):
-  - [python-controller.yml](.github/workflows/python-controller.yml)
-    - Builds and publishes the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
-    - Runs controller checks in container: lint, format check, type checks, requirements checks, and tests
-  - [js-web.yml](.github/workflows/js-web.yml)
-    - Builds and publishes the JavaScript devcontainer image from [.devcontainer/js/Dockerfile](.devcontainer/js/Dockerfile)
-    - Runs web frontend checks in container: lint, format check, and production build
-  - [cpp-car.yml](.github/workflows/cpp-car.yml)
-    - Builds and publishes the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
-    - Runs firmware build for [car/](car/) and build-only checks for each component test app
-  - [infrastructure.yml](.github/workflows/infrastructure.yml)
-    - Builds and publishes the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile)
-    - Runs the infrastructure checks in container, as described in [Infrastructure](#infrastructure), and the `afk` package's checks and unit tests in the `afk` job
-    - Runs each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) in the [AFK workflow tests](#afk-workflow-tests); `ci.yml` grants this area `actions: write`, `issues: read` and `pull-requests: read` and passes it the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN`
-    - Verifies the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
-  - [observability.yml](.github/workflows/observability.yml)
-    - Runs the observability checks and the synthetic pipeline tests against the observability stack on the runner
-  - [docker.yml](.github/workflows/docker.yml)
-    - Builds production images for all three components in parallel
-    - Validates the build on pull requests; publishes to GHCR on push to `main`
-    - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
+- Areas, each split into a checks workflow and a tests workflow, which build no image themselves; those whose jobs run in a container take the area's devcontainer image as the `image` input:
+  - A tests workflow holds every job that runs tests, and each of its jobs uploads coverage, test results, or both to Codecov; a checks workflow holds the static checks and the build-only jobs
+  - [python-controller-checks.yml](.github/workflows/python-controller-checks.yml) and [python-controller-tests.yml](.github/workflows/python-controller-tests.yml)
+    - Run the controller's lint, format check, type checks and requirements checks in the `lint` job, and its tests in the `tests` job, in the Python devcontainer image from [.devcontainer/python/Dockerfile](.devcontainer/python/Dockerfile)
+  - [js-web-checks.yml](.github/workflows/js-web-checks.yml) and [js-web-tests.yml](.github/workflows/js-web-tests.yml)
+    - Run the web frontend's lint, format check and production build in the `lint` job, and its tests in the `tests` job, in the JavaScript devcontainer image from [.devcontainer/js/Dockerfile](.devcontainer/js/Dockerfile)
+  - [cpp-car-checks.yml](.github/workflows/cpp-car-checks.yml) and [cpp-car-tests.yml](.github/workflows/cpp-car-tests.yml)
+    - Run clang-format, clang-tidy, and the build of [car/](car/) and of each component test app without QEMU tests in the `build` job, in the C++ devcontainer image from [.devcontainer/cpp/Dockerfile](.devcontainer/cpp/Dockerfile)
+    - Run the QEMU tests in the `qemu` job, and the `ubsan` and `coverage` jobs, as the tests
+  - [infrastructure-checks.yml](.github/workflows/infrastructure-checks.yml) and [infrastructure-tests.yml](.github/workflows/infrastructure-tests.yml)
+    - Run the infrastructure checks in the infrastructure devcontainer image from [.devcontainer/infrastructure/Dockerfile](.devcontainer/infrastructure/Dockerfile), as described in [Infrastructure](#infrastructure), and the `afk` package's checks in the `afk-lint` job; the tests workflow runs the `afk` package's unit tests in the `afk-tests` job
+    - Run each AFK action on GitHub in an AFK action test, as described in [AFK action tests](#afk-action-tests), and the pull request's own [afk-run.yml](.github/workflows/afk-run.yml) and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) in the [AFK workflow tests](#afk-workflow-tests), as checks; `ci.yml` grants the checks `actions: write`, `issues: read` and `pull-requests: read` and passes them the AFK App's private key and `CLAUDE_CODE_OAUTH_TOKEN`
+    - Verify the actions lockfile on the runner in the `actions-lock` job, as described in [Actions lockfile](#actions-lockfile)
+  - [observability-checks.yml](.github/workflows/observability-checks.yml) and [observability-tests.yml](.github/workflows/observability-tests.yml)
+    - Run the observability checks on the runner, and the synthetic pipeline tests against the observability stack on the runner
+- [docker.yml](.github/workflows/docker.yml)
+  - Builds production images for all three components in parallel
+  - Publishes them to GHCR when its `push` input is set, and otherwise only validates the build
+  - Published images: `ghcr.io/ltowarek/dust-mite-car`, `ghcr.io/ltowarek/dust-mite-controller`, `ghcr.io/ltowarek/dust-mite-web`
 - [devcontainer-image.yml](.github/workflows/devcontainer-image.yml)
-  - Reusable workflow that the Python, JavaScript, C++ and infrastructure areas call to build and publish their devcontainer image
-  - Takes the Dockerfile path and the image name as input and outputs the pushed image by digest; every container job in the calling workflow runs in that image ([ADR 0004](docs/adr/0004-ci-jobs-pin-devcontainer-image-by-digest.md))
+  - Reusable workflow that builds and publishes one devcontainer image
+  - Takes the Dockerfile path and the image name as input and outputs the pushed image by digest; every container job of the area runs in that image ([ADR 0004](docs/adr/0004-ci-jobs-pin-devcontainer-image-by-digest.md))
   - Tags each image `sha-<short SHA>` of the commit it is built from, which on a pull request is the test merge commit
-  - Reads a layer cache from each package's `buildcache` tag on every run and writes it only on pushes to `main`
+  - Reads a layer cache from each package's `buildcache` tag on every run and writes it only when its `write-cache` input is set
 - [pr-metadata.yml](.github/workflows/pr-metadata.yml)
   - Triggers on pull requests, including drafts and title edits; it stays outside the entry workflow, so a title edit reruns only the `ci-status-pr-metadata` check
   - Checks the pull request title against the rules in [Pull request titles](#pull-request-titles)
@@ -1307,7 +1307,7 @@ Every action that writes takes a `dry-run` input. In a dry run, the action repor
 
 #### AFK action tests
 
-The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that runs the action against a real closed ticket and checks the action's outputs, such as its `effects`, with one `jq -e` assertion; a case for a refusal, which fails the action, checks the step's outcome instead. A failing case names the behaviour that broke, and its log shows the outputs. A case relies on its tickets staying in the state that its comment in [infrastructure.yml](.github/workflows/infrastructure.yml) describes; when one changes, pick another ticket.
+The `infrastructure` area runs each AFK action on GitHub under its production job's read permissions and with the AFK App's token, as a dry run, so CI never writes to the tracker. Each behaviour is one matrix case, named after the behaviour, that runs the action against a real closed ticket and checks the action's outputs, such as its `effects`, with one `jq -e` assertion; a case for a refusal, which fails the action, checks the step's outcome instead. A failing case names the behaviour that broke, and its log shows the outputs. A case relies on its tickets staying in the state that its comment in [infrastructure-checks.yml](.github/workflows/infrastructure-checks.yml) describes; when one changes, pick another ticket.
 
 #### AFK workflow tests
 
@@ -1319,7 +1319,7 @@ The `afk-update-branch-workflow` job likewise calls the pull request's own [afk-
 
 A run started through `workflow_call` runs as the pull request's author, not as the AFK dispatcher's `github-actions`, so the `afk-dispatched-run-workflow` job also starts [afk-run.yml](.github/workflows/afk-run.yml) on the canary ticket and [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) on the canary PR as the dispatcher does: it sends a `workflow_dispatch` with its `GITHUB_TOKEN`, for the pull request's branch, as a dry run with the same model and effort. It then waits for that run and fails, printing the run's jobs and annotations, unless the run succeeds. The dispatched run is separate from the CI run, so it has its own entry in the Actions tab, named with ` (dry run)`, and it keeps running if CI is cancelled. [afk-update-branch.yml](.github/workflows/afk-update-branch.yml) is not dispatched, because its canary run starts no agent.
 
-`ci.yml` grants the area `actions: write` for two reasons. The `afk-dispatched-run-workflow` job dispatches with it, and the called workflow's `finish` job requests it to dispatch a spec's next run, which a dry run never does; GitHub refuses to start a nested job that requests more than its caller grants. It grants `checks: read` for the same reason: each `finish` job reads the failed job's annotations.
+`ci.yml` grants the infrastructure checks `actions: write` for two reasons. The `afk-dispatched-run-workflow` job dispatches with it, and the called workflow's `finish` job requests it to dispatch a spec's next run, which a dry run never does; GitHub refuses to start a nested job that requests more than its caller grants. It grants `checks: read` for the same reason: each `finish` job reads the failed job's annotations.
 
 `claude-code-action` refuses a run that a bot outside its `allowed_bots` list started. Each run workflow therefore allows `github-actions`, because [afk-dispatch.yml](.github/workflows/afk-dispatch.yml), [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml) and a spec's `finish` job dispatch runs with `GITHUB_TOKEN`, whose runs GitHub starts as `github-actions`. The AFK App, which has no Actions permission, cannot start a run, so the workflows never allow it.
 

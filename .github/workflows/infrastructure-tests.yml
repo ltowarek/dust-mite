@@ -1,0 +1,37 @@
+name: Infrastructure tests
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: The infrastructure devcontainer image, referenced by digest
+        required: true
+        type: string
+
+jobs:
+  afk-tests:
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ inputs.image }}  # zizmor: ignore[unpinned-images] the run's own devcontainer image, pinned by digest (ADR 0004)
+      options: --user root
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./tools/afk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run tests
+        run: ./scripts/run_tests.sh
