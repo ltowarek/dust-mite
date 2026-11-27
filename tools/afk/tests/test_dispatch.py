@@ -24,9 +24,16 @@ from afk.dispatch import (
     refusal,
     release,
 )
-from afk.effects import Comment, DispatchWorkflow, EditLabels, Effect, React
+from afk.effects import (
+    Comment,
+    DispatchWorkflow,
+    EditLabels,
+    Effect,
+    React,
+    Unreact,
+)
 from afk.writer import Writer
-from tests.test_doubles import GhSpy, GitSpy, read_outputs
+from tests.test_doubles import GhCall, GhSpy, GitSpy, read_outputs
 
 
 class TestParse:
@@ -233,7 +240,13 @@ class TestRelease:
     def test_plans_the_writes_of_a_release(
         self, *, accepted: bool, effects: list[Effect]
     ) -> None:
-        assert release(TARGET, accepted=accepted) == effects
+        assert release(TARGET, accepted=accepted, eyes=None) == effects
+
+    def test_removes_the_app_s_eyes_after_reacting_confused(self) -> None:
+        assert release(TARGET, accepted=False, eyes=31) == [
+            React(comment_id=555, content="confused"),
+            Unreact(comment_id=555, reaction_id=31),
+        ]
 
 
 class TestIssue:
@@ -280,8 +293,13 @@ ENV = {
     "AFK_COMMENT_ID": "555",
     "AFK_BODY": "/afk implement",
     "GH_REPO": "owner/repo",
+    "AFK_BOT_ID": "900",
 }
 ISSUE_READ = ("api", "repos/owner/repo/issues/7")
+EYES_READ = (
+    "api",
+    "repos/owner/repo/issues/comments/555/reactions?content=eyes&per_page=100",
+)
 
 
 class TestRun:
@@ -309,3 +327,53 @@ class TestRun:
             dispatch.run(gh, ENV, Writer(gh, GitSpy(), ENV, output))
 
         assert read_outputs(output) == {"accepted": "true"}
+
+
+class TestRunRelease:
+    def test_removes_only_the_app_s_eyes_with_the_app_s_token(
+        self, tmp_path: Path
+    ) -> None:
+        eyes = [{"id": 30, "user": {"id": 1}}, {"id": 31, "user": {"id": 900}}]
+        gh = GhSpy({EYES_READ: json.dumps(eyes)})
+        env = {**ENV, "AFK_ACCEPTED": ""}
+
+        dispatch.run_release(gh, env, Writer(gh, GitSpy(), env, tmp_path / "output"))
+
+        assert gh.calls == [
+            GhCall(list(EYES_READ), "app-token", "owner/repo"),
+            GhCall(
+                [
+                    "api",
+                    "--method",
+                    "POST",
+                    "repos/{owner}/{repo}/issues/comments/555/reactions",
+                    "-f",
+                    "content=confused",
+                ],
+                "app-token",
+                "owner/repo",
+            ),
+            GhCall(
+                [
+                    "api",
+                    "--method",
+                    "DELETE",
+                    "repos/{owner}/{repo}/issues/comments/555/reactions/31",
+                ],
+                "app-token",
+                "owner/repo",
+            ),
+        ]
+
+    def test_removes_nothing_without_the_app_s_eyes(self, tmp_path: Path) -> None:
+        gh = GhSpy({EYES_READ: json.dumps([{"id": 30, "user": {"id": 1}}])})
+        env = {**ENV, "AFK_ACCEPTED": "", "AFK_DRY_RUN": "true"}
+        output = tmp_path / "output"
+        writer = Writer(gh, GitSpy(), env, output)
+
+        dispatch.run_release(gh, env, writer)
+        writer.report()
+
+        assert json.loads(read_outputs(output)["effects"]) == [
+            {"type": "React", "comment_id": 555, "content": "confused"}
+        ]

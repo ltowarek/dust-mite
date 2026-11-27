@@ -19,8 +19,9 @@ from afk.effects import (
     Effect,
     React,
     Reaction,
+    Unreact,
 )
-from afk.github import Token, run_gh
+from afk.github import Token, read_own_reaction, run_gh
 from afk.labels import Label
 from afk.runner import Runner
 from afk.writer import Writer
@@ -59,6 +60,8 @@ class Run:
     number: int
     comment_id: int | None
     url: str
+    # The App's 👀 on the AFK command, which the end reaction replaces.
+    eyes: int | None = None
 
     @property
     def on_pr(self) -> bool:
@@ -286,7 +289,11 @@ def _release(run: Run) -> list[Effect]:
 def _react(run: Run, content: Reaction) -> list[Effect]:
     if run.comment_id is None:
         return []
-    return [React(comment_id=run.comment_id, content=content)]
+    # React before removing 👀, so that the command never shows no state.
+    effects: list[Effect] = [React(comment_id=run.comment_id, content=content)]
+    if run.eyes is not None:
+        effects.append(Unreact(comment_id=run.comment_id, reaction_id=run.eyes))
+    return effects
 
 
 def plan(run: Run, needs: Needs, step: FailedStep | None) -> list[Effect]:
@@ -359,6 +366,10 @@ def run(gh: Runner, env: Mapping[str, str], writer: Writer) -> None:
     doing = "Read the failed step"
     try:
         step = _read_failed_step(gh, env) if needs.failed else None
+        if finished.comment_id is not None:
+            doing = "Read the App's eyes reaction"
+            eyes = read_own_reaction(gh, env, finished.comment_id, Reaction.EYES)
+            finished = replace(finished, eyes=eyes)
         for effect in plan(finished, needs, step):
             doing = type(effect).__name__
             writer.write(effect)

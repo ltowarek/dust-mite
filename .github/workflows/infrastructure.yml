@@ -370,15 +370,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The release reads nothing, so #317 only names a closed ticket.
+          # The release reads only the comment's reactions, so #317 only names a closed ticket.
           - case: releases an accepted target
             number: 317
             accepted: 'true'
-            assertion: '. == [{"type":"EditLabels","number":317,"add":[],"remove":["afk:in-progress"]},{"type":"React","comment_id":1,"content":"confused"}]'
+            assertion: '.[0:2] == [{"type":"EditLabels","number":317,"add":[],"remove":["afk:in-progress"]},{"type":"React","comment_id":7194324370,"content":"confused"}]'
           - case: only reacts when the command was not accepted
             number: 317
             accepted: ''
-            assertion: '. == [{"type":"React","comment_id":1,"content":"confused"}]'
+            assertion: '.[0] == {"type":"React","comment_id":7194324370,"content":"confused"}'
+          # #375's first AFK command, of a finished run, holds the App's 👀.
+          - case: removes the App's eyes after reacting confused
+            number: 317
+            accepted: ''
+            assertion: '.[-1] == {"type":"Unreact","comment_id":7194324370,"reaction_id":484883496}'
 
     steps:
       - name: Mint the App's write token for labels and reactions
@@ -395,9 +400,10 @@ jobs:
         uses: $/.github/actions/afk-dispatch-release
         with:
           number: ${{ matrix.number }}
-          comment-id: 1
+          comment-id: 7194324370
           accepted: ${{ matrix.accepted }}
           app-token: ${{ steps.write-token.outputs.token }}
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}
           dry-run: true
 
       - name: Assert on the planned effects
@@ -1114,6 +1120,23 @@ jobs:
                   agent-output: '{"thread_replies": [], "inline_comments": [], "top_level_comments": [], "needs_dut_run": false, "already_covered": [{"problem": "The camera breaks.", "covered_by": 363}]}'
             assertion: >-
               .[0] == {"type": "Comment", "number": 391, "body": "## Follow-ups already covered\n\n- The camera breaks. Covered by #363.\n"}
+          # #375's second AFK command, of a finished run, holds the App's 👀.
+          - case: replaces the App's eyes with the end reaction
+            workflow: afk-run-pr
+            ticket: 391
+            comment-id: 7229559029
+            needs:
+              check:
+                result: success
+                outputs: {}
+              implement:
+                result: success
+                outputs: {}
+            assertion: >-
+              .[-2:] == [
+                {"type": "React", "comment_id": 7229559029, "content": "rocket"},
+                {"type": "Unreact", "comment_id": 7229559029, "reaction_id": 486277175}
+              ]
           - case: reports a failed branch update on the PR
             workflow: afk-update-branch
             ticket: 391
@@ -1158,9 +1181,11 @@ jobs:
         with:
           workflow: ${{ matrix.workflow || 'afk-run' }}
           ticket: ${{ matrix.ticket }}
+          comment-id: ${{ matrix.comment-id }}
           needs: ${{ toJSON(matrix.needs) }}
           app-token: ${{ steps.write-token.outputs.token }}
           workflow-token: ${{ github.token }}
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}
           dry-run: true
 
       - name: Assert on the planned effects

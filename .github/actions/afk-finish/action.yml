@@ -21,6 +21,9 @@ inputs:
   workflow-token:
     description: A token with Actions read for the failed step, and Actions write for dispatching a spec's next run
     required: true
+  bot-id:
+    description: The account id of the AFK App's bot, whose 👀 on the command the end reaction replaces
+    required: true
   dry-run:
     description: Report the writes in the effects output instead of making them
     required: false
@@ -48,6 +51,7 @@ runs:
         AFK_COMMENT_ID: ${{ inputs.comment-id }}
         AFK_NEEDS: ${{ inputs.needs }}
         AFK_APP_TOKEN: ${{ inputs.app-token }}
+        AFK_BOT_ID: ${{ inputs.bot-id }}
         AFK_WORKFLOW_TOKEN: ${{ inputs.workflow-token }}
         AFK_DRY_RUN: ${{ inputs.dry-run }}
         GH_REPO: ${{ github.repository }}

@@ -20,6 +20,7 @@ from afk.effects import (
     EditLabels,
     Effect,
     React,
+    Unreact,
 )
 from afk.finish import (
     FailedStep,
@@ -179,6 +180,25 @@ class TestPlan:
         effects = plan(replace(RUN, comment_id=555), finished, None)
 
         assert effects[-1] == React(comment_id=555, content=content)
+
+    def test_removes_the_app_s_eyes_after_its_end_reaction(self) -> None:
+        effects = plan(
+            replace(RUN, comment_id=555, eyes=31), needs(implement=DONE), None
+        )
+
+        assert effects[-2:] == [
+            React(comment_id=555, content="rocket"),
+            Unreact(comment_id=555, reaction_id=31),
+        ]
+
+    def test_keeps_the_app_s_eyes_on_a_queued_spec(self) -> None:
+        effects = plan(
+            replace(RUN, comment_id=555, eyes=31),
+            needs(check={"spec": "true", "queue": "true"}, implement_result="skipped"),
+            None,
+        )
+
+        assert not any(isinstance(effect, Unreact) for effect in effects)
 
     def test_does_not_react_without_an_afk_command(self) -> None:
         effects = plan(RUN, needs(implement=DONE), None)
@@ -560,6 +580,16 @@ class TestPlanFailure:
             React(comment_id=555, content="confused"),
         ]
 
+    def test_removes_the_app_s_eyes_after_reacting_confused(self) -> None:
+        effects = plan_failure(
+            replace(RUN, comment_id=555, eyes=31), needs(implement=DONE), "CloseIssue"
+        )
+
+        assert effects[-2:] == [
+            React(comment_id=555, content="confused"),
+            Unreact(comment_id=555, reaction_id=31),
+        ]
+
     def test_names_the_spec_s_child_ticket_and_the_agent_s_error(self) -> None:
         failed = needs(check=SPEC_RUN, implement={**DONE, "agent-error": "Oops."})
 
@@ -696,7 +726,12 @@ ENV = {
     "AFK_WORKFLOW": "afk-run",
     "AFK_TICKET": "12",
     "AFK_COMMENT_ID": "",
+    "AFK_BOT_ID": "900",
 }
+EYES_READ = (
+    "api",
+    "repos/owner/repo/issues/comments/555/reactions?content=eyes&per_page=100",
+)
 
 
 def env_for(finished: dict[str, Any], *, dry_run: bool = False) -> dict[str, str]:
@@ -777,6 +812,26 @@ class TestRun:
                 "The AFK run failed",
                 f"`implement{SEP}Agent` failed. Its job reported:\n\n> Add the bot.",
             ).body,
+        )
+
+    def test_reads_the_app_s_eyes_on_the_afk_command_with_the_app_s_token(
+        self, tmp_path: Path
+    ) -> None:
+        eyes = [{"id": 30, "user": {"id": 1}}, {"id": 31, "user": {"id": 900}}]
+        gh, git = GhSpy({EYES_READ: json.dumps(eyes)}), GitSpy()
+        env = {
+            **env_for(needs_context(implement=DONE), dry_run=True),
+            "AFK_COMMENT_ID": "555",
+        }
+        output = tmp_path / "output"
+        writer = Writer(gh, git, env, output)
+
+        finish.run(gh, env, writer)
+        writer.report()
+
+        assert (gh.calls, written(read_outputs(output)["effects"])[-1]) == (
+            [gh_call(*EYES_READ)],
+            {"type": "Unreact", "comment_id": 555, "reaction_id": 31},
         )
 
     def test_reports_and_releases_after_a_failed_write_then_fails(

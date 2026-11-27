@@ -22,6 +22,7 @@ from afk.effects import (
     PushBranch,
     React,
     ReplyToReviewComment,
+    Unreact,
 )
 from afk.writer import Writer, write_outputs
 from tests.test_doubles import GhCall, GhSpy, GitCall, GitSpy, read_outputs
@@ -101,6 +102,17 @@ class TestWriter:
                     ],
                     "app-token",
                     id="reacts to a comment with the App's token",
+                ),
+                pytest.param(
+                    Unreact(comment_id=555, reaction_id=31),
+                    [
+                        "api",
+                        "--method",
+                        "DELETE",
+                        "repos/{owner}/{repo}/issues/comments/555/reactions/31",
+                    ],
+                    "app-token",
+                    id="removes a reaction with the App's token",
                 ),
                 pytest.param(
                     CreatePullRequest(

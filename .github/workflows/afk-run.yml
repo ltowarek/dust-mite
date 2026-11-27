@@ -107,6 +107,7 @@ jobs:
           number: ${{ inputs.number }}
           app-token: ${{ steps.write-token.outputs.token }}
           workflow-token: ${{ github.token }}
+          bot-id: ${{ vars.AFK_APP_BOT_ID }}
           dry-run: ${{ inputs.dry-run }}
 
   implement:

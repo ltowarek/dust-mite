@@ -1207,7 +1207,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Replies and reacts 😕 to an unknown verb, and to a command on a target labelled `afk:in-progress` or `afk:queued`
   - Labels a ticket or spec with open blocking tickets `afk:queued` for `/afk implement`, replies with the blocking tickets and the command's id in a hidden marker, and reacts 👀
   - Otherwise reacts 👀, replaces `afk:blocked` with `afk:in-progress`, and dispatches [afk-run.yml](.github/workflows/afk-run.yml) for `/afk implement` on an issue, [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) for `/afk implement` on a pull request, or [afk-update-branch.yml](.github/workflows/afk-update-branch.yml) for `/afk update-branch`, with the comment's id and, on a pull request, its head commit
-  - When the job fails, reacts 😕 through the [afk-dispatch-release](.github/actions/afk-dispatch-release/action.yml) action, which also removes `afk:in-progress` if the command was accepted; the afk-dispatch action sets its `accepted` output before its first write, so that a failed write still releases the target
+  - When the job fails, reacts 😕 in place of the App's 👀 through the [afk-dispatch-release](.github/actions/afk-dispatch-release/action.yml) action, which also removes `afk:in-progress` if the command was accepted; the afk-dispatch action sets its `accepted` output before its first write, so that a failed write still releases the target
   - Labels, reacts and replies as the [AFK GitHub App](#afk-github-app); only the dispatch uses its own `GITHUB_TOKEN`, which has `actions: write`
   - Times out after 5 minutes
 - [afk-run.yml](.github/workflows/afk-run.yml)
@@ -1239,7 +1239,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Pushes nothing when the agent reports that finding the fix needs the car; instead, as the App, it labels the ticket `needs-car:<variant>` and comments the agent's reason on it, with the follow-ups already covered under their own heading
   - Files the follow-up tickets that the agent lists, whether or not the run opens a pull request, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes, and posts the follow-ups already covered as one comment on the pull request
   - Removes `afk:in-progress` when the run ends, unless it has dispatched the spec's next run; after a failure, including a failed write in its last job, labels the ticket or spec `afk:blocked` and comments the failed step, the agent's error when it reports one, the errors that the failed job's annotations report, the run link and the command that retries
-  - Reacts 🚀 to the AFK command when the run, or a spec's whole implementation, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car; a run that dispatches the spec's next run or queues the spec does not react
+  - Reacts 🚀 to the AFK command in place of the App's 👀 when the run, or a spec's whole implementation, implements its work, and 😕 when it fails, is refused, or stops at a spec gap or because finding the fix needs the car; a run that dispatches the spec's next run or queues the spec does not react, and keeps the 👀
   - Makes these last writes in its `finish` job, which mints the App's write token and passes the `needs` context to the [afk-finish](.github/actions/afk-finish/action.yml) action, which runs `python -m afk finish` from the same commit: the refusal, the follow-up tickets, the follow-ups already covered, closing a child ticket, stopping, queueing or continuing a spec, the labels, the failure report and the reaction; a failed write stops the rest, as in every other phase, and the action then labels the ticket or spec `afk:blocked`, comments the failed write, removes `afk:in-progress`, reacts 😕 and fails
   - Times out after 180 minutes
 - [afk-promote-queued.yml](.github/workflows/afk-promote-queued.yml)
@@ -1269,7 +1269,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Labels the pull request `needs-car:<variant>` when the agent judges that its commits need a DUT run, and leaves the draft or ready state untouched
   - Files follow-up tickets and comments the follow-ups already covered, as [afk-run.yml](.github/workflows/afk-run.yml) does
   - Removes `afk:in-progress` when the run ends; after a failure, labels the pull request `afk:blocked` and comments the failed step, the agent's error when it reports one, the errors that the failed job's annotations report, the run link and the command that retries
-  - Reacts 🚀 to the AFK command when the run succeeds, and 😕 when it fails or is refused
+  - Reacts 🚀 to the AFK command in place of the App's 👀 when the run succeeds, and 😕 when it fails or is refused
   - Makes these last writes in its `finish` job, which passes the `needs` context to the [afk-finish](.github/actions/afk-finish/action.yml) action with the `workflow` input `afk-run-pr`, as [afk-run.yml](.github/workflows/afk-run.yml) does; after a failed write, the action labels the pull request `afk:blocked`, comments the failed write, removes `afk:in-progress`, reacts 😕 and fails
 - [afk-update-branch.yml](.github/workflows/afk-update-branch.yml)
   - Runs an AFK run that merges `main` into an open pull request's branch
@@ -1291,7 +1291,7 @@ GitHub Actions workflows are defined in [.github/workflows/](.github/workflows/)
   - Files the follow-up tickets that the agent lists, as [docs/agents/follow-up-tickets.md](docs/agents/follow-up-tickets.md) describes
   - Grants its own `GITHUB_TOKEN` no write permission
   - Removes `afk:in-progress` when the run ends; after a failure, labels the pull request `afk:blocked` and comments the failed step, the agent's error when it reports one, the errors that the failed job's annotations report, the run link and the command that retries
-  - Reacts 🚀 to the AFK command when the run succeeds, and 😕 when it fails or is refused
+  - Reacts 🚀 to the AFK command in place of the App's 👀 when the run succeeds, and 😕 when it fails or is refused
   - Makes these last writes in its `finish` job, which passes the `needs` context to the [afk-finish](.github/actions/afk-finish/action.yml) action with the `workflow` input `afk-update-branch`, as [afk-run-pr.yml](.github/workflows/afk-run-pr.yml) does; the action reads the `update-branch` job's outputs, and leaves the follow-ups already covered to the merge comment; after a failed write, the action labels the pull request `afk:blocked`, comments the failed write, removes `afk:in-progress`, reacts 😕 and fails
   - Times out after 180 minutes
 - [claude.yml](.github/workflows/claude.yml)
@@ -1335,7 +1335,7 @@ The maintainer starts an AFK run with an AFK command: a new conversation comment
 | `/afk implement` | A pull request | An AFK run that addresses the pull request's unresolved conversation |
 | `/afk update-branch` | A pull request | An AFK run that merges `main` into the pull request's branch and resolves the conflicts |
 
-Only the repository owner's commands are accepted. An edited comment, a review comment and a review summary are not commands. [afk-dispatch.yml](.github/workflows/afk-dispatch.yml) reacts 👀 to an accepted command, and the AFK run reacts 🚀 when it succeeds or 😕 when it fails or is refused. To start an AFK run without a comment, run the workflow from the Actions tab with only the target's number. [ADR 0007](docs/adr/0007-start-afk-runs-by-comment-command.md) explains why commands are comments.
+Only the repository owner's commands are accepted. An edited comment, a review comment and a review summary are not commands. [afk-dispatch.yml](.github/workflows/afk-dispatch.yml) reacts 👀 to an accepted command, and the AFK run reacts 🚀 when it succeeds or 😕 when it fails or is refused. The end reaction replaces the 👀: the App adds it, then removes its own 👀, which it finds by the `AFK_APP_BOT_ID` Actions variable, so that a finished command does not read as still running. To start an AFK run without a comment, run the workflow from the Actions tab with only the target's number. [ADR 0007](docs/adr/0007-start-afk-runs-by-comment-command.md) explains why commands are comments.
 
 Labels record the state of the AFK loop only, and the AFK GitHub App sets them:
 
