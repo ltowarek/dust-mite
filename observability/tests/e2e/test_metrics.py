@@ -38,17 +38,17 @@ STREAMER_METRICS = [
 ]
 
 
-@pytest.mark.dut
-@pytest.mark.parametrize("metric_name", CAR_METRICS)
-def test_car_metric_has_metrics(metric_name: str) -> None:
-    assert has_metrics(
-        query(MIMIR_UID, "prometheus", {"expr": metric_name, "instant": True})
+class TestMetricPipeline:
+    @pytest.mark.dut
+    @pytest.mark.parametrize(
+        "metric_name",
+        [pytest.param(name, id=f"car exports {name}") for name in CAR_METRICS]
+        + [
+            pytest.param(name, id=f"streamer exports {name}")
+            for name in STREAMER_METRICS
+        ],
     )
-
-
-@pytest.mark.dut
-@pytest.mark.parametrize("metric_name", STREAMER_METRICS)
-def test_streamer_metric_has_metrics(metric_name: str) -> None:
-    assert has_metrics(
-        query(MIMIR_UID, "prometheus", {"expr": metric_name, "instant": True})
-    )
+    def test_service_metric_has_metrics(self, metric_name: str) -> None:
+        assert has_metrics(
+            query(MIMIR_UID, "prometheus", {"expr": metric_name, "instant": True})
+        )

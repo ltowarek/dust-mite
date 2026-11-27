@@ -50,49 +50,53 @@ def _pushed_profiles() -> None:
     )
 
 
-@pytest.mark.parametrize("service_name", _SERVICE_NAMES)
-def test_synthetic_profile_is_queryable(service_name: str) -> None:
-    """Only car and streamer support profiling; web has no profiling instrumentation."""
-    result = wait_for_profile_samples(
-        PYROSCOPE_UID,
-        "grafana-pyroscope-datasource",
-        {
-            "queryType": "profile",
-            "profileTypeId": PROFILE_TYPE,
-            "labelSelector": f'{{service_name="{service_name}"}}',
-        },
-    )
+class TestProfilePipeline:
+    @pytest.mark.parametrize("service_name", _SERVICE_NAMES)
+    def test_synthetic_profile_is_queryable(self, service_name: str) -> None:
+        """Only car and streamer support profiling; web has no profiling
+        instrumentation."""
+        result = wait_for_profile_samples(
+            PYROSCOPE_UID,
+            "grafana-pyroscope-datasource",
+            {
+                "queryType": "profile",
+                "profileTypeId": PROFILE_TYPE,
+                "labelSelector": f'{{service_name="{service_name}"}}',
+            },
+        )
 
-    assert has_profile_samples(result)
+        assert has_profile_samples(result)
 
+    @pytest.mark.parametrize("attribute_key", sorted(_SOURCE_LINK_ATTRIBUTES))
+    def test_github_source_link_attribute_is_queryable(
+        self, attribute_key: str
+    ) -> None:
+        """GitHub source linking requires this attribute to be queryable."""
+        value = _SOURCE_LINK_ATTRIBUTES[attribute_key]
+        result = wait_for_profile_samples(
+            PYROSCOPE_UID,
+            "grafana-pyroscope-datasource",
+            {
+                "queryType": "profile",
+                "profileTypeId": PROFILE_TYPE,
+                "labelSelector": f'{{{attribute_key}="{value}"}}',
+            },
+        )
 
-@pytest.mark.parametrize("attribute_key", sorted(_SOURCE_LINK_ATTRIBUTES))
-def test_github_source_link_attribute_is_queryable(attribute_key: str) -> None:
-    """GitHub source linking requires this attribute to be queryable."""
-    value = _SOURCE_LINK_ATTRIBUTES[attribute_key]
-    result = wait_for_profile_samples(
-        PYROSCOPE_UID,
-        "grafana-pyroscope-datasource",
-        {
-            "queryType": "profile",
-            "profileTypeId": PROFILE_TYPE,
-            "labelSelector": f'{{{attribute_key}="{value}"}}',
-        },
-    )
+        assert has_profile_samples(result)
 
-    assert has_profile_samples(result)
+    def test_profile_with_dotted_resource_attributes_is_queryable(self) -> None:
+        """Pyroscope rejects a series with a dotted label; these must not become one."""
+        result = wait_for_profile_samples(
+            PYROSCOPE_UID,
+            "grafana-pyroscope-datasource",
+            {
+                "queryType": "profile",
+                "profileTypeId": PROFILE_TYPE,
+                "labelSelector": (
+                    f'{{service_name="{_DOTTED_ATTRIBUTES_SERVICE_NAME}"}}'
+                ),
+            },
+        )
 
-
-def test_profile_with_dotted_resource_attributes_is_queryable() -> None:
-    """Pyroscope rejects a series with a dotted label; these must not become one."""
-    result = wait_for_profile_samples(
-        PYROSCOPE_UID,
-        "grafana-pyroscope-datasource",
-        {
-            "queryType": "profile",
-            "profileTypeId": PROFILE_TYPE,
-            "labelSelector": f'{{service_name="{_DOTTED_ATTRIBUTES_SERVICE_NAME}"}}',
-        },
-    )
-
-    assert has_profile_samples(result)
+        assert has_profile_samples(result)
