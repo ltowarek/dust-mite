@@ -48,6 +48,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
         - 'actions/setup-python@v7.1.0'
+        - 'codecov/codecov-action@v7.1.1'
     '.github/workflows/js-web.yml':
         - 'actions/checkout@v7.0.1'
         - 'codecov/codecov-action@v7.1.1'
